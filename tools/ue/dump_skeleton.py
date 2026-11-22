@@ -19,8 +19,10 @@ Local positions file (see Art/Characters/Base/NOTES.md):
   reaches the top of the source mesh's bounds; root points up.
 
 roll_deg (both files) is Blender's bone roll that best lines up the Blender bone's Z axis with the
-Unreal bone's local Z axis (mirrored into Blender's frame). It is a note for matching
-orientations, not a requirement: the IK Retargeter maps chains by name.
+Unreal bone's local Z axis (mirrored into Blender's frame). The values are derived from the engine
+skeleton's rest rotations, which the design allows as roll notes; they are the only numbers taken
+from it into the committed file. It is a note for matching orientations, not a requirement: the
+IK Retargeter maps chains by name.
 """
 
 import json

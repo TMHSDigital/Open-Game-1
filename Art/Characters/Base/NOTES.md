@@ -19,8 +19,9 @@ against the UE5 mannequin that ships with the engine's example content (UE 5.8.3
   of the UE5 layout but carry no mesh weights; the builder decides whether to include them. Twist
   bones are not optional.
 - `roll_deg` is the Blender roll that lines the Blender bone's Z axis up with the Unreal bone's
-  local Z axis. A note for matching orientations, not a requirement: the IK Retargeter maps
-  chains by name.
+  local Z axis. The values are derived from the engine skeleton's rest rotations (allowed by the
+  design as roll notes) and are the only numbers in the file taken from it. A note for matching
+  orientations, not a requirement: the IK Retargeter maps chains by name.
 
 ## Rest pose: A-pose
 
@@ -29,6 +30,11 @@ Build the base character in an A-pose at about that angle, so the IK Retargeter 
 no pose correction against UE5 humanoid animations.
 
 ## Forward axis: build facing Blender -Y
+
+Scope: only a static mesh round-trip was verified. The skeletal export (armature orientation,
+root bone, bone axes, scale on the root) has not been verified yet; Task 2 must check it on its
+first export of the base character (skeleton imports at scale 1, root at the origin, character
+faces Unreal +Y, 180 cm tall).
 
 Verified on 2026-11-22 with the export skill's reference-box round-trip (Blender 5.1.1, UE 5.8.3):
 

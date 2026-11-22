@@ -3,18 +3,20 @@
 # Blender runs in background mode with factory settings (no user add-ons or preferences), and
 # --python-exit-code 1 so an uncaught Python error makes Blender exit non-zero.
 #
-# Usage:
-#   pwsh tools/blender/run.ps1 -Script <script.py> [-Blend <file.blend>] [-- <script args>]
+# Usage (both forms work; tools/tests/test_skeleton_reference.py runs them):
+#   pwsh -NoProfile -File tools/blender/run.ps1 -Script <script.py> [-Blend <file.blend>] [-- <script args>]
+#   & tools/blender/run.ps1 -Script <script.py> [-Blend <file.blend>] [-- <script args>]   (from pwsh)
 #
 # Everything after -- is passed to the script (it reads them from sys.argv after "--").
 #
 # Override the Blender location with $env:BLENDER_PATH
 # (default C:\Program Files\Blender Foundation\Blender 5.1\blender.exe).
 
-# No param block on purpose: "pwsh -File" treats a bare "--" as a parameter with an empty name and
-# fails to bind it against any declared parameter, so the arguments are parsed by hand.
-# Called in-process (& run.ps1 ...), PowerShell drops the "--" itself; the first argument that is
-# not -Script or -Blend then starts the script arguments.
+# Why there is no param() block: if this script declared parameters, "pwsh -File run.ps1 ... --"
+# would fail with "parameter name '' is ambiguous" (pwsh -File treats a bare "--" as a parameter
+# with an empty name). Without declared parameters every argument lands in $args, including the
+# "--", and is parsed by hand below. Called in-process (& run.ps1 ...), PowerShell drops the "--"
+# itself; the first argument that is not -Script or -Blend then starts the script arguments.
 $Script = $null
 $Blend = $null
 $ScriptArgs = @()
