@@ -30,7 +30,7 @@ What `dev` does, in order:
 
 - From environment variables, else only these keys from `.env`: `STEAM_APPID`, `STEAM_DEPOT_WIN`, `STEAM_BUILD_ACCOUNT`, `STEAMCMD_PATH`. Templates never hold real IDs, and the script prints names, never values.
 - No password anywhere: steamcmd prompts for it and Steam Guard on first login, then caches a session in its own folder (`config\config.vdf`, `ssfn*`: secrets, never in the repo).
-- Use a **dedicated build account** with SteamPipe upload rights only.
+- Uploads use the owner's own Steam account (decision 0010); there is no separate build account. The cached steamcmd session carries full account rights, so never copy it anywhere.
 
 ## Branches
 
@@ -42,7 +42,7 @@ What `dev` does, in order:
 
 - Hosted runners cannot build Unreal practically. If CI is wanted, use a **self-hosted Windows runner** on the dev PC running `tools/ue/build.ps1`, `tools/ue/test.ps1` and `tools/steam/release.ps1 dry-run`.
 - Use `lfs: false` plus caching in checkout steps to avoid spending LFS bandwidth.
-- An automated upload job, if ever wanted, is set up by the owner with the build account session in GitHub Secrets and uploads to `development` only.
+- No automated upload job: under decision 0010 Steam credentials and steamcmd sessions never go into GitHub Secrets or a CI runner.
 
 ## Pitfalls
 

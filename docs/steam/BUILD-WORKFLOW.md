@@ -86,7 +86,7 @@ The per-run VDFs are rendered into `_scratch/steam/` from `steam/templates/app_b
 
 ## First build
 
-Follow [SETUP-CHECKLIST.md](SETUP-CHECKLIST.md). In short: build account, one steamcmd login, `.env`, then `release.ps1 upload-only` (no branch exists yet to set live), then create the `development` branch in Steamworks. From then on, use `release.ps1 dev`.
+Follow [SETUP-CHECKLIST.md](SETUP-CHECKLIST.md). In short: one steamcmd login with your own Steam account (decision 0010), `.env`, then `release.ps1 upload-only` (no branch exists yet to set live), then create the `development` branch in Steamworks. From then on, use `release.ps1 dev`.
 
 If `dev` fails with exit 30 and mentions a branch, the build may have uploaded but could not be set live: check that the `development` branch exists (checklist step 7).
 

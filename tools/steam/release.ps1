@@ -517,7 +517,7 @@ function Invoke-Status {
     if (-not $reason) {
         $run = Invoke-SteamCmdQuiet @('+@NoPromptForPassword', '1', '+login', $env:STEAM_BUILD_ACCOUNT, '+app_info_update', '1', '+app_info_print', $env:STEAM_APPID, '+quit')
         $steam = Get-SteamBranchBuilds $run.Lines
-        if ($run.Code -ne 0) { $reason = "steamcmd exited $($run.Code); is the build account logged in? Run steamcmd once in your terminal." }
+        if ($run.Code -ne 0) { $reason = "steamcmd exited $($run.Code); is steamcmd logged in? Run steamcmd once in your terminal." }
         elseif (($run.Lines -join "`n") -notmatch '"branches"') { $reason = 'steamcmd printed no branches block for the app.' }
     }
     if ($reason) {
