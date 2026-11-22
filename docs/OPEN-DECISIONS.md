@@ -6,7 +6,6 @@ Questions the project has not settled yet. Each has a GitHub Issue labelled `dec
 
 | ID | Question | Why it matters | Blocks | Options known | GitHub Issue | Status |
 |---|---|---|---|---|---|---|
-| OD-001 | Core loop: what does a player do in the first 10 minutes? | Every other design choice (modding surface, art, multiplayer) hangs off what players actually do. | first gameplay prototype | physics toy box (spawn, manipulate, destroy); objective-driven scenarios; open arena combat against AI; sandbox first with scenarios layered on later | [#1](https://github.com/TMHSDigital/Open-Game-1/issues/1) | Open |
 | OD-002 | Mod license terms and what modders may redistribute | Modders and players need to know what they may build, share and sell, and what the project keeps. | public modding documentation; Workshop support (OD-004) | permissive mod grant with attribution; redistribution only through official channels; separate mod EULA; no redistribution of base game assets | [#2](https://github.com/TMHSDigital/Open-Game-1/issues/2) | Open |
 | OD-003 | Modding technology: UE content plugins/paks, a scripting layer (Lua, Verse-like, other), or both | It shapes how every gameplay system is built from the start and what mods can safely do. | mod API design; OD-004 | Unreal content plugins and paks; embedded scripting (Lua or similar); a Verse-like layer; both | [#3](https://github.com/TMHSDigital/Open-Game-1/issues/3) | Open |
 | OD-004 | Steam Workshop support and when | Workshop affects mod packaging, moderation workload and the license terms for uploaded content. | Workshop upload tooling; depends on OD-002 and OD-003 | at launch; after early access; never (manual mod sharing); defer until mods exist | [#4](https://github.com/TMHSDigital/Open-Game-1/issues/4) | Open |
@@ -23,3 +22,4 @@ Questions the project has not settled yet. Each has a GitHub Issue labelled `dec
 
 | ID | Question | Decision | GitHub Issue |
 |---|---|---|---|
+| OD-001 | Core loop: what does a player do in the first 10 minutes? | [0011-start-with-a-blank-plane-and-one-base-character-movement-fee](decisions/0011-start-with-a-blank-plane-and-one-base-character-movement-fee.md) | [#1](https://github.com/TMHSDigital/Open-Game-1/issues/1) |
