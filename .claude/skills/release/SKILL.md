@@ -1,6 +1,6 @@
 ---
 name: release
-description: Steam releases for Combat Simulator through tools/steam/release.ps1. Claude runs dry-run, status and promote (and fills the promotion post from the devlogs); real uploads are run by the owner in their own terminal; Claude records a promotion only after the owner confirms it, and this skill prints the exact command. Use when the user says release, ship a build, upload to Steam, promote to default, what is on Steam, or Steam setup status.
+description: Steam releases for Combat Simulator through tools/steam/release.ps1. Claude runs dry-run, status and promote (and fills the promotion post from the devlogs); real uploads and recording a promotion are run by the owner in their own terminal, and this skill prints the exact command. Use when the user says release, ship a build, upload to Steam, promote to default, what is on Steam, or Steam setup status.
 allowed-tools: Bash(pwsh tools/steam/release.ps1 dry-run:*) Bash(pwsh tools/steam/release.ps1 status:*) Bash(pwsh tools/steam/release.ps1 promote :*) Bash(pwsh tools/steam/test-release.ps1:*) PowerShell(pwsh tools/steam/release.ps1 dry-run:*) PowerShell(pwsh tools/steam/release.ps1 status:*) PowerShell(pwsh tools/steam/release.ps1 promote :*) Read Edit Grep Bash(git log:*)
 ---
 
@@ -10,8 +10,8 @@ Full reference: `docs/steam/BUILD-WORKFLOW.md`. History: `docs/steam/BUILDS.md`.
 
 ## Rules
 
-- Claude may run only: `dry-run`, `status`, `promote <ver>`, `promoted <ver> -OwnerConfirmed` (only after the owner has confirmed in this conversation that the build is live on `default` in Steamworks), and the test script `tools/steam/test-release.ps1`.
-- Claude never runs `dev`, `upload-only` or `preview`, and never runs steamcmd. The script refuses them inside Claude Code anyway (exit 40), and refuses `promoted` there without `-OwnerConfirmed`. Print the exact command for the owner to run in their own terminal instead.
+- Claude may run only: `dry-run`, `status`, `promote <ver>`, and the test script `tools/steam/test-release.ps1`.
+- Claude never runs `dev`, `upload-only`, `preview` or `promoted`, and never runs steamcmd. The script refuses them inside Claude Code anyway (exit 40). Print the exact command for the owner to run in their own terminal instead.
 - Never set the `default` branch live, and never suggest a command that does.
 - Never read `.env`, never print or write App IDs, Depot IDs or the build account name. The script prints only variable names.
 - Never attach game files to a GitHub Release.

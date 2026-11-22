@@ -19,7 +19,7 @@ Steam setup still to do is in [SETUP-CHECKLIST.md](SETUP-CHECKLIST.md). The uplo
 | `dev` | `pwsh tools/steam/release.ps1 dev` | owner, own terminal |
 | `promoted <ver>` | `pwsh tools/steam/release.ps1 promoted 0.1.4` | owner, own terminal |
 
-The script refuses `dev`, `upload-only` and `preview` when `CLAUDECODE` is set (exit 40), so Claude Code can never upload. `promoted` never talks to Steam (it records a promotion the owner already made by hand); inside Claude Code it also exits 40 unless `-OwnerConfirmed` is passed, which Claude does only after the owner confirms the build is live on `default`.
+The script refuses `dev`, `upload-only`, `preview` and `promoted` when `CLAUDECODE` is set (exit 40), so Claude Code can never upload or record a promotion.
 
 ## Modes
 

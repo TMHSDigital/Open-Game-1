@@ -16,9 +16,8 @@
 # Exit codes: 0 ok, 1 other error, 10+n gate n failed, 30 steamcmd error, 31 no BuildID,
 #             40 refused (a -Branch other than development, or CLAUDECODE set for a real Steam step).
 #
-# The owner runs every real Steam step (dev, upload-only, preview) in their own terminal: the script
-# refuses them when CLAUDECODE is set. 'promoted' (records a promotion the owner made by hand) needs
-# -OwnerConfirmed inside Claude Code. No script ever sets the default branch live.
+# The owner runs every real Steam step (dev, upload-only, preview, promoted) in their own terminal:
+# the script refuses them when CLAUDECODE is set. No script ever sets the default branch live.
 #
 # IDs come from environment variables. If one is not set, only these keys are read from .env:
 # STEAM_APPID, STEAM_DEPOT_WIN, STEAM_BUILD_ACCOUNT, STEAMCMD_PATH. Values are never printed.
@@ -31,7 +30,6 @@ param(
     [switch]$SkipPackage,
     [string]$Notes = '',
     [string]$Branch = 'development',
-    [switch]$OwnerConfirmed,  # 'promoted' inside Claude Code: the owner confirmed the default promotion
     # Test overrides (tools/steam/test-release.ps1).
     [string]$BuildDir,
     [string]$LedgerPath,
@@ -668,15 +666,9 @@ try {
     $branchProblem = Test-ReleaseBranch $Branch
     if ($branchProblem) { Stop-Release 40 $branchProblem }
     $Branch = $Branch.Trim()
-    if ($Mode -in 'dev', 'upload-only', 'preview' -and $env:CLAUDECODE) {
+    if ($Mode -in 'dev', 'upload-only', 'preview', 'promoted' -and $env:CLAUDECODE) {
         $cmd = "pwsh tools/steam/release.ps1 $Mode$(if ($Version) { " $Version" })"
         Stop-Release 40 "Refusing '$Mode' inside Claude Code (CLAUDECODE is set). The owner runs it in their own terminal: $cmd"
-    }
-    # 'promoted' only records a promotion the owner already made by hand in Steamworks; it never
-    # talks to Steam. Inside Claude Code it needs -OwnerConfirmed, passed only after the owner has
-    # confirmed the build is live on default.
-    if ($Mode -eq 'promoted' -and $env:CLAUDECODE -and -not $OwnerConfirmed) {
-        Stop-Release 40 "Refusing 'promoted' inside Claude Code without -OwnerConfirmed. Pass it only after the owner confirms the build is live on default in Steamworks, or the owner runs: pwsh tools/steam/release.ps1 promoted $Version"
     }
 
     Push-Location $RepoDir
