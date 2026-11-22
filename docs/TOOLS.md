@@ -55,6 +55,7 @@ Licensing note: the owner's tool repos below are CC-BY-NC-ND-4.0 (the Blender-De
 
 - **What:** Unreal Engine's experimental MCP server, running inside the editor.
 - **Install:** enable the plugins ModelContextProtocol, ToolsetRegistry and AllToolsets in the project; it listens on loopback only, at `http://127.0.0.1:8000/mcp`. The `unreal` entry in `.mcp.json.example` points at it.
+- **Starting it:** the project ships `bAutoStartServer=False` in `Game/Config/DefaultEditorPerProjectUserSettings.ini`, so opening the editor does not start the server for everyone. `pwsh tools/ue/editor.ps1` launches the editor with `-ModelContextProtocolStartServer` and waits for the endpoint. To have it start every time you open the editor yourself, turn on Editor Preferences, Plugins, Model Context Protocol, Auto Start Server: it is saved per user in `Game/Saved/Config/WindowsEditor/EditorPerProjectUserSettings.ini` (gitignored).
 - **Env names:** none.
 - **Used by:** capture, level setup and automation tests when the editor is open.
 - **Limits:**

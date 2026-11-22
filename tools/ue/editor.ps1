@@ -2,8 +2,10 @@
 # Unreal MCP server (Epic's in-editor Model Context Protocol endpoint) answers.
 #
 # Requires the ModelContextProtocol plugin to be enabled (it is, in Game/CombatSimulator.uproject).
-# The server auto starts from Game/Config/DefaultEditorPerProjectUserSettings.ini; this script also
-# passes -ModelContextProtocolStartServer so it starts even if a personal setting turned it off.
+# The project ships bAutoStartServer=False (Game/Config/DefaultEditorPerProjectUserSettings.ini), so
+# this script passes -ModelContextProtocolStartServer to start the server for this launch. To have it
+# start every time you open the editor yourself, turn on Editor Preferences, Plugins, Model Context
+# Protocol, Auto Start Server (saved per user under Game/Saved/, never committed).
 #
 # Usage: pwsh tools/ue/editor.ps1 [-TimeoutSec 600]
 

@@ -9,7 +9,7 @@ Third-party assets keep their own licenses. This file is the rule for what may e
 
 ## Allowed licenses
 
-CC0, public domain equivalents, CC-BY (with credits), MIT, BSD, Apache-2.0 and OFL-1.1 (fonts).
+CC0, public domain equivalents, CC-BY (with credits), MIT, BSD (the SPDX ids BSD-2-Clause, BSD-3-Clause, BSD-3-Clause-Clear and 0BSD; other BSD strings are flagged as unknown), Apache-2.0 and OFL-1.1 (fonts).
 
 An asset-specific license that permits commercial use and modification may be used after review. `og assets check` reports any license it does not recognize as unknown, and an unknown license blocks the commit until the policy is extended deliberately.
 

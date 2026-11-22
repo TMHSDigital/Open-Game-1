@@ -188,3 +188,15 @@ def test_cli_check_and_credits(tmp_path):
     touch(tmp_path, "Art/ThirdParty/z.png")
     r = og("assets", "check", cwd=tmp_path)
     assert r.returncode == 1 and "Art/ThirdParty/z.png" in r.stdout
+
+
+@pytest.mark.parametrize("lic", ["BSD-2-Clause", "BSD-3-Clause", "BSD-3-Clause-Clear", "0BSD",
+                                 "bsd 3-clause"])
+def test_bsd_spdx_ids_allowed(lic):
+    assert license_verdict(normalize_license(lic)) == "allowed"
+
+
+@pytest.mark.parametrize("lic", ["BSD-Non-Commercial", "BSD-4-Clause-Shortened", "BSD",
+                                 "BSD-Protection", "BSD-anything"])
+def test_other_bsd_strings_not_allowed(lic):
+    assert license_verdict(normalize_license(lic)) in ("refused", "unknown")

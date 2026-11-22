@@ -6,7 +6,7 @@ It is **built in public**: this repository holds the game source, the design dec
 
 ## Follow along
 
-- Devlog site: built from `docs/devlog/` by CI and published with GitHub Pages
+- Devlog site: https://tmhsdigital.github.io/Open-Game-1/ (built from `docs/devlog/` by CI and published with GitHub Pages)
 - Open questions: [docs/OPEN-DECISIONS.md](docs/OPEN-DECISIONS.md)
 - Decision records: [docs/decisions/](docs/decisions/)
 - Repo tooling (`og` command line): [docs/TOOLS.md](docs/TOOLS.md)

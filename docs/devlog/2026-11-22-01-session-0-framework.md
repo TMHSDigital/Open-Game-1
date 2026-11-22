@@ -4,7 +4,7 @@ date: 2026-11-22
 goal: "Session 0: framework"
 start_sha: 4b825dc642cb6eb9a060e54bf8d69288fbee4904
 end_sha: 79b712c857a9826ae04989336f426ac083ced138
-decisions: [OD-001]
+decisions: []
 cameras: [stage-closeup, stage-overview]
 clip: null
 ---
@@ -16,6 +16,8 @@ clip: null
 Session 0 built the framework the game will grow in, and no gameplay yet. The repo now has a source-available license, a secrets scanner and pre-commit hook for a public repo, a ledger that refuses unsuitable third-party licenses, a decision record tied to GitHub Issues, an Unreal 5.8 C++ project with build, test and package scripts, fixed-camera captures (the two images below), this session and milestone routine, a gated Steam release script that the owner runs by hand, and a public site built from the devlog and decisions. The tool and workflow docs and the map of what is reused from the owner's Game-Systems library were added last. Twelve questions are still open as decisions. The next one to settle is OD-001, the core loop: what a player actually does in the first ten minutes, because the modding surface, the art and the networking all hang off it.
 
 ## Changes
+
+The start_sha is git's empty tree because this entry covers the whole framework build, from the first commit.
 
 - 3c17a21 Initial commit
 - f2d8d3d chore: repo foundation, license, secrets scanner, LFS
@@ -37,7 +39,7 @@ Session 0 built the framework the game will grow in, and no gameplay yet. The re
 
 ## Decisions touched
 
-- OD-001
+_None._
 
 ## Captures
 

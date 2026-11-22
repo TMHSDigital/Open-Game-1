@@ -25,7 +25,10 @@ Verdict = Literal["allowed", "refused", "unknown"]
 _REFUSED_TOKENS = {"NC", "ND", "SA", "GPL", "LGPL", "AGPL"}
 _ALLOWED = [re.compile(p) for p in (
     r"CC0(-\d+(\.\d+)?)?", r"PUBLIC-DOMAIN", r"PD", r"UNLICENSE",
-    r"CC-BY(-\d+(\.\d+)?)?", r"MIT", r"BSD(-.+)?", r"APACHE-2(\.0)?",
+    r"CC-BY(-\d+(\.\d+)?)?", r"MIT",
+    # BSD: the SPDX ids only (not BSD-4-Clause, not free-form "BSD-..." strings).
+    r"BSD-2-CLAUSE", r"BSD-3-CLAUSE", r"BSD-3-CLAUSE-CLEAR", r"0BSD",
+    r"APACHE-2(\.0)?",
     r"OFL-1\.1", r"SIL-OFL(-1\.1)?")]
 
 
