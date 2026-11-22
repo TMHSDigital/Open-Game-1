@@ -1,0 +1,19 @@
+# Systems map
+
+What this project reuses from, and may contribute to, the owner's private Game-Systems library. Check it before building any system (see `CLAUDE.md`). Game-Systems refs are `<catalogue>#<entry>` or `specs/<name>`.
+
+Status values: `adopted` (used as is), `adapted` (rewritten for this project), `planned` (not built yet), `contributes` (this project is expected to add it to the library).
+
+Reusable code here goes in self-contained plugins under `Game/Plugins/CS<Name>/` so it can be catalogued with `/catalogue-sync` (see [WORKFLOWS.md](../WORKFLOWS.md)).
+
+| Need | Game-Systems ref | Status | Local path |
+|---|---|---|---|
+| Gated Steam release (numbered gates, fresh staging, development branch only) | `siege-game#steampipe-deploy-gated` | adapted | `tools/steam/release.ps1`, `tools/steam/test-release.ps1`, `steam/templates/` |
+| UE build, test and package scripts | `siege-game#ue-powershell-build-scripts` | adapted | `tools/ue/` |
+| Unreal MCP editor bootstrap | `siege-game#unreal-mcp-editor-bootstrap` | adapted | `tools/ue/editor.ps1`, `.mcp.json.example`, `Game/Config/` |
+| Evolution capture (fixed cameras over time, compare) | `siege-game#siege-capture-subsystem`, `siege-game#evolution-timeline-compare` | adapted | `Game/Source/CSCapture/`, `tools/ue/capture.ps1`, `docs/captures/`, `.claude/skills/capture/` |
+| UE automation test harness | `siege-game#ue-automation-test-harness` | adapted | `tools/ue/test.ps1`, `Game/Source/CombatSimulator/Tests/`, `Game/Source/CSCapture/Private/Tests/` |
+| Secret scanning (pre-commit, CI, pre-release) | `specs/secret-scanning` | adapted | `tools/og/secrets.py`, `tools/hooks/pre-commit`, `.github/workflows/checks.yml` |
+| Media layer (clips, stills, redaction) | `specs/media-layer` | adapted | screencast-mcp for clips and redaction; WebP stills in `tools/og/devlog.py` |
+| UE mod support | none yet | contributes (planned) | not started; shaped by OD-002, OD-003 and OD-004 |
+| Physics sandbox toolset | none yet | contributes (planned) | not started; shaped by OD-001 |
