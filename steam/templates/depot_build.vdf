@@ -1,0 +1,29 @@
+// SteamPipe depot build TEMPLATE for the Windows depot ("Combat Simulator Content").
+// Filled in by tools/steam/release.ps1; never holds real IDs.
+//
+// - No "ContentRoot" here on purpose: it is inherited from the app build. Setting one appends to it
+//   and fails with "Invalid content root for depot".
+// - The staging step already drops these files; the exclusions are a second line of defense.
+//   steam_appid.txt must never ship (the client would read the App ID from disk), and symbols,
+//   logs, Saved and Intermediate are local build or run output, not game content.
+"DepotBuildConfig"
+{
+	"DepotID" "{{DEPOT_ID}}"
+	"FileMapping"
+	{
+		"LocalPath" "*"
+		"DepotPath" "."
+		"recursive" "1"
+	}
+	"FileExclusion" "*.pdb"
+	"FileExclusion" "*.sym"
+	"FileExclusion" "*.debug"
+	"FileExclusion" "*.dmp"
+	"FileExclusion" "*.log"
+	"FileExclusion" "steam_appid.txt"
+	"FileExclusion" "Manifest_*.txt"
+	"FileExclusion" "Saved\*"
+	"FileExclusion" "*\Saved\*"
+	"FileExclusion" "Intermediate\*"
+	"FileExclusion" "*\Intermediate\*"
+}

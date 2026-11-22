@@ -1,0 +1,21 @@
+// SteamPipe app build TEMPLATE. Never edited per upload and never holds real IDs:
+// tools/steam/release.ps1 fills the double-brace placeholders from environment variables and writes
+// the run copy to _scratch/steam/ (gitignored).
+//
+// - SetLive is "development" for `release dev`, empty for `upload-only` and `preview`.
+//   Never "default": promoting to the public branch is a manual step in Steamworks.
+// - Paths are absolute Windows paths with single backslashes.
+// - Preview "1" builds only logs and a manifest (no upload).
+"AppBuild"
+{
+	"AppID" "{{APP_ID}}"
+	"Desc" "{{DESC}}"
+	"ContentRoot" "{{CONTENT_ROOT}}"
+	"BuildOutput" "{{BUILD_OUTPUT}}"
+	"SetLive" "{{SETLIVE}}"
+	"Preview" "{{PREVIEW}}"
+	"Depots"
+	{
+		"{{DEPOT_ID}}" "{{DEPOT_VDF}}"
+	}
+}
