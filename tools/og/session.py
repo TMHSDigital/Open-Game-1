@@ -1,0 +1,411 @@
+"""Session routine: `og session start|end` and `og milestone`.
+
+State lives in `_scratch/session.json` (gitignored). `end` writes the devlog entry, converts
+captures to WebP, scans everything with og.secrets (a finding blocks the commit), uploads the
+clip to the monthly media release and commits.
+"""
+from __future__ import annotations
+
+import datetime
+import json
+import re
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+from og import gh, secrets
+from og.devlog import to_webp
+
+PKG_ROOT = Path(__file__).resolve().parents[2]
+NARRATIVE_MARKER = "<!-- narrative -->"
+CHECKLIST = Path("docs/steam/SETUP-CHECKLIST.md")
+INDEX = Path("docs/captures/INDEX.md")
+RELEASE_NOTES = "Session recordings for the devlog. Not a game build."
+EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+
+
+class SessionError(RuntimeError):
+    pass
+
+
+def _git(repo: Path, *args: str, check: bool = True) -> str:
+    r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True,
+                       encoding="utf-8")
+    if check and r.returncode != 0:
+        raise SessionError(f"git {' '.join(args[:2])} failed: {r.stderr.strip()}")
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
+def _template(repo: Path, rel: str) -> str:
+    for base in (repo, PKG_ROOT):
+        p = base / rel
+        if p.is_file():
+            return p.read_text("utf-8")
+    raise SessionError(f"missing template {rel}")
+
+
+def _render(text: str, values: dict[str, str]) -> str:
+    for k, v in values.items():
+        text = text.replace("{{" + k + "}}", v)
+    return text
+
+
+def _slugify(text: str) -> str:
+    s = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+    return s[:40].strip("-") or "session"
+
+
+def _state_path(repo: Path) -> Path:
+    return repo / "_scratch" / "session.json"
+
+
+def _next_id(repo: Path, day: datetime.date) -> str:
+    existing = list((repo / "docs" / "devlog").glob(f"{day.isoformat()}-[0-9][0-9]-*.md"))
+    nums = [int(p.name[11:13]) for p in existing]
+    return f"{day.isoformat()}-{max(nums, default=0) + 1:02d}"
+
+
+def _find_entry(repo: Path, sid: str) -> Path | None:
+    found = sorted((repo / "docs" / "devlog").glob(f"{sid}-*.md"))
+    return found[0] if found else None
+
+
+def _open_setup_items(repo: Path) -> list[str]:
+    """Numbered checklist lines whose italic status does not start with Done."""
+    f = repo / CHECKLIST
+    if not f.is_file():
+        return []
+    items = []
+    for line in f.read_text("utf-8").splitlines():
+        if not re.match(r"\s*\d+\.\s", line):
+            continue
+        m = re.search(r"\*([A-Za-z][^*]*)\*", line)
+        if m and m.group(1).strip().lower().startswith("done"):
+            continue
+        items.append(line.strip())
+    return items
+
+
+def _render_entry(repo: Path, d: dict) -> str:
+    changes = "\n".join(f"- {c}" for c in d["commits"]) or d.get("empty_changes", "_No commits._")
+    decisions = d["decisions"]
+    caps = "\n".join(f"![{c}]({p})" for c, p in d["captures"]) or "_No captures._"
+    clip = d["clip"]
+    return _render(_template(repo, "docs/devlog/TEMPLATE.md"), {
+        "id": d["id"], "date": d["id"][:10], "goal": d["goal"].replace('"', "'"),
+        "start_sha": d["start_sha"] or "null", "end_sha": d["end_sha"] or "null",
+        "decisions": "[" + ", ".join(decisions) + "]",
+        "cameras": "[" + ", ".join(c for c, _ in d["captures"] if c != "contact-sheet") + "]",
+        "clip": clip or "null",
+        "warning": f"> WARNING: {d['warning']}\n\n" if d.get("warning") else "",
+        "changes": changes,
+        "decisions_list": "\n".join(f"- {x}" for x in decisions) or "_None._",
+        "captures": caps,
+        "clip_line": f"[Session clip]({clip})" if clip else "_No clip._",
+    })
+
+
+def start(repo: Path, goal: str, today: datetime.date | None = None, commit: bool = False) -> str:
+    repo = Path(repo)
+    day = today or datetime.date.today()
+    sid = _next_id(repo, day)
+    slug = _slugify(goal)
+    if commit:
+        _git(repo, "commit", "--allow-empty", "-m",
+             f"chore: session {sid} start\n\nSession-Start: {sid}")
+    head = _git(repo, "rev-parse", "HEAD", check=False)
+    entry = repo / "docs" / "devlog" / f"{sid}-{slug}.md"
+    entry.parent.mkdir(parents=True, exist_ok=True)
+    entry.write_text(_render_entry(repo, {
+        "id": sid, "goal": goal, "start_sha": head, "end_sha": None, "commits": [],
+        "decisions": [], "captures": [], "clip": None,
+        "empty_changes": "_Filled in by `og session end`._"}), "utf-8")
+    state = {"id": sid, "slug": slug, "goal": goal, "start_sha": head,
+             "started_at": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
+             "screencast_session": None}
+    sp = _state_path(repo)
+    sp.parent.mkdir(parents=True, exist_ok=True)
+    sp.write_text(json.dumps(state, indent=2) + "\n", "utf-8")
+    print(sid)
+    for item in _open_setup_items(repo):
+        print(f"Open setup item: {item}")
+    return sid
+
+
+def _resolve_start(repo: Path, today: datetime.date) -> tuple[dict, str | None]:
+    """Return (state, warning). State comes from the file, else the trailer, else HEAD~1."""
+    sp = _state_path(repo)
+    if sp.is_file():
+        return json.loads(sp.read_text("utf-8")), None
+    out = _git(repo, "log", "-1", "--grep=^Session-Start: ", "--format=%H%n%B", check=False)
+    m = re.search(r"^Session-Start: (\S+)", out, re.M)
+    if m:
+        sid = m.group(1)
+        entry = _find_entry(repo, sid)
+        goal = "(unknown goal)"
+        if entry:
+            g = re.search(r'^goal: "(.*)"$', entry.read_text("utf-8"), re.M)
+            goal = g.group(1) if g else goal
+        return {"id": sid, "slug": _slugify(goal), "goal": goal,
+                "start_sha": out.splitlines()[0]}, None
+    sid = _next_id(repo, today)
+    parent = _git(repo, "rev-parse", "--verify", "-q", "HEAD~1", check=False)
+    warn = ("No open session and no Session-Start trailer found; "
+            "start SHA fell back to HEAD~1, so Changes may be incomplete.")
+    return {"id": sid, "slug": "session", "goal": "(unknown goal)",
+            "start_sha": parent or EMPTY_TREE}, warn
+
+
+def _commits(repo: Path, start_sha: str) -> list[tuple[str, str]]:
+    """(oneline, full message) for commits in start..HEAD."""
+    rng = "HEAD" if start_sha == EMPTY_TREE else f"{start_sha}..HEAD"
+    shas = _git(repo, "log", "--reverse", "--format=%H", rng, check=False).split()
+    return [(_git(repo, "log", "-1", "--oneline", s), _git(repo, "log", "-1", "--format=%B", s))
+            for s in shas]
+
+
+def _decisions(messages: list[str]) -> list[str]:
+    found: list[str] = []
+    for msg in messages:
+        for m in re.finditer(r"\bOD-(\d{3})\b|\bADR[ -]?(\d{4})\b", msg):
+            tag = f"OD-{m.group(1)}" if m.group(1) else f"ADR-{m.group(2)}"
+            if tag not in found:
+                found.append(tag)
+    return found
+
+
+def _run_capture(repo: Path, outdir: Path) -> None:
+    r = subprocess.run(["pwsh", "-NoProfile", "-File", str(repo / "tools/ue/capture.ps1"),
+                        "-Cameras", "all", "-OutDir", str(outdir)])
+    if r.returncode != 0:
+        raise SessionError(f"capture.ps1 failed ({r.returncode})")
+
+
+def _print_findings(findings) -> None:
+    for f in findings:
+        print(f"SECRET {f.rule}: {f.path}:{f.line}: {f.excerpt_redacted}", file=sys.stderr)
+
+
+def _upload_clip(repo: Path, sid: str, clip: Path) -> str:
+    tag = f"media-{sid[:7]}"
+    try:
+        gh._gh(["release", "view", tag])
+    except gh.GhError:
+        gh._gh(["release", "create", tag, "--title", f"Devlog media {sid[:7]}",
+                "--notes", RELEASE_NOTES, "--prerelease"])
+    scratch = repo / "_scratch"
+    scratch.mkdir(exist_ok=True)
+    asset = scratch / f"{sid}.mp4"
+    shutil.copyfile(clip, asset)
+    gh._gh(["release", "upload", tag, str(asset), "--clobber"])
+    slug = gh.repo_slug(repo) or gh._gh(
+        ["repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"]).strip()
+    return f"https://github.com/{slug}/releases/download/{tag}/{asset.name}"
+
+
+def _append_index(repo: Path, rows: list[str]) -> None:
+    idx = repo / INDEX
+    text = idx.read_text("utf-8") if idx.is_file() else ""
+    if text and not text.endswith("\n"):
+        text += "\n"
+    idx.parent.mkdir(parents=True, exist_ok=True)
+    idx.write_text(text + "".join(r + "\n" for r in rows), "utf-8")
+
+
+def end(repo: Path, capture: bool = False, clip: Path | None = None,
+        contact_sheet: Path | None = None, capture_dir: Path | None = None,
+        commit: bool = True, co_author: str | None = None,
+        today: datetime.date | None = None) -> int:
+    repo = Path(repo)
+    state, warning = _resolve_start(repo, today or datetime.date.today())
+    sid, start_sha = state["id"], state["start_sha"]
+    if warning:
+        print(f"WARNING: {warning}", file=sys.stderr)
+
+    # 1. gather and scan source images before anything is written to docs/.
+    sources: list[tuple[str, Path]] = []
+    cdir = Path(capture_dir) if capture_dir else repo / "_scratch" / "capture"
+    if capture:
+        if capture_dir is None:
+            shutil.rmtree(cdir, ignore_errors=True)
+        _run_capture(repo, cdir)
+    if capture or capture_dir:
+        sources += [(p.stem, p) for p in sorted(cdir.glob("*.png"))]
+    if contact_sheet:
+        sources.append(("contact-sheet", Path(contact_sheet)))
+    findings = [f for _, p in sources for f in secrets.scan_image(p)]
+    if findings:
+        _print_findings(findings)
+        print("Blocked: secrets found in capture images; nothing written or committed.",
+              file=sys.stderr)
+        return 1
+
+    # 2. convert, record, and describe.
+    end_sha = _git(repo, "rev-parse", "HEAD", check=False)
+    cap_sha = end_sha
+    meta = cdir / "capture.json"
+    if capture and meta.is_file():
+        try:
+            cap_sha = json.loads(meta.read_text("utf-8")).get("sha") or end_sha
+        except ValueError:
+            pass
+    media = repo / "docs" / "devlog" / "media" / sid
+    captures: list[tuple[str, str]] = []
+    rows = []
+    paths: list[Path] = []
+    for name, src in sources:
+        dst = to_webp(src, media / f"{name}.webp")
+        paths.append(dst)
+        captures.append((name, f"media/{sid}/{dst.name}"))
+        if name != "contact-sheet":
+            rows.append(f"| {sid[:10]} | {name} | {dst.relative_to(repo).as_posix()} | {cap_sha} |")
+    if rows:
+        _append_index(repo, rows)
+        paths.append(repo / INDEX)
+
+    commits = _commits(repo, start_sha)
+    clip_url = None
+    if clip:
+        try:
+            clip_url = _upload_clip(repo, sid, Path(clip))
+        except gh.GhError as exc:
+            print(f"WARNING: clip upload failed: {exc}", file=sys.stderr)
+    data = {"id": sid, "goal": state.get("goal", ""), "start_sha": start_sha,
+            "end_sha": end_sha, "commits": [c[0] for c in commits],
+            "decisions": _decisions([c[1] for c in commits]), "captures": captures,
+            "clip": clip_url, "warning": warning}
+    entry = _find_entry(repo, sid) or (
+        repo / "docs" / "devlog" / f"{sid}-{state.get('slug') or 'session'}.md")
+    entry.parent.mkdir(parents=True, exist_ok=True)
+    entry.write_text(_render_entry(repo, data), "utf-8")
+    paths.append(entry)
+
+    findings = secrets.scan_paths(paths)
+    if findings:
+        _print_findings(findings)
+        print("Blocked: secrets found in devlog output; not committed.", file=sys.stderr)
+        return 1
+    print(f"Wrote {entry.relative_to(repo).as_posix()}")
+    if not commit:
+        return 0
+    _git(repo, "add", "--", *[p.relative_to(repo).as_posix() for p in paths])
+    msg = f"docs: session {sid} devlog\n\nSession: {sid}\n"
+    if co_author:
+        msg += f"\n{co_author}\n"
+    _git(repo, "commit", "-m", msg)
+    _state_path(repo).unlink(missing_ok=True)
+    return 0
+
+
+# ---- milestones ----
+
+def _latest_shots(index_text: str) -> dict[str, str]:
+    """camera -> image path of its last INDEX row."""
+    shots: dict[str, str] = {}
+    for line in index_text.splitlines():
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) == 4 and re.fullmatch(r"\d{4}-\d{2}-\d{2}", cells[0]):
+            shots[cells[1]] = cells[2]
+    return shots
+
+
+def _previous_tag(repo: Path, n: int) -> str | None:
+    best = None
+    for t in _git(repo, "tag", "--list", "m[0-9]*-*").split():
+        m = re.match(r"m(\d+)-", t)
+        if m and int(m.group(1)) < n and (best is None or int(m.group(1)) > best[0]):
+            best = (int(m.group(1)), t)
+    return best[1] if best else None
+
+
+def _img(path: str | None) -> str:
+    return f"![](../../{path})" if path else "_none_"
+
+
+def milestone(repo: Path, n: int, slug: str, today: datetime.date | None = None,
+              commit: bool = True) -> int:
+    repo = Path(repo)
+    slug = _slugify(slug)
+    tag = f"m{n}-{slug}"
+    prev = _previous_tag(repo, n)
+    idx = repo / INDEX
+    cur = _latest_shots(idx.read_text("utf-8") if idx.is_file() else "")
+    old = (_latest_shots(_git(repo, "show", f"{prev}:{INDEX.as_posix()}", check=False))
+           if prev else {})
+    _git(repo, "tag", "-a", tag, "-m", f"Milestone {n}: {slug}")
+    lines = ["| camera | previous | this milestone |", "|---|---|---|"]
+    for cam in sorted(cur):
+        lines.append(f"| {cam} | {_img(old.get(cam))} | {_img(cur[cam])} |")
+    page = repo / "docs" / "milestones" / f"{tag}.md"
+    page.parent.mkdir(parents=True, exist_ok=True)
+    page.write_text(_render(_template(repo, "docs/milestones/TEMPLATE.md"), {
+        "n": str(n), "slug": slug, "tag": tag,
+        "sha": _git(repo, "rev-parse", "HEAD"),
+        "date": (today or datetime.date.today()).isoformat(),
+        "previous": f"`{prev}`" if prev else "none",
+        "shots": "\n".join(lines) if cur else "_No captures yet._"}), "utf-8")
+    findings = secrets.scan_paths([page])
+    if findings:
+        _print_findings(findings)
+        return 1
+    print(tag)
+    if commit:
+        rel = page.relative_to(repo).as_posix()
+        _git(repo, "add", "--", rel)
+        _git(repo, "commit", "-m", f"docs: milestone {tag}")
+    return 0
+
+
+# ---- CLI ----
+
+def _repo_root() -> Path:
+    out = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True,
+                         text=True, encoding="utf-8")
+    if out.returncode != 0:
+        raise SessionError("not inside a git repository")
+    return Path(out.stdout.strip())
+
+
+def _run_session(args) -> int:
+    try:
+        repo = _repo_root()
+        if args.action == "start":
+            start(repo, args.goal, commit=args.commit)
+            return 0
+        return end(repo, capture=args.capture, clip=args.clip,
+                   contact_sheet=args.contact_sheet, capture_dir=args.capture_dir,
+                   commit=not args.no_commit, co_author=args.co_author)
+    except SessionError as exc:
+        print(f"og session: {exc}", file=sys.stderr)
+        return 1
+
+
+def _run_milestone(args) -> int:
+    try:
+        return milestone(_repo_root(), args.n, args.slug, commit=not args.no_commit)
+    except SessionError as exc:
+        print(f"og milestone: {exc}", file=sys.stderr)
+        return 1
+
+
+def add_parser(sub) -> None:
+    p = sub.add_parser("session", help="devlog session routine")
+    p.set_defaults(func=_run_session)
+    ss = p.add_subparsers(dest="action", required=True)
+    s = ss.add_parser("start", help="open a session and create its devlog entry")
+    s.add_argument("goal")
+    s.add_argument("--commit", action="store_true",
+                   help="also create an empty 'Session-Start: <id>' commit")
+    e = ss.add_parser("end", help="write the devlog entry and commit it")
+    e.add_argument("--capture", action="store_true", help="run tools/ue/capture.ps1 -Cameras all")
+    e.add_argument("--capture-dir", type=Path, help="use existing capture PNGs from this dir")
+    e.add_argument("--clip", type=Path)
+    e.add_argument("--contact-sheet", type=Path)
+    e.add_argument("--no-commit", action="store_true")
+    e.add_argument("--co-author", help="full 'Co-Authored-By: ...' trailer line")
+    m = sub.add_parser("milestone", help="tag a milestone and write its page")
+    m.add_argument("n", type=int)
+    m.add_argument("slug")
+    m.add_argument("--no-commit", action="store_true")
+    m.set_defaults(func=_run_milestone)
