@@ -13,15 +13,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # LFS content is needed: og secrets --tracked scans the real content of LFS files and
-          # fails closed on a pointer whose content is missing.
-          lfs: true
+          # No LFS content (saves LFS bandwidth): the pre-commit hook already scanned the verified
+          # LFS content, so CI accepts LFS pointers with --lfs-pointers-ok.
+          lfs: false
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v5
       - name: Tests
         run: uv run --project tools pytest tools/tests -q
       - name: Secrets scan (all tracked files)
-        run: uv run --project tools python -m og secrets --tracked
+        run: uv run --project tools python -m og secrets --tracked --lfs-pointers-ok
       - name: Asset license check
         run: uv run --project tools python -m og assets check
       - name: Decisions consistency

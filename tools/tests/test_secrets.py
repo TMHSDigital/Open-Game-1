@@ -338,3 +338,16 @@ def test_build_account_literal_is_flagged():
     assert "steam-build-account" not in rules("STEAM_BUILD_ACCOUNT=")
     assert "steam-build-account" not in rules("STEAM_BUILD_ACCOUNT=\n")
     assert "steam-build-account" not in rules("+login $env:STEAM_BUILD_ACCOUNT +quit")
+
+
+def test_tracked_lfs_pointers_ok_accepts_missing_content_but_scans_the_rest(tmp_path):
+    git(tmp_path, "init", "-q")
+    stage_lfs_pointer(tmp_path, "Art/gone.png", "0" * 64, 10)
+    strict = og("secrets", "--tracked", cwd=tmp_path)
+    assert strict.returncode == 1 and "unscannable-lfs" in strict.stdout
+    ok = og("secrets", "--tracked", "--lfs-pointers-ok", cwd=tmp_path)
+    assert ok.returncode == 0, ok.stdout + ok.stderr
+    (tmp_path / "leak.txt").write_text("token " + GHP)
+    git(tmp_path, "add", "leak.txt")
+    r = og("secrets", "--tracked", "--lfs-pointers-ok", cwd=tmp_path)
+    assert r.returncode == 1 and "leak.txt" in r.stdout and "unscannable-lfs" not in r.stdout

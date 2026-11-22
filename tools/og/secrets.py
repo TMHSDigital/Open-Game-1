@@ -198,13 +198,20 @@ def _index_blob(name: str, root: Path):
     return r.stdout, None
 
 
-def _scan_index_entries(names: list[str], root: Path) -> list[Finding]:
+def _scan_index_entries(names: list[str], root: Path,
+                        lfs_pointers_ok: bool = False) -> list[Finding]:
     """Scan index content for each path: LFS pointers resolve to verified working-tree
-    content, images also get their OCR sidecars. Anything unreadable is a finding."""
+    content, images also get their OCR sidecars. Anything unreadable is a finding.
+
+    With lfs_pointers_ok, an LFS pointer is scanned as the pointer text itself (for CI checkouts
+    without LFS content; the pre-commit hook already scanned the verified content)."""
     findings: list[Finding] = []
     for name in names:
         blob, bad = _index_blob(name, root)
         if bad is None and blob.startswith(LFS_POINTER):
+            if lfs_pointers_ok:
+                findings += scan_text(_decode(blob), name)
+                continue
             blob, bad = _resolve_lfs(name, blob, root)
         if bad:
             findings.append(bad)
@@ -233,8 +240,9 @@ def scan_staged() -> list[Finding]:
     return _scan_index_entries(list(filter(None, out.split("\0"))), root)
 
 
-def scan_tracked() -> list[Finding]:
-    """Scan the index content of every tracked file (git ls-files), skipping submodules."""
+def scan_tracked(lfs_pointers_ok: bool = False) -> list[Finding]:
+    """Scan the index content of every tracked file (git ls-files), skipping submodules.
+    Fails closed on LFS content that is missing, unless lfs_pointers_ok."""
     root = _repo_root()
     out = subprocess.run(["git", "ls-files", "-s", "-z"], capture_output=True, check=True,
                          cwd=root).stdout.decode("utf-8")
@@ -245,7 +253,7 @@ def scan_tracked() -> list[Finding]:
             continue  # gitlink (submodule): no blob here
         if name not in names:
             names.append(name)  # unmerged paths list several stages; scan once
-    return _scan_index_entries(names, root)
+    return _scan_index_entries(names, root, lfs_pointers_ok)
 
 
 _POSITIVE = {
@@ -281,6 +289,9 @@ def add_parser(sub) -> None:
     p.add_argument("--staged", action="store_true", help="scan files staged in git")
     p.add_argument("--tracked", action="store_true",
                    help="scan every tracked file (git ls-files), as committed to the index")
+    p.add_argument("--lfs-pointers-ok", action="store_true",
+                   help="with --tracked: accept LFS pointers without their content (CI "
+                        "checkouts with lfs: false); the pointer text is still scanned")
     p.add_argument("--selftest", action="store_true", help="run built-in samples")
     p.set_defaults(func=run)
 
@@ -294,8 +305,11 @@ def run(args) -> int:
     findings = scan_paths(args.paths)
     if args.staged:
         findings += scan_staged()
+    if args.lfs_pointers_ok and not args.tracked:
+        print("--lfs-pointers-ok only applies with --tracked.", file=sys.stderr)
+        return 2
     if args.tracked:
-        findings += scan_tracked()
+        findings += scan_tracked(lfs_pointers_ok=args.lfs_pointers_ok)
     for f in findings:
         print(f"{f.path}:{f.line}: [{f.rule}] {f.excerpt_redacted}")
     if findings:
