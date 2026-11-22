@@ -385,7 +385,9 @@ try {
         Check "CLAUDECODE=1 refuses real mode '$m' with 40" ($r.Code -eq 40 -and $r.Output -match 'own terminal') $r.Output
     }
     $r = Invoke-Release @('promoted', '0.0.1', '-SkipGitGates') @{ CLAUDECODE = '1' }
-    Check "CLAUDECODE=1 refuses 'promoted' with 40" ($r.Code -eq 40) $r.Output
+    Check "CLAUDECODE=1 refuses 'promoted' without -OwnerConfirmed (40)" ($r.Code -eq 40 -and $r.Output -match 'OwnerConfirmed') $r.Output
+    $r = Invoke-Release @('upload-only', '-SkipGitGates', '-OwnerConfirmed') @{ CLAUDECODE = '1' }
+    Check "-OwnerConfirmed does not unlock 'upload-only' under CLAUDECODE (40)" ($r.Code -eq 40) $r.Output
     Check 'Refusals made no ledger row and no gh calls' ((Get-LedgerRows $fx.Ledger).Count -eq 0 -and (Get-GhCalls).Count -eq 0)
 
     # --- ok: ledger row, previous development build replaced, release then deployment ------------
@@ -468,8 +470,8 @@ try {
     $r = Invoke-Release @('promoted', '0.1.1', '-SkipGitGates') @{ FAKE_CHECK_REAL = 'secrets' }
     Check 'promoted: a secret in _release/<ver>/ exits 1 and records nothing' ($r.Code -eq 1 -and (Get-Content -LiteralPath $fx.Ledger -Raw) -eq $ledgerBefore -and (Get-GhCalls).Count -eq 0 -and $r.Output -match 'patch-notes\.md') $r.Output
     Set-Content -LiteralPath $patchPath -Value $patchClean -NoNewline
-    $r = Invoke-Release @('promoted', '0.1.1', '-SkipGitGates') @{ FAKE_CHECK_REAL = 'secrets' }
-    Check 'promoted exits 0' ($r.Code -eq 0) $r.Output
+    $r = Invoke-Release @('promoted', '0.1.1', '-SkipGitGates', '-OwnerConfirmed') @{ FAKE_CHECK_REAL = 'secrets'; CLAUDECODE = '1' }
+    Check 'promoted exits 0 (inside Claude Code with -OwnerConfirmed)' ($r.Code -eq 0) $r.Output
     $rows = Get-LedgerRows $fx.Ledger
     $cur = @($rows | Where-Object version -eq '0.1.1')
     $old = @($rows | Where-Object version -eq '0.0.9')
