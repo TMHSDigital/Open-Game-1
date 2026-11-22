@@ -149,3 +149,21 @@ def test_no_external_scripts_or_fonts(repo, tmp_path):
     for page in out.rglob("*.html"):
         text = page.read_text("utf-8")
         assert not re.search(r"<(script|link)[^>]+(src|href)=\"https?:", text)
+
+
+def test_unsafe_entry_id_is_skipped(repo, tmp_path):
+    text = entry("2026-11-23-e", "evil", []).replace("id: 2026-11-23-e", "id: ../../escape")
+    (repo / "docs/devlog/evil.md").write_text(text, "utf-8")
+    out = tmp_path / "site"
+    site.build(repo, out)
+    assert not (tmp_path / "escape.html").exists()
+    assert not any("escape" in p.name for p in out.rglob("*.html"))
+
+
+def test_non_http_clip_is_not_linked(repo, tmp_path):
+    (repo / "docs/devlog/2026-11-23-d-x.md").write_text(
+        entry("2026-11-23-d", "js clip", [], "javascript:alert(1)"), "utf-8")
+    out = tmp_path / "site"
+    site.build(repo, out)
+    html = (out / "index.html").read_text("utf-8") + (out / "devlog/2026-11-23-d.html").read_text("utf-8")
+    assert "javascript:" not in html

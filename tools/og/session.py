@@ -243,7 +243,9 @@ def _merge_index(existing: str, rows: list[str]) -> str:
     """Append rows whose image path is not already listed (idempotent on rerun)."""
     if existing and not existing.endswith("\n"):
         existing += "\n"
-    new = [r for r in rows if r.split("|")[3].strip() not in existing]
+    listed = {line.split("|")[3].strip() for line in existing.splitlines()
+              if line.startswith("|") and line.count("|") >= 5}
+    new = [r for r in rows if r.split("|")[3].strip() not in listed]
     return existing + "".join(r + "\n" for r in new)
 
 

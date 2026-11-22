@@ -447,3 +447,12 @@ def test_milestone_commits_only_its_page(repo):
     assert session.milestone(repo, 1, "first", today=DAY) == 0
     assert git(repo, "show", "--name-only", "--format=", "HEAD") == "docs/milestones/m1-first.md"
     assert "A  unrelated.txt" in git(repo, "status", "--porcelain")
+
+
+def test_merge_index_matches_exact_image_path():
+    from og.session import _merge_index
+    head = "| date | camera | image path | sha |\n|---|---|---|---|\n"
+    existing = head + "| 2026-11-22 | cam | docs/devlog/media/a/cam.webp.old | x |\n"
+    row = "| 2026-11-22 | cam | docs/devlog/media/a/cam.webp | x |"
+    assert row in _merge_index(existing, [row])
+    assert _merge_index(existing + row + "\n", [row]).count(row) == 1

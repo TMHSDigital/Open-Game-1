@@ -21,6 +21,8 @@ SITE_DIR = Path(__file__).resolve().parents[2] / "site"
 _SLOT = re.compile(r"\{\{(\w+)\}\}")
 _FRONT = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n?", re.S)
 _DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+_SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+_HTTP = re.compile(r"https?://", re.I)
 
 
 def _render_md(text: str) -> str:
@@ -91,6 +93,12 @@ class _Site:
             if not meta.get("id") or not _DATE.match(str(meta.get("date") or "")):
                 print(f"og site: skipping {p.name}: missing id or date", file=sys.stderr)
                 continue
+            if not _SAFE_ID.fullmatch(str(meta["id"])):
+                print(f"og site: skipping {p.name}: unsafe id", file=sys.stderr)
+                continue
+            if meta.get("clip") and not _HTTP.match(str(meta["clip"])):
+                print(f"og site: {p.name}: ignoring non-http clip link", file=sys.stderr)
+                meta["clip"] = None
             meta["body"] = body
             out.append(meta)
         out.sort(key=lambda e: str(e["id"]), reverse=True)
