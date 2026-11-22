@@ -230,3 +230,112 @@ def test_milestone_pairs_with_previous(repo):
     assert rows["stage-overview"].index("media/a/") < rows["stage-overview"].index("media/b/")
     assert "media/a/stage-closeup.webp" in rows["stage-closeup"]
     assert "`m1-first-light`" in page
+
+
+def test_end_second_scan_block_leaves_no_side_effects(repo, monkeypatch):
+    calls = []
+    monkeypatch.setattr(gh, "_gh", lambda a: calls.append(list(a)) or "owner/name\n")
+    session.start(repo, "Leaky log", today=DAY)
+    commit(repo, "fix: leak STEAM_APPID=1234567 in message")  # og-secrets: allow
+    caps = repo / "_scratch/capture"
+    png(caps / "stage-overview.png")
+    clip = repo / "demo.mp4"
+    clip.write_bytes(b"x")
+    index_before = (repo / "docs/captures/INDEX.md").read_text("utf-8")
+    head = git(repo, "rev-parse", "HEAD")
+    entry_before = only_entry(repo).read_text("utf-8")
+    assert session.end(repo, capture_dir=caps, clip=clip, today=DAY) != 0
+    assert git(repo, "rev-parse", "HEAD") == head
+    assert not (repo / "docs/devlog/media").exists()
+    assert (repo / "docs/captures/INDEX.md").read_text("utf-8") == index_before
+    assert only_entry(repo).read_text("utf-8") == entry_before
+    assert not [c for c in calls if c[:2] in (["release", "upload"], ["release", "create"])]
+
+
+def test_end_rerun_does_not_duplicate_index_rows(repo):
+    caps = repo / "_scratch/capture"
+    png(caps / "stage-overview.png")
+    session.start(repo, "Twice", today=DAY)
+    assert session.end(repo, capture_dir=caps, commit=False, today=DAY) == 0
+    assert session.end(repo, capture_dir=caps, commit=False, today=DAY) == 0
+    text = (repo / "docs/captures/INDEX.md").read_text("utf-8")
+    assert text.count("stage-overview.webp") == 1
+
+
+def test_trailer_fallback_skips_ended_sessions(repo):
+    session.start(repo, "Old session", today=DAY, commit=True)
+    commit(repo, "work in old session")
+    assert session.end(repo, today=DAY) == 0  # ends it: Session: trailer commit exists
+    commit(repo, "later unrelated work")
+    (repo / "_scratch").mkdir(exist_ok=True)
+    state, warning = session._resolve_start(repo, DAY)
+    assert warning and "HEAD~1" in warning
+    assert state["start_sha"] == git(repo, "rev-parse", "HEAD~1")
+    assert state["id"] != "2026-11-22-01"
+
+
+def test_milestone_blocked_scan_leaves_no_tag_and_rerun_works(repo):
+    idx = repo / "docs/captures/INDEX.md"
+    leaky = "| 2026-11-01 | cam | docs/devlog/media/a/STEAM_APPID=1234567.webp | " + "a" * 40 + " |\n"  # og-secrets: allow
+    idx.write_text(idx.read_text("utf-8") + leaky, "utf-8")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "captures")
+    head = git(repo, "rev-parse", "HEAD")
+    assert session.milestone(repo, 1, "first", today=DAY) != 0
+    assert git(repo, "tag", "--list") == ""
+    assert not (repo / "docs/milestones/m1-first.md").exists()
+    assert git(repo, "rev-parse", "HEAD") == head
+    idx.write_text(idx.read_text("utf-8").replace(leaky, ""), "utf-8")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "fix index")
+    assert session.milestone(repo, 1, "first", today=DAY) == 0
+    assert git(repo, "tag", "--list") == "m1-first"
+    # the tag contains the page
+    assert "m1-first.md" in git(repo, "ls-tree", "-r", "--name-only", "m1-first")
+
+
+def test_end_bad_clip_path_fails_before_any_write(repo, monkeypatch):
+    calls = []
+    monkeypatch.setattr(gh, "_gh", lambda a: calls.append(list(a)) or "")
+    session.start(repo, "Bad clip", today=DAY)
+    caps = repo / "_scratch/capture"
+    png(caps / "stage-overview.png")
+    head = git(repo, "rev-parse", "HEAD")
+    assert session.end(repo, capture_dir=caps, clip=repo / "missing.mp4", today=DAY) != 0
+    assert not (repo / "docs/devlog/media").exists()
+    assert git(repo, "rev-parse", "HEAD") == head
+    assert not calls
+
+
+@pytest.mark.parametrize("exc", [gh.GhError("boom"), FileNotFoundError("gh")])
+def test_end_upload_failure_warns_with_manual_command_and_commits(repo, monkeypatch, capsys, exc):
+    def fake_gh(args):
+        if args[:2] == ["release", "view"]:
+            return ""
+        if args[:2] == ["release", "upload"]:
+            raise exc
+        return "owner/name\n"
+
+    monkeypatch.setattr(gh, "_gh", fake_gh)
+    session.start(repo, "Upload fails", today=DAY)
+    clip = repo / "demo.mp4"
+    clip.write_bytes(b"x")
+    head = git(repo, "rev-parse", "HEAD")
+    assert session.end(repo, clip=clip, today=DAY) == 0
+    err = capsys.readouterr().err
+    assert "gh release upload media-2026-11" in err and "manually" in err
+    assert git(repo, "rev-parse", "HEAD") != head  # still committed
+    assert front(only_entry(repo))["clip"] == "null"
+
+
+def test_end_gh_binary_missing_for_release_view(repo, monkeypatch, capsys):
+    def fake_gh(args):
+        raise FileNotFoundError("gh")
+
+    monkeypatch.setattr(gh, "_gh", fake_gh)
+    monkeypatch.setattr(gh, "repo_slug", lambda r: None)
+    session.start(repo, "No gh", today=DAY)
+    clip = repo / "demo.mp4"
+    clip.write_bytes(b"x")
+    assert session.end(repo, clip=clip, today=DAY) == 0
+    assert "manually" in capsys.readouterr().err

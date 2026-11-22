@@ -138,17 +138,21 @@ def _resolve_start(repo: Path, today: datetime.date) -> tuple[dict, str | None]:
     sp = _state_path(repo)
     if sp.is_file():
         return json.loads(sp.read_text("utf-8")), None
-    out = _git(repo, "log", "-1", "--grep=^Session-Start: ", "--format=%H%n%B", check=False)
-    m = re.search(r"^Session-Start: (\S+)", out, re.M)
-    if m:
+    for sha in _git(repo, "log", "--format=%H", "--grep=^Session-Start: ", check=False).split():
+        body = _git(repo, "log", "-1", "--format=%B", sha)
+        m = re.search(r"^Session-Start: (\S+)", body, re.M)
+        if not m:
+            continue
         sid = m.group(1)
+        if _git(repo, "log", "-1", "--format=%H", f"--grep=^Session: {re.escape(sid)}$",
+                check=False):
+            continue  # that session already ended; do not reuse its start
         entry = _find_entry(repo, sid)
         goal = "(unknown goal)"
         if entry:
             g = re.search(r'^goal: "(.*)"$', entry.read_text("utf-8"), re.M)
             goal = g.group(1) if g else goal
-        return {"id": sid, "slug": _slugify(goal), "goal": goal,
-                "start_sha": out.splitlines()[0]}, None
+        return {"id": sid, "slug": _slugify(goal), "goal": goal, "start_sha": sha}, None
     sid = _next_id(repo, today)
     parent = _git(repo, "rev-parse", "--verify", "-q", "HEAD~1", check=False)
     warn = ("No open session and no Session-Start trailer found; "
@@ -187,7 +191,14 @@ def _print_findings(findings) -> None:
         print(f"SECRET {f.rule}: {f.path}:{f.line}: {f.excerpt_redacted}", file=sys.stderr)
 
 
-def _upload_clip(repo: Path, sid: str, clip: Path) -> str:
+def _clip_url(repo: Path, sid: str) -> str:
+    slug = gh.repo_slug(repo) or gh._gh(
+        ["repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"]).strip()
+    return f"https://github.com/{slug}/releases/download/media-{sid[:7]}/{sid}.mp4"
+
+
+def _upload_clip(repo: Path, sid: str, clip: Path) -> None:
+    """Upload clip as <id>.mp4 to the monthly media release, creating it if missing."""
     tag = f"media-{sid[:7]}"
     try:
         gh._gh(["release", "view", tag])
@@ -199,18 +210,14 @@ def _upload_clip(repo: Path, sid: str, clip: Path) -> str:
     asset = scratch / f"{sid}.mp4"
     shutil.copyfile(clip, asset)
     gh._gh(["release", "upload", tag, str(asset), "--clobber"])
-    slug = gh.repo_slug(repo) or gh._gh(
-        ["repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"]).strip()
-    return f"https://github.com/{slug}/releases/download/{tag}/{asset.name}"
 
 
-def _append_index(repo: Path, rows: list[str]) -> None:
-    idx = repo / INDEX
-    text = idx.read_text("utf-8") if idx.is_file() else ""
-    if text and not text.endswith("\n"):
-        text += "\n"
-    idx.parent.mkdir(parents=True, exist_ok=True)
-    idx.write_text(text + "".join(r + "\n" for r in rows), "utf-8")
+def _merge_index(existing: str, rows: list[str]) -> str:
+    """Append rows whose image path is not already listed (idempotent on rerun)."""
+    if existing and not existing.endswith("\n"):
+        existing += "\n"
+    new = [r for r in rows if r.split("|")[3].strip() not in existing]
+    return existing + "".join(r + "\n" for r in new)
 
 
 def end(repo: Path, capture: bool = False, clip: Path | None = None,
@@ -218,8 +225,10 @@ def end(repo: Path, capture: bool = False, clip: Path | None = None,
         commit: bool = True, co_author: str | None = None,
         today: datetime.date | None = None) -> int:
     repo = Path(repo)
+    if clip and not Path(clip).is_file():
+        print(f"og session: clip not found: {clip}", file=sys.stderr)
+        return 1
     state, warning = _resolve_start(repo, today or datetime.date.today())
-    sid, start_sha = state["id"], state["start_sha"]
     if warning:
         print(f"WARNING: {warning}", file=sys.stderr)
 
@@ -241,7 +250,18 @@ def end(repo: Path, capture: bool = False, clip: Path | None = None,
               file=sys.stderr)
         return 1
 
-    # 2. convert, record, and describe.
+    # 2. build every output in a staging dir; docs/ is untouched until all scans pass.
+    stage = repo / "_scratch" / "stage"
+    shutil.rmtree(stage, ignore_errors=True)
+    try:
+        return _end_staged(repo, stage, state, warning, sources, cdir, capture, clip,
+                           commit, co_author)
+    finally:
+        shutil.rmtree(stage, ignore_errors=True)
+
+
+def _end_staged(repo, stage, state, warning, sources, cdir, capture, clip, commit, co_author):
+    sid, start_sha = state["id"], state["start_sha"]
     end_sha = _git(repo, "rev-parse", "HEAD", check=False)
     cap_sha = end_sha
     meta = cdir / "capture.json"
@@ -250,46 +270,73 @@ def end(repo: Path, capture: bool = False, clip: Path | None = None,
             cap_sha = json.loads(meta.read_text("utf-8")).get("sha") or end_sha
         except ValueError:
             pass
-    media = repo / "docs" / "devlog" / "media" / sid
+    media_rel = Path("docs") / "devlog" / "media" / sid
     captures: list[tuple[str, str]] = []
-    rows = []
-    paths: list[Path] = []
+    rows: list[str] = []
+    outputs: list[tuple[Path, Path]] = []  # (staged file, final path)
     for name, src in sources:
-        dst = to_webp(src, media / f"{name}.webp")
-        paths.append(dst)
-        captures.append((name, f"media/{sid}/{dst.name}"))
+        staged = to_webp(src, stage / "media" / f"{name}.webp")
+        outputs.append((staged, repo / media_rel / staged.name))
+        captures.append((name, f"media/{sid}/{staged.name}"))
         if name != "contact-sheet":
-            rows.append(f"| {sid[:10]} | {name} | {dst.relative_to(repo).as_posix()} | {cap_sha} |")
+            rows.append(f"| {sid[:10]} | {name} | {(media_rel / staged.name).as_posix()} "
+                        f"| {cap_sha} |")
     if rows:
-        _append_index(repo, rows)
-        paths.append(repo / INDEX)
+        idx = repo / INDEX
+        staged_idx = stage / "INDEX.md"
+        staged_idx.parent.mkdir(parents=True, exist_ok=True)
+        staged_idx.write_text(
+            _merge_index(idx.read_text("utf-8") if idx.is_file() else "", rows), "utf-8")
+        outputs.append((staged_idx, idx))
 
     commits = _commits(repo, start_sha)
     clip_url = None
     if clip:
         try:
-            clip_url = _upload_clip(repo, sid, Path(clip))
-        except gh.GhError as exc:
-            print(f"WARNING: clip upload failed: {exc}", file=sys.stderr)
+            clip_url = _clip_url(repo, sid)
+        except (gh.GhError, OSError) as exc:
+            print(f"WARNING: could not determine repo for clip link: {exc}", file=sys.stderr)
     data = {"id": sid, "goal": state.get("goal", ""), "start_sha": start_sha,
             "end_sha": end_sha, "commits": [c[0] for c in commits],
             "decisions": _decisions([c[1] for c in commits]), "captures": captures,
             "clip": clip_url, "warning": warning}
     entry = _find_entry(repo, sid) or (
         repo / "docs" / "devlog" / f"{sid}-{state.get('slug') or 'session'}.md")
-    entry.parent.mkdir(parents=True, exist_ok=True)
-    entry.write_text(_render_entry(repo, data), "utf-8")
-    paths.append(entry)
+    staged_entry = stage / "entry.md"
+    staged_entry.parent.mkdir(parents=True, exist_ok=True)
+    staged_entry.write_text(_render_entry(repo, data), "utf-8")
+    outputs.append((staged_entry, entry))
 
-    findings = secrets.scan_paths(paths)
+    findings = secrets.scan_paths([s for s, _ in outputs])
     if findings:
         _print_findings(findings)
-        print("Blocked: secrets found in devlog output; not committed.", file=sys.stderr)
+        print("Blocked: secrets found in devlog output; nothing written, uploaded or "
+              "committed.", file=sys.stderr)
         return 1
+
+    # 3. everything is clean: upload (publish) last, then write and commit.
+    if clip:
+        manual = f"gh release upload media-{sid[:7]} {clip} --clobber"
+        if clip_url:
+            try:
+                _upload_clip(repo, sid, Path(clip))
+            except (gh.GhError, OSError) as exc:
+                clip_url = None
+                print(f"WARNING: clip upload failed: {exc}\nUpload it manually with: {manual}",
+                      file=sys.stderr)
+        else:
+            print(f"WARNING: clip not uploaded. Upload it manually with: {manual}",
+                  file=sys.stderr)
+        if clip_url != data["clip"]:
+            data["clip"] = clip_url
+            staged_entry.write_text(_render_entry(repo, data), "utf-8")
+    for staged, final in outputs:
+        final.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(staged, final)
     print(f"Wrote {entry.relative_to(repo).as_posix()}")
     if not commit:
         return 0
-    _git(repo, "add", "--", *[p.relative_to(repo).as_posix() for p in paths])
+    _git(repo, "add", "--", *[f.relative_to(repo).as_posix() for _, f in outputs])
     msg = f"docs: session {sid} devlog\n\nSession: {sid}\n"
     if co_author:
         msg += f"\n{co_author}\n"
@@ -325,35 +372,43 @@ def _img(path: str | None) -> str:
 
 def milestone(repo: Path, n: int, slug: str, today: datetime.date | None = None,
               commit: bool = True) -> int:
+    """Write the page, scan it, commit it, then tag (so the tag contains the page).
+
+    With commit=False the page is written but no commit or tag is made; rerun to finish.
+    """
     repo = Path(repo)
     slug = _slugify(slug)
     tag = f"m{n}-{slug}"
+    if _git(repo, "tag", "--list", tag):
+        raise SessionError(f"tag {tag} already exists")
     prev = _previous_tag(repo, n)
     idx = repo / INDEX
     cur = _latest_shots(idx.read_text("utf-8") if idx.is_file() else "")
     old = (_latest_shots(_git(repo, "show", f"{prev}:{INDEX.as_posix()}", check=False))
            if prev else {})
-    _git(repo, "tag", "-a", tag, "-m", f"Milestone {n}: {slug}")
     lines = ["| camera | previous | this milestone |", "|---|---|---|"]
     for cam in sorted(cur):
         lines.append(f"| {cam} | {_img(old.get(cam))} | {_img(cur[cam])} |")
     page = repo / "docs" / "milestones" / f"{tag}.md"
-    page.parent.mkdir(parents=True, exist_ok=True)
-    page.write_text(_render(_template(repo, "docs/milestones/TEMPLATE.md"), {
+    text = _render(_template(repo, "docs/milestones/TEMPLATE.md"), {
         "n": str(n), "slug": slug, "tag": tag,
         "sha": _git(repo, "rev-parse", "HEAD"),
         "date": (today or datetime.date.today()).isoformat(),
         "previous": f"`{prev}`" if prev else "none",
-        "shots": "\n".join(lines) if cur else "_No captures yet._"}), "utf-8")
-    findings = secrets.scan_paths([page])
+        "shots": "\n".join(lines) if cur else "_No captures yet._"})
+    findings = secrets.scan_text(text, page.as_posix())
     if findings:
         _print_findings(findings)
+        print("Blocked: secrets found in milestone page; nothing written or tagged.",
+              file=sys.stderr)
         return 1
-    print(tag)
+    page.parent.mkdir(parents=True, exist_ok=True)
+    page.write_text(text, "utf-8")
     if commit:
-        rel = page.relative_to(repo).as_posix()
-        _git(repo, "add", "--", rel)
+        _git(repo, "add", "--", page.relative_to(repo).as_posix())
         _git(repo, "commit", "-m", f"docs: milestone {tag}")
+        _git(repo, "tag", "-a", tag, "-m", f"Milestone {n}: {slug}")
+    print(tag)
     return 0
 
 
