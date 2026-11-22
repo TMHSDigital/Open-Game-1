@@ -1,0 +1,15 @@
+:root { color-scheme: light dark; }
+body { font: 16px/1.55 system-ui, sans-serif; margin: 0; }
+header { display: flex; gap: 2rem; align-items: baseline; padding: .75rem 1.5rem; border-bottom: 1px solid #8884; flex-wrap: wrap; }
+header .brand { font-weight: 700; text-decoration: none; }
+nav a { margin-right: 1rem; }
+main { max-width: 60rem; margin: 0 auto; padding: 1rem 1.5rem; }
+footer { max-width: 60rem; margin: 2rem auto; padding: 0 1.5rem; color: #888; font-size: .85rem; }
+img { max-width: 100%; height: auto; }
+table { border-collapse: collapse; display: block; overflow-x: auto; }
+th, td { border: 1px solid #8884; padding: .3rem .6rem; text-align: left; vertical-align: top; }
+.meta, .empty { color: #888; }
+.timeline { list-style: none; padding: 0; }
+.timeline li { padding: .5rem 0; border-bottom: 1px solid #8883; }
+.cam { margin: 1.5rem 0; }
+.cam input[type=range] { width: 100%; }

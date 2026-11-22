@@ -1,0 +1,26 @@
+name: checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v5
+      - name: Tests
+        run: uv run --project tools pytest tools/tests -q
+      - name: Secrets scan (all tracked files)
+        run: git ls-files -z | xargs -0 uv run --project tools python -m og secrets
+      - name: Asset license check
+        run: uv run --project tools python -m og assets check
+      - name: Decisions consistency
+        run: uv run --project tools python -m og decisions check --offline

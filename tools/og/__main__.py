@@ -2,7 +2,7 @@
 import argparse
 import sys
 
-from og import assets, decisions, secrets, session
+from og import assets, decisions, secrets, session, site
 
 
 def main(argv=None) -> int:
@@ -12,6 +12,7 @@ def main(argv=None) -> int:
     assets.add_parser(sub)
     decisions.add_parser(sub)
     session.add_parser(sub)
+    site.add_parser(sub)
     args = parser.parse_args(argv)
     return args.func(args)
 

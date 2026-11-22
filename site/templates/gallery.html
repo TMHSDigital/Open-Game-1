@@ -1,0 +1,21 @@
+<h1>Gallery</h1>
+<p>One row per fixed camera. Drag the slider to step through that camera's shots by date.</p>
+{{cameras}}
+<script>
+document.querySelectorAll(".cam").forEach(function (cam) {
+  var shots = JSON.parse(cam.getAttribute("data-shots"));
+  var img = cam.querySelector("img");
+  var label = cam.querySelector(".when");
+  var range = cam.querySelector("input[type=range]");
+  function show(i) {
+    var s = shots[i];
+    img.src = s.src;
+    img.alt = cam.getAttribute("data-camera") + " on " + s.date;
+    label.textContent = s.date + " (" + (i + 1) + " of " + shots.length + ")";
+  }
+  range.max = shots.length - 1;
+  range.value = shots.length - 1;
+  range.addEventListener("input", function () { show(+range.value); });
+  show(shots.length - 1);
+});
+</script>

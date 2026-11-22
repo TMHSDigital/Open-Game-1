@@ -1,0 +1,265 @@
+"""Static public site: devlog timeline, gallery, decisions and Steam builds.
+
+`og site build --out _site` reads docs/ and writes plain HTML (no JS framework, no external
+requests, relative links only). Templates live in the repo's site/templates, so the generator
+can build any docs tree, including test fixtures.
+"""
+from __future__ import annotations
+
+import html
+import json
+import re
+import shutil
+import sys
+from pathlib import Path
+
+from markdown_it import MarkdownIt
+
+from og import decisions
+
+SITE_DIR = Path(__file__).resolve().parents[2] / "site"
+_SLOT = re.compile(r"\{\{(\w+)\}\}")
+_FRONT = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n?", re.S)
+_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
+def _render_md(text: str) -> str:
+    return MarkdownIt("commonmark", {"html": False}).enable("table").render(text)
+
+
+def _esc(s) -> str:
+    return html.escape(str(s), quote=True)
+
+
+def _fill(template: str, values: dict[str, str]) -> str:
+    return _SLOT.sub(lambda m: values.get(m.group(1), m.group(0)), template)
+
+
+def _value(raw: str):
+    raw = raw.strip()
+    if raw in ("", "null", "~"):
+        return None
+    if raw.startswith("[") and raw.endswith("]"):
+        return [_value(p) for p in raw[1:-1].split(",") if p.strip()]
+    if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in "\"'":
+        return raw[1:-1]
+    return raw
+
+
+def parse_front(text: str) -> tuple[dict, str]:
+    """Split a devlog entry into (front matter dict, markdown body)."""
+    m = _FRONT.match(text)
+    if not m:
+        return {}, text
+    meta = {}
+    for line in m.group(1).splitlines():
+        key, sep, val = line.partition(":")
+        if sep and key.strip():
+            meta[key.strip()] = _value(val)
+    return meta, text[m.end():]
+
+
+class _Site:
+    def __init__(self, repo: Path, out: Path, site_dir: Path):
+        self.repo, self.out, self.site_dir = repo, out, site_dir
+        self.docs = repo / "docs"
+
+    def template(self, name: str) -> str:
+        return (self.site_dir / "templates" / f"{name}.html").read_text("utf-8")
+
+    def page(self, rel: str, title: str, template: str, values: dict[str, str]) -> None:
+        root = "../" * rel.count("/")
+        content = _fill(self.template(template), {**values, "root": root})
+        text = _fill(self.template("base"), {"title": _esc(title), "root": root,
+                                              "content": content})
+        dest = self.out / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(text, "utf-8", newline="\n")
+
+    def read(self, rel: str) -> str:
+        p = self.docs / rel
+        return p.read_text("utf-8") if p.is_file() else ""
+
+    # ---- devlog ----
+
+    def entries(self) -> list[dict]:
+        out = []
+        for p in sorted((self.docs / "devlog").glob("*.md")):
+            if p.name == "TEMPLATE.md":
+                continue
+            meta, body = parse_front(p.read_text("utf-8"))
+            if not meta.get("id") or not _DATE.match(str(meta.get("date") or "")):
+                print(f"og site: skipping {p.name}: missing id or date", file=sys.stderr)
+                continue
+            meta["body"] = body
+            out.append(meta)
+        out.sort(key=lambda e: str(e["id"]), reverse=True)
+        return out
+
+    def devlog(self) -> None:
+        entries = self.entries()
+        if entries:
+            items = []
+            for e in entries:
+                bits = [_esc(e["date"])]
+                if e.get("decisions"):
+                    bits.append("decisions: " + _esc(", ".join(e["decisions"])))
+                if e.get("cameras"):
+                    bits.append(f"{len(e['cameras'])} camera(s)")
+                if e.get("clip"):
+                    bits.append(f'<a href="{_esc(e["clip"])}">clip</a>')
+                items.append(
+                    f'<li><a href="devlog/{_esc(e["id"])}.html">{_esc(e.get("goal") or e["id"])}'
+                    f'</a><br><span class="meta">{" | ".join(bits)}</span></li>')
+            listing = '<ul class="timeline">\n' + "\n".join(items) + "\n</ul>"
+        else:
+            listing = '<p class="empty">No sessions yet.</p>'
+        self.page("index.html", "Devlog", "index",
+                  {"entries": listing, "milestones": self.milestones()})
+        for e in entries:
+            meta = [_esc(e["date"])]
+            for k in ("start_sha", "end_sha"):
+                if e.get(k):
+                    meta.append(f"{k.split('_')[0]}: {_esc(str(e[k])[:7])}")
+            if e.get("clip"):
+                meta.append(f'<a href="{_esc(e["clip"])}">clip</a>')
+            body = _render_md(e["body"]).replace('src="media/', 'src="../media/')
+            self.page(f"devlog/{e['id']}.html", str(e.get("goal") or e["id"]), "entry",
+                      {"meta": " | ".join(meta), "body": body})
+
+    def milestones(self) -> str:
+        pages = sorted((self.docs / "milestones").glob("m[0-9]*-*.md"))
+        if not pages:
+            return '<p class="empty">No milestones yet.</p>'
+        items = []
+        for p in pages:
+            body = _render_md(p.read_text("utf-8")).replace(
+                'src="../../docs/devlog/media/', 'src="../media/')
+            self.page(f"milestones/{p.stem}.html", p.stem, "entry", {"meta": "", "body": body})
+            items.append(f'<li><a href="milestones/{_esc(p.stem)}.html">{_esc(p.stem)}</a></li>')
+        return '<ul class="timeline">\n' + "\n".join(items) + "\n</ul>"
+
+    # ---- gallery ----
+
+    def gallery(self) -> None:
+        shots: dict[str, list[dict]] = {}
+        for line in self.read("captures/INDEX.md").splitlines():
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if len(cells) == 4 and _DATE.fullmatch(cells[0]):
+                src = re.sub(r"^docs/devlog/", "", cells[2])
+                shots.setdefault(cells[1], []).append({"date": cells[0], "src": src})
+        if not shots:
+            body = '<p class="empty">No captures yet.</p>'
+        else:
+            rows = []
+            for cam in sorted(shots):
+                lst = sorted(shots[cam], key=lambda s: s["date"])  # stable on ties
+                data = _esc(json.dumps(lst, separators=(",", ":")))
+                last = lst[-1]
+                rows.append(
+                    f'<section class="cam" data-camera="{_esc(cam)}" data-shots=\'{data}\'>\n'
+                    f'<h2>{_esc(cam)}</h2>\n'
+                    f'<img src="{_esc(last["src"])}" alt="{_esc(cam)} on {_esc(last["date"])}">\n'
+                    f'<input type="range" min="0" max="{len(lst) - 1}" value="{len(lst) - 1}"'
+                    f' aria-label="Shot date for {_esc(cam)}">\n'
+                    f'<p class="when">{_esc(last["date"])}</p>\n</section>')
+            body = "\n".join(rows)
+        self.page("gallery.html", "Gallery", "gallery", {"cameras": body})
+
+    # ---- decisions ----
+
+    def decisions(self) -> None:
+        opens = decisions.parse_open(self.read("OPEN-DECISIONS.md"))
+        if opens:
+            rows = "".join(
+                f"<tr><td>{_esc(o.id)}</td><td>{_esc(o.question)}</td><td>{_esc(o.why)}</td>"
+                f"<td>{_esc(o.blocks)}</td><td>{'#' + str(o.issue) if o.issue else '-'}</td>"
+                f"</tr>\n" for o in opens)
+            open_html = ("<table>\n<tr><th>ID</th><th>Question</th><th>Why it matters</th>"
+                         f"<th>Blocks</th><th>Issue</th></tr>\n{rows}</table>")
+        else:
+            open_html = '<p class="empty">No open decisions.</p>'
+        adrs = decisions.list_adrs(self.docs / "decisions")
+        if adrs:
+            items = []
+            for a in adrs:
+                text = (self.docs / "decisions" / a.filename).read_text("utf-8")
+                stem = a.filename[:-3]
+                self.page(f"decisions/{stem}.html", f"{a.number:04d}: {a.title}", "entry",
+                          {"meta": _esc(a.status), "body": _render_md(text)})
+                items.append(f'<li><a href="decisions/{_esc(stem)}.html">'
+                             f'{a.number:04d}: {_esc(a.title)}</a><br>'
+                             f'<span class="meta">{_esc(a.status)}</span></li>')
+            res_html = '<ul class="timeline">\n' + "\n".join(items) + "\n</ul>"
+        else:
+            res_html = '<p class="empty">No resolved decisions yet.</p>'
+        self.page("decisions.html", "Decisions", "decisions",
+                  {"open": open_html, "resolved": res_html})
+
+    # ---- builds ----
+
+    def builds(self) -> None:
+        header, rows = None, []
+        for line in self.read("steam/BUILDS.md").splitlines():
+            if not line.lstrip().startswith("|"):
+                continue
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if header is None:
+                header = cells
+            elif not all(re.fullmatch(r":?-+:?", c) for c in cells):
+                rows.append(cells)
+        if header and rows:
+            th = "".join(f"<th>{_esc(h)}</th>" for h in header)
+            trs = "".join("<tr>" + "".join(f"<td>{_esc(c)}</td>" for c in r) + "</tr>\n"
+                          for r in reversed(rows))
+            body = f"<table>\n<tr>{th}</tr>\n{trs}</table>"
+        else:
+            body = '<p class="empty">No builds yet.</p>'
+        self.page("builds.html", "Steam builds", "builds", {"builds": body})
+
+    # ---- assets ----
+
+    def assets(self) -> None:
+        static = self.out / "static"
+        static.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(self.site_dir / "static" / "site.css", static / "site.css")
+        media = self.docs / "devlog" / "media"
+        if media.is_dir():
+            for p in media.rglob("*.webp"):
+                dest = self.out / "media" / p.relative_to(media)
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(p, dest)
+
+
+def build(repo: Path, out: Path, site_dir: Path | None = None) -> None:
+    s = _Site(Path(repo), Path(out), Path(site_dir or SITE_DIR))
+    if s.out.exists():
+        shutil.rmtree(s.out)
+    s.out.mkdir(parents=True)
+    s.assets()
+    s.devlog()
+    s.gallery()
+    s.decisions()
+    s.builds()
+
+
+def _repo_root() -> Path:
+    cwd = Path.cwd().resolve()
+    for d in (cwd, *cwd.parents):
+        if (d / ".git").exists():
+            return d
+    return cwd
+
+
+def _run_build(args) -> int:
+    build(_repo_root(), args.out)
+    print(f"Wrote {args.out}")
+    return 0
+
+
+def add_parser(sub) -> None:
+    p = sub.add_parser("site", help="build the public devlog site")
+    ss = p.add_subparsers(dest="site_command", required=True)
+    b = ss.add_parser("build", help="render docs/ to static HTML")
+    b.add_argument("--out", type=Path, default=Path("_site"))
+    b.set_defaults(func=_run_build)
