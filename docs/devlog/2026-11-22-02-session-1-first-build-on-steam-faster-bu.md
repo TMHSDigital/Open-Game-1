@@ -13,7 +13,11 @@ clip: null
 
 ## Narrative
 
-<!-- narrative -->
+Combat Simulator is on Steam. Build 0.1.1 (the empty capture stage, no gameplay yet) went through the full pipeline: every safety gate, a Shipping package, a SteamPipe upload, the build history and a GitHub prerelease. It is live on the password-protected development branch and, since the app is unreleased and has no store page, on the default branch for the owner only. It installs from the Steam library and launches to the stage.
+
+Getting there turned up two things worth fixing. A Steam App ID left in the user environment by another project would have redirected the upload, so the repository's own settings now always win and the script warns when they disagree. And the first package took about an hour because every asset was re-cooked; with incremental cooking on, a package that changes nothing now takes under eight minutes. The owner decided to upload with their own Steam account rather than a separate build account (decision 0010).
+
+Next is the first real design decision, OD-001: what a player does in the first ten minutes.
 
 ## Changes
 
