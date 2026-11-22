@@ -1,0 +1,25 @@
+# Open decisions
+
+Questions the project has not settled yet. Each has a GitHub Issue labelled `decision` where anyone can comment. When one is decided it moves to the Resolved section and gets a numbered record in `docs/decisions/` (see `docs/decisions/0001-record-decisions-as-files-and-issues.md`). Manage this file with `og decisions` (`new-open`, `close`, `sync-issues`, `check`) rather than by hand.
+
+## Open
+
+| ID | Question | Why it matters | Blocks | Options known | GitHub Issue | Status |
+|---|---|---|---|---|---|---|
+| OD-001 | Core loop: what does a player do in the first 10 minutes? | Every other design choice (modding surface, art, multiplayer) hangs off what players actually do. | first gameplay prototype | physics toy box (spawn, manipulate, destroy); objective-driven scenarios; open arena combat against AI; sandbox first with scenarios layered on later | [#1](https://github.com/TMHSDigital/Open-Game-1/issues/1) | Open |
+| OD-002 | Mod license terms and what modders may redistribute | Modders and players need to know what they may build, share and sell, and what the project keeps. | public modding documentation; Workshop support (OD-004) | permissive mod grant with attribution; redistribution only through official channels; separate mod EULA; no redistribution of base game assets | [#2](https://github.com/TMHSDigital/Open-Game-1/issues/2) | Open |
+| OD-003 | Modding technology: UE content plugins/paks, a scripting layer (Lua, Verse-like, other), or both | It shapes how every gameplay system is built from the start and what mods can safely do. | mod API design; OD-004 | Unreal content plugins and paks; embedded scripting (Lua or similar); a Verse-like layer; both | [#3](https://github.com/TMHSDigital/Open-Game-1/issues/3) | Open |
+| OD-004 | Steam Workshop support and when | Workshop affects mod packaging, moderation workload and the license terms for uploaded content. | Workshop upload tooling; depends on OD-002 and OD-003 | at launch; after early access; never (manual mod sharing); defer until mods exist | [#4](https://github.com/TMHSDigital/Open-Game-1/issues/4) | Open |
+| OD-005 | Multiplayer: none, local, or online, and the replication model | Networking is hard to retrofit and constrains how physics is simulated and replicated. | networking architecture; physics determinism work | none; local shared screen; online co-op sandbox with a server-authoritative model; online competitive | [#5](https://github.com/TMHSDigital/Open-Game-1/issues/5) | Open |
+| OD-006 | Art direction | It guides which free assets fit, how the capture cameras are set up and what the store page looks like. | asset sourcing beyond placeholders; store page art | stylized low-poly; realistic; mixed from CC0 packs; greybox until decided | [#6](https://github.com/TMHSDigital/Open-Game-1/issues/6) | Open |
+| OD-007 | Monetization and price (owner undecided whether to sell) | It affects the license posture, which assets are safe to use and what a public build may contain. | Steam store page; pricing; any public build | paid; free; free with paid content; stay unsold while in development | [#7](https://github.com/TMHSDigital/Open-Game-1/issues/7) | Open |
+| OD-008 | Public channels beyond GitHub (YouTube, X, Discord, Steam community) | Each channel adds moderation and posting work and needs a place in the devlog and release routine. | where devlog clips and announcements are published | YouTube; X; Discord; Steam community hub; GitHub only | [#8](https://github.com/TMHSDigital/Open-Game-1/issues/8) | Open |
+| OD-009 | Upgrade Blender to 5.2 LTS (Blender-Developer-Tools targets 4.5 and 5.2) | The owner's Blender tooling targets 4.5 and 5.2, while 4.4 and 5.1 are installed now. | Blender export scripts and DCC tooling compatibility | stay on 4.4 and 5.1; upgrade to 5.2 LTS when released; support both | [#9](https://github.com/TMHSDigital/Open-Game-1/issues/9) | Open |
+| OD-010 | Whether to rely on experimental Unreal MCP in shipped builds (editor-only use is assumed for now) | The Unreal MCP plugin is experimental and writes configuration and media; shipped builds should not depend on it by accident. | any runtime feature that would use MCP; packaging rules | editor-only use; allow in development builds; ship it in builds | [#10](https://github.com/TMHSDigital/Open-Game-1/issues/10) | Open |
+| OD-011 | Accepting outside contributions later (would need a DCO or CLA) | The license is all rights reserved, so outside contributions need clear terms before any are accepted. | opening pull requests to the public; contributor documentation | DCO sign-off; CLA; stay closed to contributions | [#11](https://github.com/TMHSDigital/Open-Game-1/issues/11) | Open |
+| OD-012 | Supported platforms (Windows first; Steam Deck, Linux) | Platform targets affect packaging, input, UI scaling and what has to be tested. | packaging targets beyond Windows; input and UI work | Windows only; add Steam Deck through Proton; native Linux build; macOS not planned | [#12](https://github.com/TMHSDigital/Open-Game-1/issues/12) | Open |
+
+## Resolved
+
+| ID | Question | Decision | GitHub Issue |
+|---|---|---|---|
