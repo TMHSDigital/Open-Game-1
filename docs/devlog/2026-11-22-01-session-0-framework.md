@@ -13,7 +13,7 @@ clip: null
 
 ## Narrative
 
-<!-- narrative -->
+Session 0 built the framework the game will grow in, and no gameplay yet. The repo now has a source-available license, a secrets scanner and pre-commit hook for a public repo, a ledger that refuses unsuitable third-party licenses, a decision record tied to GitHub Issues, an Unreal 5.8 C++ project with build, test and package scripts, fixed-camera captures (the two images below), this session and milestone routine, a gated Steam release script that the owner runs by hand, and a public site built from the devlog and decisions. The tool and workflow docs and the map of what is reused from the owner's Game-Systems library were added last. Twelve questions are still open as decisions. The next one to settle is OD-001, the core loop: what a player actually does in the first ten minutes, because the modding surface, the art and the networking all hang off it.
 
 ## Changes
 
