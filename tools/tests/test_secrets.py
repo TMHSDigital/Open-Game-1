@@ -193,19 +193,75 @@ def test_staged_rename_with_edit_is_scanned(tmp_path):
     assert r.returncode == 1 and "new.txt" in r.stdout
 
 
-def test_staged_lfs_image_scans_working_tree_file(tmp_path):
+def stage_lfs_pointer(repo, name, oid, size):
+    pointer = repo / "pointer.tmp"
+    pointer.write_text("version https://git-lfs.github.com/spec/v1\noid sha256:" + oid + "\nsize " + str(size) + "\n")
+    h = subprocess.run(["git", "hash-object", "-w", str(pointer)], cwd=repo,
+                       capture_output=True, text=True, check=True).stdout.strip()
+    pointer.unlink()
+    git(repo, "update-index", "--add", "--cacheinfo", f"100644,{h},{name}")
+
+
+def sha(path):
+    import hashlib
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def test_staged_lfs_image_matching_oid_is_scanned(tmp_path):
     git(tmp_path, "init", "-q")
     (tmp_path / "Art").mkdir()
     img = png(tmp_path / "Art" / "x.png", Comment="STEAM_APPID=" + "1234567")  # og-secrets: allow
-    pointer = tmp_path / "pointer"
-    pointer.write_text("version https://git-lfs.github.com/spec/v1\noid sha256:" + "0" * 64
-                       + "\nsize 10\n")
-    # Stage a pointer blob under the image's path, as the LFS clean filter would.
-    h = subprocess.run(["git", "hash-object", "-w", str(pointer)], cwd=tmp_path,
-                       capture_output=True, text=True, check=True).stdout.strip()
-    git(tmp_path, "update-index", "--add", "--cacheinfo", f"100644,{h},Art/x.png")
-    assert img.is_file()
+    stage_lfs_pointer(tmp_path, "Art/x.png", sha(img), img.stat().st_size)
     r = og("secrets", "--staged", cwd=tmp_path)
+    assert r.returncode == 1 and "steam-id" in r.stdout
+
+
+def test_staged_lfs_clean_image_with_matching_oid_passes(tmp_path):
+    git(tmp_path, "init", "-q")
+    (tmp_path / "Art").mkdir()
+    img = png(tmp_path / "Art" / "x.png")
+    stage_lfs_pointer(tmp_path, "Art/x.png", sha(img), img.stat().st_size)
+    assert og("secrets", "--staged", cwd=tmp_path).returncode == 0
+
+
+def test_staged_lfs_oid_mismatch_fails_closed(tmp_path):
+    git(tmp_path, "init", "-q")
+    (tmp_path / "Art").mkdir()
+    img = png(tmp_path / "Art" / "x.png")
+    stage_lfs_pointer(tmp_path, "Art/x.png", "0" * 64, img.stat().st_size)
+    r = og("secrets", "--staged", cwd=tmp_path)
+    assert r.returncode == 1 and "unscannable-lfs" in r.stdout
+
+
+def test_staged_lfs_size_mismatch_fails_closed(tmp_path):
+    git(tmp_path, "init", "-q")
+    img = png(tmp_path / "x.png")
+    stage_lfs_pointer(tmp_path, "x.png", sha(img), img.stat().st_size + 1)
+    assert "unscannable-lfs" in og("secrets", "--staged", cwd=tmp_path).stdout
+
+
+def test_staged_lfs_missing_working_file_fails_closed(tmp_path):
+    git(tmp_path, "init", "-q")
+    stage_lfs_pointer(tmp_path, "Art/gone.png", "0" * 64, 10)
+    r = og("secrets", "--staged", cwd=tmp_path)
+    assert r.returncode == 1 and "unscannable-lfs" in r.stdout
+
+
+def test_staged_lfs_non_image_is_scanned(tmp_path):
+    git(tmp_path, "init", "-q")
+    f = tmp_path / "data.wav"
+    f.write_bytes(b"RIFF\x00\x00" + ("token " + GHP).encode() + b"\x00\x00")
+    stage_lfs_pointer(tmp_path, "data.wav", sha(f), f.stat().st_size)
+    r = og("secrets", "--staged", cwd=tmp_path)
+    assert r.returncode == 1 and "github-token" in r.stdout
+
+
+def test_staged_from_subdirectory_resolves_from_repo_root(tmp_path):
+    git(tmp_path, "init", "-q")
+    (tmp_path / "Art").mkdir()
+    img = png(tmp_path / "Art" / "x.png", Comment="STEAM_APPID=" + "1234567")  # og-secrets: allow
+    stage_lfs_pointer(tmp_path, "Art/x.png", sha(img), img.stat().st_size)
+    r = og("secrets", "--staged", cwd=tmp_path / "Art")
     assert r.returncode == 1 and "steam-id" in r.stdout
 
 

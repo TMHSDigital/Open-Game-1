@@ -1,6 +1,7 @@
 """Public-repo secrets scanner: regex rules over text, plus image metadata and OCR sidecars."""
 from __future__ import annotations
 
+import hashlib
 import io
 import re
 import subprocess
@@ -160,36 +161,54 @@ def scan_paths(paths: list[Path]) -> list[Finding]:
 LFS_POINTER = b"version https://git-lfs.github.com/spec"
 
 
-def _index_blob(name: str) -> bytes | None:
-    r = subprocess.run(["git", "show", ":" + name], capture_output=True)
-    return r.stdout if r.returncode == 0 else None
+def _resolve_lfs(name: str, pointer: bytes, root: Path):
+    """Return (data, None) for the verified real content, or (None, Finding) on failure."""
+    def fail(why: str):
+        return None, Finding(name, 0, "unscannable-lfs", why)
+
+    fields = dict(line.split(" ", 1) for line in
+                  pointer.decode("utf-8", "replace").splitlines() if " " in line)
+    oid = fields.get("oid", "")
+    size = fields.get("size", "")
+    if not oid.startswith("sha256:") or not size.isdigit():
+        return fail("malformed LFS pointer")
+    real = root / name
+    if not real.is_file():
+        return fail("LFS content missing from working tree")
+    data = real.read_bytes()
+    if len(data) != int(size) or hashlib.sha256(data).hexdigest() != oid[7:]:
+        return fail("working tree file does not match LFS pointer")
+    return data, None
 
 
 def scan_staged() -> list[Finding]:
-    """Scan the staged (index) content, not the working tree."""
+    """Scan the staged (index) content, not the working tree. Paths resolve from the repo root."""
+    root = Path(subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True,
+                               check=True, text=True).stdout.strip())
     out = subprocess.run(
         ["git", "diff", "--cached", "--name-only", "-z", "--no-renames",
          "--diff-filter=ACMRT"],
-        capture_output=True, check=True).stdout.decode("utf-8")
+        capture_output=True, check=True, cwd=root).stdout.decode("utf-8")
     findings: list[Finding] = []
     for name in filter(None, out.split("\0")):
-        blob = _index_blob(name)
-        if blob is None:
-            continue
-        is_image = Path(name).suffix.lower() in IMAGE_SUFFIXES
+        blob = subprocess.run(["git", "show", ":" + name], capture_output=True,
+                              cwd=root).stdout
         if blob.startswith(LFS_POINTER):
-            # The index holds only the pointer; the real image is in the working tree.
-            if is_image and Path(name).is_file():
-                findings += scan_image(Path(name))
-            continue
+            blob, bad = _resolve_lfs(name, blob, root)
+            if bad:
+                findings.append(bad)
+                continue
         findings += _scan_blob(name, blob)
-        if is_image:
-            for sc in (str(Path(name).with_suffix(".ocr.txt")), name + ".ocr.txt"):
-                sidecar = _index_blob(Path(sc).as_posix())
-                if sidecar is None and Path(sc).is_file():
-                    sidecar = Path(sc).read_bytes()
-                if sidecar is not None:
-                    findings += scan_text(_decode(sidecar), name)
+        if Path(name).suffix.lower() in IMAGE_SUFFIXES:
+            for sc in (Path(name).with_suffix(".ocr.txt").as_posix(), name + ".ocr.txt"):
+                r = subprocess.run(["git", "show", ":" + sc], capture_output=True, cwd=root)
+                if r.returncode == 0:
+                    sidecar = r.stdout
+                elif (root / sc).is_file():
+                    sidecar = (root / sc).read_bytes()
+                else:
+                    continue
+                findings += scan_text(_decode(sidecar), name)
     return findings
 
 
