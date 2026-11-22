@@ -11,6 +11,6 @@ Steamworks partner pages carry Valve's confidentiality marking: never commit or 
 3. Tick Windows (64-bit only) under Application, Supported Operating Systems, and add launch option 0 under Installation, General (executable `CombatSimulator.exe`, Windows, 64-bit only), then publish. *Done 2026-11-22.*
 4. Choose the upload account: the owner's own Steam account, no separate build account (decision 0010). *Done 2026-11-22.*
 5. Log in to steamcmd once on this PC with your own Steam account (password and Steam Guard are typed into steamcmd, never stored by the repo). *Pending.*
-6. Fill in the local `.env` from `.env.example`: STEAM_APPID, STEAM_DEPOT_WIN, STEAM_BUILD_ACCOUNT (and STEAMCMD_PATH if steamcmd is not in C:\steamcmd). *Pending.*
+6. Fill in the local `.env` from `.env.example`: STEAM_APPID, STEAM_DEPOT_WIN, STEAM_BUILD_ACCOUNT (and STEAMCMD_PATH if steamcmd is not in C:\steamcmd). *Done 2026-11-22.*
 7. Run `pwsh tools/steam/release.ps1 upload-only` in your own terminal, then create the password-protected beta branch named exactly `development` on SteamPipe, Builds, then publish. *Blocked until the first build.*
 8. From then on, `pwsh tools/steam/release.ps1 dev` uploads builds and sets them live on `development` automatically. *Pending (after step 7).*
