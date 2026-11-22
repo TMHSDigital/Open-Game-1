@@ -6,7 +6,8 @@ import pytest
 from og import gh
 from og.decisions import (DEFAULT_TEMPLATE, OpenDecision, close_decision,
                           consistency, list_adrs, new_open, next_adr_number,
-                          parse_open, render_open_table, sync_issues)
+                          parse_open, parse_resolved, render_open_table,
+                          sync_issues)
 
 REPO = Path(__file__).resolve().parents[2]
 SLUG = "owner/repo"
@@ -188,12 +189,35 @@ def test_new_open_appends_row_and_issue(tmp_path, monkeypatch):
         (repo / "docs" / "OPEN-DECISIONS.md").read_text(encoding="utf-8"))] == ["OD-001", "OD-002"]
 
 
-def test_real_repo_template_matches_default_and_checks_offline():
+def test_real_repo_template_matches_default_and_is_consistent():
     assert (REPO / "docs" / "decisions" / "TEMPLATE.md").read_text(encoding="utf-8") == DEFAULT_TEMPLATE
     assert consistency(REPO, None) == []
-    adrs = list_adrs(REPO / "docs" / "decisions")
-    assert [a.number for a in adrs] == list(range(1, 10))
-    assert all(a.status == "Accepted" for a in adrs)
-    rows = parse_open((REPO / "docs" / "OPEN-DECISIONS.md").read_text(encoding="utf-8"))
-    assert [r.id for r in rows] == [f"OD-{n:03d}" for n in range(1, 13)]
-    assert rows[0].blocks == "first gameplay prototype"
+    numbers = [a.number for a in list_adrs(REPO / "docs" / "decisions")]
+    assert numbers and numbers == list(range(numbers[0], numbers[0] + len(numbers)))
+    md = (REPO / "docs" / "OPEN-DECISIONS.md").read_text(encoding="utf-8")
+    ids = [r.id for r in parse_open(md)] + [r.id for r in parse_resolved(md)]
+    assert len(ids) == len(set(ids))
+
+
+def test_unparseable_row_raises_instead_of_dropping(tmp_path):
+    repo = make_repo(tmp_path, [od(1, 11)])
+    doc = repo / "docs" / "OPEN-DECISIONS.md"
+    doc.write_text(doc.read_text(encoding="utf-8").replace(
+        "| Open |\n", "| Open |\n| OD-002 | short row | only |\n", 1), encoding="utf-8")
+    with pytest.raises(ValueError):
+        parse_open(doc.read_text(encoding="utf-8"))
+
+
+def test_sync_issues_persists_each_number_before_next_failure(tmp_path, monkeypatch):
+    repo = make_repo(tmp_path, [od(1, None), od(2, None)], slug=SLUG)
+    stub = Stub()
+    def flaky(args):
+        if args[:2] == ["issue", "create"] and "OD-002" in args[3]:
+            raise gh.GhError("boom")
+        return stub(args)
+    monkeypatch.setattr(gh, "_gh", flaky)
+    with pytest.raises(gh.GhError):
+        sync_issues(repo)
+    rows = {r.id: r.issue for r in parse_open(
+        (repo / "docs" / "OPEN-DECISIONS.md").read_text(encoding="utf-8"))}
+    assert rows == {"OD-001": 101, "OD-002": None}

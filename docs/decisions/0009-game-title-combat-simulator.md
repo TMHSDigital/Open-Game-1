@@ -7,22 +7,20 @@ Supersedes: none
 
 ## Context
 
-The repo, the Unreal project, the Steam app and the public pages all need a consistent name before the game's design is settled. The Steamworks app is already created and named.
+The owner chose the title when creating the Steam app. The repo, the Unreal project and the public pages use the same name.
 
 ## Decision
 
-The game's title is "Combat Simulator". The Unreal project is `CombatSimulator` and its plugins use the `CS` prefix. The title can be changed later by a decision that supersedes this one.
+The game's title is "Combat Simulator". The Unreal project is `CombatSimulator` and its plugins use the `CS` prefix.
 
 ## Consequences
 
 - The Steam app, Unreal project and docs agree on one name.
-- The name does not commit the game to a particular core loop (OD-001).
-- A rename later would touch the Unreal module, Steam app name and public pages, so it needs a superseding decision.
+- Changing the title later needs a decision that supersedes this one.
 
 ## Alternatives
 
-- Use the repo name `Open-Game-1` as the title: it is a placeholder, not a title.
-- Wait to name the project until the design is clearer: the Steam app and tooling need a name now.
+No alternatives were weighed; the owner chose the title when creating the Steam app.
 
 ## Links
 

@@ -128,12 +128,19 @@ def render_resolved_table(rows: list[ResolvedDecision], slug: str | None = None)
 
 
 def _table_rows(md: str, ncols: int) -> list[list[str]]:
+    """Rows of the table with `ncols` columns. Any other table line must be a header,
+    a separator, or a row of the other table; anything else raises (never dropped)."""
     out = []
-    for line in md.splitlines():
-        if line.lstrip().startswith("|"):
-            c = _cells(line)
-            if len(c) == ncols and re.fullmatch(r"OD-\d+", c[0]):
-                out.append(c)
+    for n, line in enumerate(md.splitlines(), 1):
+        if not line.lstrip().startswith("|"):
+            continue
+        c = _cells(line)
+        if c[0] == "ID" or all(re.fullmatch(r":?-{3,}:?|-+", x) for x in c):
+            continue
+        if not re.fullmatch(r"OD-\d+", c[0]) or len(c) not in (len(OPEN_HEADER), len(RESOLVED_HEADER)):
+            raise ValueError(f"{OPEN_DOC.as_posix()}:{n}: unparseable table row: {line.strip()[:80]}")
+        if len(c) == ncols:
+            out.append(c)
     return out
 
 
@@ -341,6 +348,7 @@ def sync_issues(repo: Path, dry_run: bool = False) -> list[str]:
             actions.append(f"{r.id}: linked to existing Issue #{match['number']}")
             if not dry_run:
                 r.issue = int(match["number"])
+                _write_doc(repo, rows, resolved, slug)
             continue
         if not labelled:
             names = {x["name"] for x in json.loads(gh._gh(
@@ -354,9 +362,8 @@ def sync_issues(repo: Path, dry_run: bool = False) -> list[str]:
             actions.append(f"{r.id}: would create Issue {_issue_title(r)!r}")
         else:
             r.issue = _create_issue(r, slug)
+            _write_doc(repo, rows, resolved, slug)  # persist at once: a later failure must not orphan it
             actions.append(f"{r.id}: created Issue #{r.issue}")
-    if not dry_run and todo:
-        _write_doc(repo, rows, resolved, slug)
     for a in actions:
         print(a)
     if not actions:
@@ -449,7 +456,7 @@ def add_parser(sub) -> None:
 def _guard(fn) -> int:
     try:
         return fn()
-    except (gh.GhError, KeyError, FileNotFoundError) as e:
+    except (gh.GhError, KeyError, ValueError, FileNotFoundError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
 

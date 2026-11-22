@@ -15,10 +15,9 @@ Every work session has a short start and end routine run as Claude Code skills t
 
 ## Consequences
 
-- A rich, scrubbable history for a small routine cost per session.
-- Plain-git images keep LFS bandwidth for Unreal and Blender files.
+- A scrubbable history for a small routine cost per session.
+- Images in plain git keep LFS bandwidth for Unreal and Blender files.
 - Scripts work without Claude or the editor open, so a session can always be closed by hand.
-- Repo size grows with devlog images and must be watched.
 
 ## Alternatives
 

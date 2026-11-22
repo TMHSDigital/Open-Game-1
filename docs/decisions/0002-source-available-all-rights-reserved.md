@@ -7,7 +7,7 @@ Supersedes: none
 
 ## Context
 
-The repo is public so the process can be watched, but the game may be sold and the owner has not decided how modders will be licensed. A permissive or copyleft license would give away options that cannot be taken back.
+The repo is public so the process can be watched. Selling the game is undecided, and there are no outside contributors: the public follows along only.
 
 ## Decision
 
@@ -16,15 +16,17 @@ The repo is public so the process can be watched, but the game may be sold and t
 ## Consequences
 
 - The code and art cannot be reused by others without permission, while the work stays fully visible.
-- Mod terms can be written later without conflicting with an existing grant.
-- This is not an open source license, and the README says so.
+- Mod terms are a separate grant decided later (OD-002).
 - Accepting outside contributions later needs its own decision (OD-011).
 
 ## Alternatives
 
-- An open source license (MIT, Apache-2.0): irrevocable, and would permit others to sell the game.
-- A copyleft license (GPL family): incompatible with combining engine content and with a possible sale.
-- A non-commercial source license such as CC BY-NC: would not fit a game that may be sold.
+Options offered to the owner:
+
+- Watch and learn only, all rights reserved (chosen).
+- Reuse code but not art: code under MIT or Apache-2.0, art reserved.
+- Reuse everything: code under MIT, own art under CC-BY 4.0.
+- Decide later: start with all rights reserved and log the question as open.
 
 ## Links
 

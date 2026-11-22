@@ -7,7 +7,7 @@ Supersedes: none
 
 ## Context
 
-The owner keeps a catalogue of reusable game systems and specs in the Game-Systems repo, including several that came out of an earlier Unreal and Steam project. Rebuilding a catalogued system wastes effort and drifts from the shared version.
+The owner keeps a catalogue of reusable game systems and specs in the Game-Systems repo.
 
 ## Decision
 
@@ -15,14 +15,12 @@ Before building any system, check the Game-Systems catalogue index and its specs
 
 ## Consequences
 
-- Less duplicated work, and this game feeds its own gaps back (mod support, a physics sandbox toolset).
-- Plugin boundaries must be kept clean, which costs some design effort.
-- Depends on the Game-Systems repo staying available to the owner.
+- This game feeds its own gaps back to the catalogue (mod support, a physics sandbox toolset).
+- Reusable code is kept in self-contained plugins with no game-actor assumptions.
 
 ## Alternatives
 
-- Build everything from scratch in the game module: simpler at first, but nothing is reusable and the catalogue goes stale.
-- Copy catalogued code into the game: loses the link to the source and its updates.
+No alternatives were weighed; the owner set this directly.
 
 ## Links
 
