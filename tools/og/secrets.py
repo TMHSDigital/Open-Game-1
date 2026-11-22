@@ -157,16 +157,39 @@ def scan_paths(paths: list[Path]) -> list[Finding]:
     return findings
 
 
+LFS_POINTER = b"version https://git-lfs.github.com/spec"
+
+
+def _index_blob(name: str) -> bytes | None:
+    r = subprocess.run(["git", "show", ":" + name], capture_output=True)
+    return r.stdout if r.returncode == 0 else None
+
+
 def scan_staged() -> list[Finding]:
     """Scan the staged (index) content, not the working tree."""
     out = subprocess.run(
-        ["git", "diff", "--cached", "--name-only", "-z", "--diff-filter=ACM"],
+        ["git", "diff", "--cached", "--name-only", "-z", "--no-renames",
+         "--diff-filter=ACMRT"],
         capture_output=True, check=True).stdout.decode("utf-8")
     findings: list[Finding] = []
     for name in filter(None, out.split("\0")):
-        blob = subprocess.run(["git", "show", ":" + name],
-                              capture_output=True, check=True).stdout
+        blob = _index_blob(name)
+        if blob is None:
+            continue
+        is_image = Path(name).suffix.lower() in IMAGE_SUFFIXES
+        if blob.startswith(LFS_POINTER):
+            # The index holds only the pointer; the real image is in the working tree.
+            if is_image and Path(name).is_file():
+                findings += scan_image(Path(name))
+            continue
         findings += _scan_blob(name, blob)
+        if is_image:
+            for sc in (str(Path(name).with_suffix(".ocr.txt")), name + ".ocr.txt"):
+                sidecar = _index_blob(Path(sc).as_posix())
+                if sidecar is None and Path(sc).is_file():
+                    sidecar = Path(sc).read_bytes()
+                if sidecar is not None:
+                    findings += scan_text(_decode(sidecar), name)
     return findings
 
 

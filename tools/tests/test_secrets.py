@@ -177,3 +177,42 @@ def test_staged_scans_image_metadata(tmp_path):
     img = png(tmp_path / "s.png", Comment="STEAM_APPID=" + "1234567")  # og-secrets: allow
     git(tmp_path, "add", "s.png")
     assert og("secrets", "--staged", cwd=tmp_path).returncode == 1
+
+
+def test_staged_rename_with_edit_is_scanned(tmp_path):
+    git(tmp_path, "init", "-q")
+    old = tmp_path / "old.txt"
+    old.write_text("line\n" * 20)
+    git(tmp_path, "add", "old.txt")
+    git(tmp_path, "-c", "user.name=t", "-c", "user.email=t@example.com",
+        "commit", "-q", "-m", "x")
+    git(tmp_path, "mv", "old.txt", "new.txt")
+    (tmp_path / "new.txt").write_text("line\n" * 20 + "STEAM_APPID=" + "1234567\n")  # og-secrets: allow
+    git(tmp_path, "add", "new.txt")
+    r = og("secrets", "--staged", cwd=tmp_path)
+    assert r.returncode == 1 and "new.txt" in r.stdout
+
+
+def test_staged_lfs_image_scans_working_tree_file(tmp_path):
+    git(tmp_path, "init", "-q")
+    (tmp_path / "Art").mkdir()
+    img = png(tmp_path / "Art" / "x.png", Comment="STEAM_APPID=" + "1234567")  # og-secrets: allow
+    pointer = tmp_path / "pointer"
+    pointer.write_text("version https://git-lfs.github.com/spec/v1\noid sha256:" + "0" * 64
+                       + "\nsize 10\n")
+    # Stage a pointer blob under the image's path, as the LFS clean filter would.
+    h = subprocess.run(["git", "hash-object", "-w", str(pointer)], cwd=tmp_path,
+                       capture_output=True, text=True, check=True).stdout.strip()
+    git(tmp_path, "update-index", "--add", "--cacheinfo", f"100644,{h},Art/x.png")
+    assert img.is_file()
+    r = og("secrets", "--staged", cwd=tmp_path)
+    assert r.returncode == 1 and "steam-id" in r.stdout
+
+
+def test_staged_image_sidecar_is_scanned(tmp_path):
+    git(tmp_path, "init", "-q")
+    png(tmp_path / "s.png")
+    (tmp_path / "s.ocr.txt").write_text("Steamworks " + "Valve " + "Confidential")
+    git(tmp_path, "add", "s.png")  # sidecar only in the working tree
+    r = og("secrets", "--staged", cwd=tmp_path)
+    assert r.returncode == 1 and "valve-confidential" in r.stdout
