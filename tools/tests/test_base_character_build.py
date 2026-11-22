@@ -2,7 +2,7 @@
 Blender through tools/blender/run.ps1) into a temp dir and checks every value in checks.json
 against the base model constraints: 180 cm (within 1 cm), 15,000 to 25,000 triangles, at most
 4 bone influences, no unweighted vertices, the full 89-bone UE5 humanoid name list, one material
-slot, UVs present.
+slot, UVs present, one closed mesh.
 
 Skips when Blender or pwsh is not available (for example CI on Linux).
 """
@@ -50,6 +50,7 @@ def test_build_passes_all_checks(build):
     assert checks["bone_names_match"] is True, checks
     assert checks["material_slots"] == 1, checks
     assert checks["has_uvs"] is True, checks
+    assert checks["mesh_islands"] == 1, checks  # one closed body, no floating fingers
     assert r.returncode == 0, log
 
 

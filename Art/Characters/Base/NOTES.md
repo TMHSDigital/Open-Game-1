@@ -74,8 +74,13 @@ script. Build choices:
   `center_of_mass` sit at the origin pointing +Y with roll 0, so they import with no rotation.
   `ik_foot_*` and `ik_hand_*` copy the foot and hand bones. The ik and helper bones, and `root`,
   carry no weights.
-- Mesh: skin modifier over a node graph, subdivided twice (about 16,700 triangles). Rest pose is
-  the A-pose above, with a 12 degree elbow bend and a slight knee bend.
+- Mesh: skin modifier over a node graph, subdivided twice (about 17,000 triangles). Rest pose is
+  the A-pose above, with a 12 degree elbow bend and a slight knee bend. Each hand has a separate
+  thumb and four fingers with a ring at every finger joint; the thumb is its own piece of the
+  graph. Where the skin hull leaves overlapping shells (thumb, palm and wrist branch nodes), an
+  exact boolean union joins them, so the body is one closed piece (checked: `mesh_islands` 1).
+- The scene is built in metres and converted to a centimetre scene (Unit Scale 0.01, armature
+  scaled 100 and applied) before it is saved and exported: the export skill's skeletal path.
 
 ## Skeletal round-trip (verified 2026-11-22, Blender 5.1.1, UE 5.8.3)
 
@@ -88,17 +93,10 @@ skeleton's reference pose.
 |---|---|
 | Bone count | 89, names as in `skeleton_reference.json` |
 | Height | mesh bounds z 0 to 180 cm |
-| Root position and rotation | at the origin, no rotation |
+| Root bone | at the origin, no rotation, scale 1 (local and component space) |
 | Facing | Unreal +Y (toes and hands toward +Y), left side on +X |
 | Actor scale | 1 |
-| Root bone scale | **100, not 1** (all bones inherit it in component space) |
 
-The root bone arrives at scale 100: the "root bone at scale 100" symptom from the export skill.
-It does not depend on the preset's scale option: `FBX_SCALE_UNITS`, `FBX_SCALE_ALL` and
-`FBX_SCALE_NONE` all import with root scale 100, because Unreal applies the metre-to-centimetre
-conversion on the top `Armature` node and folds it into `root`. A scratch export from a
-centimetre scene (Unit Scale 0.01, armature scaled 100 and applied, preset otherwise unchanged)
-imported with root scale 1, pelvis at 97.6 cm and the mesh at 180 cm. The preset's unit check
-currently rejects such a scene, so the fix is a preset change and needs a decision first. The
-FBX here is exported with the preset as it stands. Interchange also logs a harmless-looking
-"BindPose Matrix generation acquired 2 different Matrices" warning on import.
+Why the centimetre scene: the first export came from a metre scene, and its root bone imported at
+scale 100 with every Apply Scalings option (Unreal folds the metre-to-centimetre conversion of the
+`Armature` node into `root`); the export skill now exports skeletal meshes from a centimetre scene.

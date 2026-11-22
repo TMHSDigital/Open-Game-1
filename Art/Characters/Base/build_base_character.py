@@ -17,6 +17,8 @@ How it is built:
 2. The body is a skin modifier over a graph of nodes that follows the joints (extra nodes just
    above and below shoulders, elbows, hips and knees give separate edge loops there), subdivided
    twice and applied. Palms are flat through elliptical skin radii; soles are flattened after.
+   Each thumb is a separate piece of the graph; overlapping shells (the thumb, and any branch
+   whose skin hull fails) are joined with an exact boolean union so the body is one piece.
 3. Rest pose: A-pose, upper arm 55 degrees below horizontal, small elbow and knee bends so IK
    solvers know the bend direction. Faces Blender -Y, left side on +X (export skill convention).
 4. Weights: Blender's automatic (bone heat) weights on the main deform bones, then corrections:
@@ -24,8 +26,10 @@ How it is built:
    fingers get distance-based weights per finger, twist bones get a share of their limb, at most
    4 influences per vertex, renormalized, no vertex left unweighted. ik_*, interaction and
    center_of_mass are built (so retargeting and IK tools find them) but carry no weights.
-5. One neutral matte material, smart UV unwrap, export through the blender-to-unreal-export
-   skill's own script (its checks run too).
+5. One neutral matte material, smart UV unwrap. The scene is built in metres, then converted to
+   the export skill's skeletal path (centimetre scene: Unit Scale 0.01, armature scaled 100 and
+   applied) before the .blend is saved and exported through the skill's own script (its checks
+   run too). checks.json values are measured before the conversion, in metres and centimetres.
 """
 
 import argparse
@@ -228,6 +232,7 @@ def all_joints():
 class Graph:
     def __init__(self):
         self.pos, self.rad, self.edges, self.index = [], [], [], {}
+        self.roots = []  # one per separate piece of the graph (see merge_islands)
 
     def node(self, name, p, r):
         rx, ry = (r, r) if isinstance(r, (int, float)) else r
@@ -293,30 +298,40 @@ def build_graph(j):
             N("forearm_mid", e + df * 0.140, 0.050),
             N("forearm_lo", e + df * 0.195, 0.042),
             N("wrist", w, (0.036, 0.028)),
-            N("palm_base", w + df * 0.028, (0.044, 0.022)),
             N("palm", w + df * 0.066, (0.050, 0.019)),
         ]
         g.edges.append((g.index["shoulder_line"], g.index[arm[0]]))
         g.chain(*arm)
         # Knuckle row and fingers
-        knuckles = [N(f"k_{f}", j[f"{f}_metacarpal_l"][1], 0.0135)
+        knuckles = [N(f"k_{f}", j[f"{f}_metacarpal_l"][1], 0.0125)
                     for f in ("index", "middle", "ring", "pinky")]
         for k in knuckles:
             g.chain(arm[-1], k)
         for f, k in zip(("index", "middle", "ring", "pinky"), knuckles):
-            r0 = 0.0118 if f != "pinky" else 0.0102
-            n0 = N(f"{f}_1m", j[f"{f}_01_l"][0].lerp(j[f"{f}_01_l"][1], 0.5), r0)
-            n1 = N(f"{f}_2", j[f"{f}_02_l"][0], r0 * 0.95)
-            n2 = N(f"{f}_3", j[f"{f}_03_l"][0], r0 * 0.88)
+            # A ring at every finger joint and one mid-phalanx, so each of the three segments
+            # bends on its own loops; the radius tapers toward the tip.
+            r0 = 0.0106 if f != "pinky" else 0.0094
+            b1, b2, b3 = (j[f"{f}_{i:02d}_l"] for i in (1, 2, 3))
+            n0 = N(f"{f}_1m", b1[0].lerp(b1[1], 0.5), r0)
+            n1 = N(f"{f}_2", b2[0], r0 * 0.94)
+            n1m = N(f"{f}_2m", b2[0].lerp(b2[1], 0.5), r0 * 0.90)
+            n2 = N(f"{f}_3", b3[0], r0 * 0.87)
             tip = j["_fingertips_l"][f]
-            n3 = N(f"{f}_tip", tip - (tip - j[f"{f}_03_l"][0]).normalized() * 0.004, r0 * 0.80)
-            g.chain(k, n0, n1, n2, n3)
-        t1 = N("thumb_1", j["thumb_01_l"][0] + (j["thumb_01_l"][1] - j["thumb_01_l"][0]) * 0.55, 0.0175)
-        t2 = N("thumb_2", j["thumb_02_l"][0], 0.0150)
-        t3 = N("thumb_3", j["thumb_03_l"][0], 0.0138)
+            n3 = N(f"{f}_tip", tip - (tip - b3[0]).normalized() * 0.004, r0 * 0.80)
+            g.chain(k, n0, n1, n1m, n2, n3)
+        th1, th2, th3 = (j[f"thumb_{i:02d}_l"] for i in (1, 2, 3))
+        # The thumb is its own piece of the graph, starting inside the ball of the thumb in the
+        # palm; the union in merge_islands joins it. A fifth branch on the palm node makes the
+        # skin hull fail, and a branch off the wrist roots it on the forearm.
+        t0 = N("thumb_0", th1[0], 0.0200)
+        g.roots.append(t0)
+        t1 = N("thumb_1", th1[0].lerp(th1[1], 0.55), 0.0175)
+        t2 = N("thumb_2", th2[0], 0.0140)
+        t2m = N("thumb_2m", th2[0].lerp(th2[1], 0.5), 0.0132)
+        t3 = N("thumb_3", th3[0], 0.0124)
         tip = j["_fingertips_l"]["thumb"]
-        t4 = N("thumb_tip", tip - (tip - j["thumb_03_l"][0]).normalized() * 0.004, 0.0118)
-        g.chain(arm[-2], t1, t2, t3, t4)
+        t4 = N("thumb_tip", tip - (tip - th3[0]).normalized() * 0.004, 0.0108)
+        g.chain(t0, t1, t2, t2m, t3, t4)
 
         # Leg
         hip, knee = j["thigh_l"]
@@ -360,7 +375,8 @@ def skin_mesh(g):
     data = me.skin_vertices[0].data
     for i, (rx, ry) in enumerate(g.rad):
         data[i].radius = (rx, ry)
-    data[g.index["pelvis_c"]].use_root = True
+    for name in ["pelvis_c"] + g.roots:
+        data[g.index[name]].use_root = True
     sub = obj.modifiers.new("Subsurf", "SUBSURF")
     sub.levels = 2
     sub.render_levels = 2
@@ -369,6 +385,74 @@ def skin_mesh(g):
     result = bpy.data.meshes.new_from_object(evaluated)
     bpy.data.objects.remove(obj, do_unlink=True)
     bpy.data.meshes.remove(me)
+    return merge_islands(result)
+
+
+def _islands(bm):
+    """Vertex index sets of the connected pieces of a bmesh."""
+    seen, out = set(), []
+    for v in bm.verts:
+        if v.index in seen:
+            continue
+        comp, stack = {v.index}, [v]
+        seen.add(v.index)
+        while stack:
+            for e in stack.pop().link_edges:
+                for w in e.verts:
+                    if w.index not in seen:
+                        seen.add(w.index)
+                        comp.add(w.index)
+                        stack.append(w)
+        out.append(comp)
+    return out
+
+
+def _mesh_from_subset(bm, keep, name):
+    part = bm.copy()
+    try:
+        part.verts.ensure_lookup_table()
+        bmesh.ops.delete(part, geom=[v for v in part.verts if v.index not in keep], context="VERTS")
+        me = bpy.data.meshes.new(name)
+        part.to_mesh(me)
+    finally:
+        part.free()
+    return me
+
+
+def merge_islands(me):
+    """Make the body one closed piece.
+
+    At busy branch nodes (palm, wrist) the skin modifier's hull can fail and leave a finger or the
+    hand as a separate shell that only overlaps its neighbour, and a stray loose vertex or two.
+    Loose vertices are removed and the overlapping shells are unioned with the exact boolean.
+    """
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(me)
+        bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
+        bm.verts.index_update()
+        pieces = sorted(_islands(bm), key=len, reverse=True)
+        if len(pieces) == 1:
+            bm.to_mesh(me)
+            return me
+        main = _mesh_from_subset(bm, pieces[0], "merge_main")
+        rest = _mesh_from_subset(bm, set().union(*pieces[1:]), "merge_rest")
+    finally:
+        bm.free()
+    a = bpy.data.objects.new("merge_main", main)
+    b = bpy.data.objects.new("merge_rest", rest)
+    for o in (a, b):
+        bpy.context.scene.collection.objects.link(o)
+    mod = a.modifiers.new("Union", "BOOLEAN")
+    mod.operation, mod.operand_type, mod.object = "UNION", "OBJECT", b
+    mod.solver, mod.use_self = "EXACT", True
+    deps = bpy.context.evaluated_depsgraph_get()
+    result = bpy.data.meshes.new_from_object(a.evaluated_get(deps))
+    for o, m in ((a, main), (b, rest)):
+        bpy.data.objects.remove(o, do_unlink=True)
+        bpy.data.meshes.remove(m)
+    bpy.data.meshes.remove(me)
+    result.materials.clear()  # the boolean adds an empty slot for its operand
     return result
 
 
@@ -619,6 +703,24 @@ def unwrap(obj):
 # Checks
 # ---------------------------------------------------------------------------------------------
 
+def _count_islands(bm):
+    """Connected pieces of the mesh; the body must be one piece (no floating fingers)."""
+    seen, islands = set(), 0
+    for v in bm.verts:
+        if v.index in seen:
+            continue
+        islands += 1
+        stack = [v]
+        seen.add(v.index)
+        while stack:
+            for e in stack.pop().link_edges:
+                for w in e.verts:
+                    if w.index not in seen:
+                        seen.add(w.index)
+                        stack.append(w)
+    return islands
+
+
 def run_checks(obj, arm, ref):
     me = obj.data
     zs = [v.co.z for v in me.vertices]
@@ -637,6 +739,7 @@ def run_checks(obj, arm, ref):
     try:
         bm.from_mesh(me)
         non_manifold = sum(1 for e in bm.edges if not e.is_manifold)
+        islands = _count_islands(bm)
         volume = bm.calc_volume(signed=True)
     finally:
         bm.free()
@@ -651,6 +754,7 @@ def run_checks(obj, arm, ref):
         # extra, from the spec's check list
         "bone_count": len(arm.data.bones),
         "non_manifold_edges": non_manifold,
+        "mesh_islands": islands,
         "normals_outward": volume > 0.0,
         "min_z_cm": round(min(zs) * 100.0, 3),
     }
@@ -658,7 +762,7 @@ def run_checks(obj, arm, ref):
           and TRIS_RANGE[0] <= tris <= TRIS_RANGE[1]
           and max_inf <= MAX_INFLUENCES and unweighted == 0 and checks["bone_names_match"]
           and checks["material_slots"] == 1 and checks["has_uvs"]
-          and non_manifold == 0 and checks["normals_outward"] and abs(min(zs)) < 1e-4)
+          and non_manifold == 0 and islands == 1 and checks["normals_outward"] and abs(min(zs)) < 1e-4)
     return checks, ok
 
 
@@ -727,6 +831,27 @@ def reset_scene():
     u.system, u.scale_length, u.length_unit = "METRIC", 1.0, "METERS"
 
 
+def to_centimetre_scene(obj, arm):
+    """Skeletal export path of the export skill: Unit Scale 0.01, armature scaled 100 and applied.
+
+    Built in metres, saved and exported in centimetres: from a metre scene UE 5.8 imports the root
+    bone at scale 100. The mesh is a child of the armature and follows it.
+    """
+    u = bpy.context.scene.unit_settings
+    u.scale_length, u.length_unit = 0.01, "CENTIMETERS"
+    arm.scale = (100.0, 100.0, 100.0)
+    bpy.context.view_layer.update()
+    for o in bpy.context.scene.objects:
+        o.select_set(o in (arm, obj))
+    bpy.context.view_layer.objects.active = arm
+    with bpy.context.temp_override(active_object=arm, object=arm, selected_objects=[arm, obj],
+                                   selected_editable_objects=[arm, obj]):
+        bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+    zs = [v.co.z for v in obj.data.vertices]
+    if abs(max(zs) - min(zs) - HEIGHT * 100.0) > HEIGHT_TOLERANCE_CM or tuple(arm.scale) != (1.0, 1.0, 1.0):
+        raise RuntimeError("centimetre conversion went wrong")
+
+
 def export_fbx(blend_path, fbx_path):
     """Export through the blender-to-unreal-export skill script, so its preset and checks apply."""
     cmd = [bpy.app.binary_path, "-b", str(blend_path), "--factory-startup", "--python-exit-code", "1",
@@ -776,11 +901,12 @@ def main():
     (scratch_dir / "checks.json").write_text(json.dumps(checks, indent=2), encoding="utf-8")
     print("checks: " + json.dumps(checks))
 
+    render_turnarounds(scratch_dir)
     if not args.check_only:
+        to_centimetre_scene(obj, arm)
         blend = out_dir / f"{NAME}.blend"
         bpy.ops.wm.save_as_mainfile(filepath=str(blend), compress=True)
         export_fbx(blend, out_dir / f"{NAME}.fbx")
-    render_turnarounds(scratch_dir)
 
     if not ok:
         print("BUILD CHECK FAILED")
