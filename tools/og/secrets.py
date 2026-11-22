@@ -1,15 +1,17 @@
 """Public-repo secrets scanner: regex rules over text, plus image metadata and OCR sidecars."""
 from __future__ import annotations
 
+import io
 import re
 import subprocess
 import sys
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff"}
-# Files that must contain fake secrets as test data.
-SELF_PATHS = {"tools/og/secrets.py", "tools/tests/test_secrets.py"}
+# A line containing this marker is never reported (for deliberate fake fixtures).
+PRAGMA = "og-secrets: allow"
 EXCERPT_MAX = 120
 
 EMAIL_RE = re.compile(r"(?P<s>[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)")
@@ -24,7 +26,7 @@ RULES = [
     ("steam-api-key",
      re.compile(r"STEAM_API_KEY\s*[=:]\s*[\"']?(?P<s>[0-9A-Fa-f]{32})\b")),
     ("steam-id",
-     re.compile(r"STEAM_(?:APPID|DEPOT\w*)\s*=\s*[\"']?(?P<s>(?!480\b)\d{4,})")),
+     re.compile(r"STEAM_(?:APPID|DEPOT\w*)[\"']?\s*[=:]\s*[\"']?(?P<s>(?!480\b)\d{4,})")),
     ("steam-id",
      re.compile(r"[\"'](?:appid|depotid)[\"']\s+[\"'](?P<s>(?!480[\"'])\d{4,})[\"']", re.I)),
     ("steam-id",
@@ -76,7 +78,7 @@ def _redact(line: str, spans) -> str:
 def scan_text(text: str, path: str) -> list[Finding]:
     findings = []
     for lineno, line in enumerate(text.splitlines(), 1):
-        spans = list(_spans(line))
+        spans = [] if PRAGMA in line else list(_spans(line))
         if not spans:
             continue
         excerpt = _redact(line, spans)
@@ -85,61 +87,100 @@ def scan_text(text: str, path: str) -> list[Finding]:
     return findings
 
 
-def scan_image(path: Path) -> list[Finding]:
-    """Check EXIF/XMP/text-chunk metadata and a sidecar OCR text file, if present."""
-    path = Path(path)
-    findings: list[Finding] = []
-    pieces: list[str] = []
+def _image_metadata_findings(data: bytes, path: str) -> list[Finding]:
+    """Scan EXIF/XMP/text-chunk metadata. Fails closed on real errors."""
     try:
         from PIL import Image
-        with Image.open(path) as im:
-            for value in list(im.info.values()) + list(im.getexif().values()):
-                if isinstance(value, bytes):
-                    value = value.decode("utf-8", "replace")
-                if isinstance(value, str):
-                    pieces.append(value)
-    except Exception:
-        pass  # not a decodable image; the sidecar is still checked
-    if pieces:
-        findings += scan_text("\n".join(pieces), str(path))
+    except ImportError:
+        return [Finding(path, 0, "unscannable-image", "Pillow is not installed")]
+    pieces: list[str] = []
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(io.BytesIO(data)) as im:
+                im.load()  # fully decode: detects truncated/corrupt files
+            with Image.open(io.BytesIO(data)) as im:
+                for value in list(im.info.values()) + list(im.getexif().values()):
+                    if isinstance(value, bytes):
+                        value = value.decode("utf-8", "replace")
+                    if isinstance(value, str):
+                        pieces.append(value)
+    except Image.UnidentifiedImageError:
+        return []  # genuinely not an image; nothing to read
+    except Exception as exc:
+        return [Finding(path, 0, "unscannable-image", type(exc).__name__)]
+    return scan_text("\n".join(pieces), path) if pieces else []
+
+
+def scan_image(path: Path) -> list[Finding]:
+    """Check image metadata and a sidecar OCR text file (x.ocr.txt or x.png.ocr.txt)."""
+    path = Path(path)
+    findings = _image_metadata_findings(path.read_bytes(), str(path))
     for sidecar in (path.with_suffix(".ocr.txt"), path.with_name(path.name + ".ocr.txt")):
         if sidecar.is_file():
             findings += scan_text(sidecar.read_text("utf-8", "replace"), str(path))
     return findings
 
 
+def _decode(data: bytes) -> str:
+    """Decode text, handling UTF-16 (BOM or NUL pattern); strip stray NULs from binaries."""
+    if data.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return data.decode("utf-16", "replace")
+    if b"\0" in data:
+        nulls = [i for i, b in enumerate(data) if b == 0]
+        odd = sum(1 for i in nulls if i % 2)
+        even = len(nulls) - odd
+        if len(nulls) > len(data) // 4:
+            if odd >= 0.9 * len(nulls):
+                return data.decode("utf-16-le", "replace")
+            if even >= 0.9 * len(nulls):
+                return data.decode("utf-16-be", "replace")
+        data = data.replace(b"\0", b"")
+    return data.decode("utf-8", "replace")
+
+
+def _scan_blob(path: str, data: bytes) -> list[Finding]:
+    if Path(path).suffix.lower() in IMAGE_SUFFIXES:
+        return _image_metadata_findings(data, path)
+    return scan_text(_decode(data), path)
+
+
 def scan_paths(paths: list[Path]) -> list[Finding]:
     findings: list[Finding] = []
     for p in map(Path, paths):
-        if not p.is_file() or p.as_posix() in SELF_PATHS:
+        if not p.is_file():
             continue
         if p.suffix.lower() in IMAGE_SUFFIXES:
             findings += scan_image(p)
-            continue
-        data = p.read_bytes()
-        if b"\0" in data:
-            continue
-        findings += scan_text(data.decode("utf-8", "replace"), str(p))
+        else:
+            findings += _scan_blob(str(p), p.read_bytes())
     return findings
 
 
-def _staged_paths() -> list[Path]:
+def scan_staged() -> list[Finding]:
+    """Scan the staged (index) content, not the working tree."""
     out = subprocess.run(
-        ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
-        capture_output=True, text=True, check=True).stdout
-    return [Path(line) for line in out.splitlines() if line.strip()]
+        ["git", "diff", "--cached", "--name-only", "-z", "--diff-filter=ACM"],
+        capture_output=True, check=True).stdout.decode("utf-8")
+    findings: list[Finding] = []
+    for name in filter(None, out.split("\0")):
+        blob = subprocess.run(["git", "show", ":" + name],
+                              capture_output=True, check=True).stdout
+        findings += _scan_blob(name, blob)
+    return findings
 
 
 _POSITIVE = {
-    "steam-api-key": "STEAM_API_KEY=0123456789abcdef0123456789abcdef",
-    "steam-id": "STEAM_APPID=1234567",
-    "steam-cookie": "steamLoginSecure=abc123",
+    "steam-api-key": "STEAM_API_KEY=" + "0123456789abcdef" * 2,
+    "steam-id": "STEAM_APPID=" + "1234567",  # og-secrets: allow
+    "steam-cookie": "steamLoginSecure=" + "abc123",  # og-secrets: allow
     "github-token": "ghp_" + "a" * 36,
-    "valve-confidential": "Valve Confidential",
-    "private-email": "someone@gmail.com",
+    "valve-confidential": "Valve " + "Confidential",
+    "private-email": "someone@" + "gmail.com",
 }
 _NEGATIVE = ["STEAM_APPID=", "STEAM_APPID=480", "noreply@anthropic.com",
-             "1+n@users.noreply.github.com", "just some ordinary text"]
+             "1+n@users.noreply.github.com", "just some ordinary text",
+             "STEAM_APPID=" + "1234567  # " + PRAGMA]  # og-secrets: allow
 
 
 def selftest() -> bool:
@@ -169,10 +210,9 @@ def run(args) -> int:
             return 1
         print("secrets selftest ok")
         return 0
-    paths = list(args.paths)
+    findings = scan_paths(args.paths)
     if args.staged:
-        paths += _staged_paths()
-    findings = scan_paths(paths)
+        findings += scan_staged()
     for f in findings:
         print(f"{f.path}:{f.line}: [{f.rule}] {f.excerpt_redacted}")
     if findings:
