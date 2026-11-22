@@ -29,11 +29,13 @@ The script refuses `dev`, `upload-only`, `preview` and `promoted` when `CLAUDECO
 | `upload-only` | the same, with SetLive blank and no deployment. Used for the first build, before the `development` branch exists |
 | `dry-run` | gates, package, stage and VDF; prints the steamcmd line. Does not bump the version. Git gates 1 to 3 only warn, so you can dry-run before committing |
 | `preview` | like `dry-run`, then steamcmd with `"Preview" "1"`: Steam checks the build and writes logs and a manifest, nothing is uploaded |
-| `status` | the ledger versus Steam's real branch state (steamcmd `app_info_print`), plus the open setup checklist items |
+| `status` | the ledger versus Steam's real branch state (steamcmd `app_info_print` with `+@NoPromptForPassword 1`), plus the open setup checklist items. If steamcmd fails or prints no branches block, it reports "Steam state: unknown" instead of a mismatch |
 | `promote <ver>` | drafts the promotion into the gitignored `_release/<ver>/`: `post.bbcode`, `patch-notes.md`, `github-release.md`, `checklist.md`. Changes nothing on Steam or in tracked files |
-| `promoted <ver>` | after the owner set the build live on `default` and published the post: sets `default_live_utc` in the ledger, stamps the previous default build as replaced, turns the GitHub prerelease into a full release marked Latest with the published text, records a `steam-default` deployment |
+| `promoted <ver>` | after the owner set the build live on `default` and published the post: secret-scans every file in `_release/<ver>/` (a finding exits 1 with nothing recorded), then sets `default_live_utc` in the ledger, stamps the previous default build as replaced, turns the GitHub prerelease into a full release marked Latest with the published text, records a `steam-default` deployment |
 
-Switches for every mode: `-SkipPackage` (reuse the last package in `E:\CombatSimulatorBuilds\Windows`), `-Notes "text"` (added to the build description, the ledger and the release notes).
+Switches for every mode: `-SkipPackage` (reuse the last package in `E:\CombatSimulatorBuilds\Windows`), `-Notes "text"` (added to the build description, the ledger and the release notes; secret-scanned in gate 7, before any upload).
+
+`-Branch` is not a choice: the only accepted value is `development` (surrounding spaces are trimmed). `default` and `public` in any case, any other branch name, and anything that is not a plain lowercase name are refused with exit 40, because no script sets `default` live and the ledger only has `development` and `default` columns.
 
 ## Gates
 
@@ -47,7 +49,7 @@ The gates run in this order on the tree as it is (before the version bump), and 
 | 4 | Unreal Engine is 5.8.x (`Engine/Build/Build.version` under `UE_ROOT`) | 14 |
 | 5 | the next version is not already in `BUILDS.md` | 15 |
 | 6 | tests pass: `tools/ue/test.ps1` (Unreal automation) and the repo's pytest suite | 16 |
-| 7 | secret scan is clean: `og secrets` | 17 |
+| 7 | secret scan is clean: `og secrets --tracked` (the index content of every tracked file, LFS content verified against its pointer) plus the `-Notes` text | 17 |
 | 8 | asset check is clean: `og assets check` | 18 |
 | 9 | `STEAM_APPID`, `STEAM_DEPOT_WIN`, `STEAM_BUILD_ACCOUNT` are set and plausible (numeric, not 480, depot not equal to app). Only names are printed, never values | 19 |
 | 10 | the staging folder `_scratch/steam/content` was deleted and recreated empty | 20 |
@@ -57,11 +59,11 @@ The gates run in this order on the tree as it is (before the version bump), and 
 | Code | Meaning |
 |---|---|
 | 0 | ok |
-| 1 | any other error (bad arguments, packaging failed, a GitHub step failed after the upload) |
+| 1 | any other error (bad arguments, packaging failed, a secret in the `_release/<ver>/` draft on `promoted`, a GitHub step failed after the upload). If the ledger commit or push fails after a real upload, the message says "Upload done as BuildID N; do not re-run": commit and push `docs/steam/BUILDS.md` by hand |
 | 11 to 20 | gate `code - 10` failed |
 | 30 | steamcmd error: non-zero exit, or any `ERROR!` line even when the exit code is 0 |
 | 31 | steamcmd printed no BuildID |
-| 40 | refused: `-Branch default`, or `CLAUDECODE` set for a real Steam step |
+| 40 | refused: a `-Branch` other than `development` (including `default`, `Default`, ` default`, `public`), or `CLAUDECODE` set for a real Steam step |
 
 On 30 and 31 nothing is recorded: no ledger row, no release, no deployment.
 
@@ -92,7 +94,7 @@ If `dev` fails with exit 30 and mentions a branch, the build may have uploaded b
 
 1. `pwsh tools/steam/release.ps1 promote <version>` (Claude can run this through the `release` skill, which also fills the `[narrative]` marker from the devlogs since the last default build).
 2. Follow `_release/<version>/checklist.md`: set the build live on `default` in Steamworks, publish `post.bbcode` as a Steam event.
-3. In your own terminal: `pwsh tools/steam/release.ps1 promoted <version>`. It refuses while a `[narrative]` marker is still unfilled.
+3. In your own terminal: `pwsh tools/steam/release.ps1 promoted <version>`. It refuses while a `[narrative]` marker is still unfilled, and when `og secrets` finds anything in `_release/<version>/` (the text it publishes).
 
 ## Reading the Environments page
 

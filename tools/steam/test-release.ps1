@@ -75,11 +75,19 @@ Set-Content (Join-Path $build 'Manifest_NonUFSFiles_Win64.txt') 'manifest'
 Set-Content (Join-Path $build 'crashreporter.sym') 'symbols'
 Set-Content (Join-Path $build 'NOTICES.txt') 'notices'
 
-# Fake check command: gates 6 (tests), 7 (secrets), 8 (assets) run it with the gate name.
+# Fake check command: gates 6 (tests), 7 (secrets), 8 (assets) and the promoted draft scan run
+# it with the check name. release.ps1 puts the real command in RELEASE_REAL_CHECK (JSON); with
+# FAKE_CHECK_REAL=<name> the fake runs that real command instead of pretending.
 $checkCmd = Join-Path $tmp 'fake-check.ps1'
 Set-Content $checkCmd @'
 param([string]$Name)
 if ($env:FAKE_CHECK_FAIL -eq $Name) { Write-Output "fake $Name check failed"; exit 1 }
+if ($env:FAKE_CHECK_REAL -eq $Name) {
+    $real = @($env:RELEASE_REAL_CHECK | ConvertFrom-Json)
+    $exe = $real[0]; $rest = @($real | Select-Object -Skip 1)
+    & $exe @rest
+    exit $LASTEXITCODE
+}
 Write-Output "fake $Name check ok"
 exit 0
 '@
@@ -144,7 +152,8 @@ function Invoke-Release([string[]]$Arguments, [hashtable]$EnvOverride = @{}, [sw
         STEAM_APPID = '1234560'; STEAM_DEPOT_WIN = '1234561'; STEAM_BUILD_ACCOUNT = 'fake_builder'  # og-secrets: allow (fake test IDs)
         STEAMCMD_PATH = $null; CLAUDECODE = $null; UE_ROOT = $ue58
         FAKE_STEAMCMD_MODE = 'ok'; FAKE_STEAMCMD_BUILDID = '98765'; FAKE_STEAMCMD_BRANCHES = $null
-        FAKE_CHECK_FAIL = $null; GH_RECORD = $script:fx.Record; PATH = "$shimDir;$env:PATH"
+        FAKE_CHECK_FAIL = $null; FAKE_CHECK_REAL = $null; FAKE_STEAMCMD_INFO = $null; FAKE_STEAMCMD_LOG = $null
+        GH_RECORD = $script:fx.Record; PATH = "$shimDir;$env:PATH"
     }
     foreach ($k in $EnvOverride.Keys) { $envVars[$k] = $EnvOverride[$k] }
     $saved = @{}
@@ -254,6 +263,23 @@ try {
     Check 'Gate 6: tests failed exits 16' ($r.Code -eq 16) $r.Output
     $r = Invoke-Release @('dev', '-NoGitHub', '-SkipGitGates') @{ FAKE_CHECK_FAIL = 'secrets' }
     Check 'Gate 7: secrets found exits 17' ($r.Code -eq 17) $r.Output
+    # Gate 7 for real: og secrets --tracked over the fixture repo, and -Notes, before any upload.
+    $r = Invoke-Release @('dry-run') @{ FAKE_CHECK_REAL = 'secrets' }
+    Check 'Gate 7 (real og secrets --tracked): clean fixture passes' ($r.Code -eq 0 -and $r.Output -match 'gate 7 ok' -and $r.Output -match '--tracked') $r.Output
+    $planted = 'STEAM_APPID=' + '7654321'  # og-secrets: allow (fake test ID)
+    Set-Content (Join-Path $fx.Repo 'docs\leak.md') "config: $planted"
+    Invoke-Git $fx.Repo add -A | Out-Null
+    Invoke-Git $fx.Repo commit -q -m 'docs: planted fixture' | Out-Null
+    $r = Invoke-Release @('dry-run') @{ FAKE_CHECK_REAL = 'secrets' }
+    Check 'Gate 7 (real og secrets --tracked): planted tracked secret exits 17' ($r.Code -eq 17 -and $r.Output -match 'docs/leak\.md' -and $r.Output -notmatch '7654321') $r.Output
+    Invoke-Git $fx.Repo rm -q 'docs/leak.md' | Out-Null
+    Invoke-Git $fx.Repo commit -q -m 'docs: drop planted fixture' | Out-Null
+    $steamLog = Join-Path $fx.Root 'steamcmd-args.log'
+    $before = Get-Content -LiteralPath $fx.Ledger -Raw
+    $r = Invoke-Release @('dev', '-SkipGitGates', '-Notes', "see $planted") @{ FAKE_CHECK_REAL = 'secrets'; FAKE_STEAMCMD_LOG = $steamLog }
+    Check 'Gate 7: a secret in -Notes exits 17 before any upload' ($r.Code -eq 17 -and -not (Test-Path -LiteralPath $steamLog) -and $r.Output -notmatch '7654321') $r.Output
+    Check 'Gate 7: -Notes finding records nothing' ((Get-Content -LiteralPath $fx.Ledger -Raw) -eq $before -and (Get-GhCalls).Count -eq 0)
+
     $r = Invoke-Release @('dev', '-NoGitHub', '-SkipGitGates') @{ FAKE_CHECK_FAIL = 'assets' }
     Check 'Gate 8: asset check failed exits 18' ($r.Code -eq 18) $r.Output
 
@@ -287,6 +313,14 @@ try {
     $bumpSha = (Invoke-Git $fx.Remote log -1 --format=%H 'main~1').Trim()
     Check 'ledger git_sha is the bump commit' ($remoteLedger -match [regex]::Escape($bumpSha))
     Check 'tree is clean after a dev run' (-not (Invoke-Git $fx.Repo status --porcelain))
+
+    # --- Ledger commit or push fails after a real upload ---------------------------------------
+    New-Fixture | Out-Null
+    $hook = Join-Path $fx.Remote 'hooks\pre-receive'
+    [IO.File]::WriteAllText($hook, "#!/bin/sh`nwhile read old new ref; do`n  if git log -1 --format=%s `"`$new`" | grep -q '^docs: record Steam build'; then echo 'ledger push rejected'; exit 1; fi`ndone`nexit 0`n")
+    $r = Invoke-Release @('dev')
+    Check 'Ledger push failure after upload exits 1 and says not to re-run' ($r.Code -eq 1 -and $r.Output -match 'BuildID 98765' -and $r.Output -match 'do not re-run' -and $r.Output -match 'BUILDS\.md') $r.Output
+    Check 'Ledger push failure: no GitHub release or deployment' ((Get-GhCalls).Count -eq 0)
 
     # --- Review Focus 3: steamcmd lies with exit 0 -----------------------------------------------
     New-Fixture | Out-Null
@@ -331,8 +365,12 @@ try {
     Check 'preview: no ledger row, no gh calls' ((Get-LedgerRows $fx.Ledger).Count -eq 0 -and (Get-GhCalls).Count -eq 0)
 
     # --- Refusals ---------------------------------------------------------------------------------
-    $r = Invoke-Release @('dev', '-SkipGitGates', '-Branch', 'default')
-    Check '-Branch default exits 40' ($r.Code -eq 40) $r.Output
+    foreach ($b in 'default', ' default', 'Default', 'PUBLIC', 'qa', 'dev elopment', 'development;x') {
+        $r = Invoke-Release @('dev', '-SkipGitGates', '-Branch', $b)
+        Check "-Branch '$b' exits 40" ($r.Code -eq 40) $r.Output
+    }
+    $r = Invoke-Release @('dry-run', '-Branch', ' development ')
+    Check "-Branch ' development ' is trimmed and accepted" ($r.Code -eq 0 -and (Get-Content (Join-Path $fx.Work 'app_build_run.vdf') -Raw) -match '"SetLive" "development"') $r.Output
     foreach ($m in 'dev', 'upload-only', 'preview') {
         $r = Invoke-Release @($m, '-SkipGitGates') @{ CLAUDECODE = '1' }
         Check "CLAUDECODE=1 refuses real mode '$m' with 40" ($r.Code -eq 40 -and $r.Output -match 'own terminal') $r.Output
@@ -415,7 +453,13 @@ try {
         $p = Join-Path $draft $f
         Set-Content -LiteralPath $p -Value ((Get-Content -LiteralPath $p -Raw).Replace('[narrative]', 'This build adds the third change.')) -NoNewline
     }
-    $r = Invoke-Release @('promoted', '0.1.1', '-SkipGitGates')
+    $patchPath = Join-Path $draft 'patch-notes.md'
+    $patchClean = Get-Content -LiteralPath $patchPath -Raw
+    Add-Content -LiteralPath $patchPath -Value ('Contact: ' + 'tok ' + 'ghp_' + ('b' * 36))
+    $r = Invoke-Release @('promoted', '0.1.1', '-SkipGitGates') @{ FAKE_CHECK_REAL = 'secrets' }
+    Check 'promoted: a secret in _release/<ver>/ exits 1 and records nothing' ($r.Code -eq 1 -and (Get-Content -LiteralPath $fx.Ledger -Raw) -eq $ledgerBefore -and (Get-GhCalls).Count -eq 0 -and $r.Output -match 'patch-notes\.md') $r.Output
+    Set-Content -LiteralPath $patchPath -Value $patchClean -NoNewline
+    $r = Invoke-Release @('promoted', '0.1.1', '-SkipGitGates') @{ FAKE_CHECK_REAL = 'secrets' }
     Check 'promoted exits 0' ($r.Code -eq 0) $r.Output
     $rows = Get-LedgerRows $fx.Ledger
     $cur = @($rows | Where-Object version -eq '0.1.1')
@@ -424,6 +468,7 @@ try {
     Check "promoted: previous default's default_replaced_utc stamped" ($old.Count -eq 1 -and $old[0].default_replaced_utc -match '^\d{4}-\d\d-\d\dT')
     $calls = Get-GhCalls
     $edit = if ($calls.Count -ge 1) { @($calls[0].args) } else { @() }
+    Check 'promoted: the clean draft passed the real secret scan' ($r.Output -match 'og secrets')
     Check 'promoted: release edited to not prerelease and --latest' ($edit.Count -gt 2 -and $edit[0] -eq 'release' -and $edit[1] -eq 'edit' -and $edit[2] -eq 'v0.1.1' -and $edit -contains '--prerelease=false' -and $edit -contains '--latest') ($edit -join ' ')
     Check 'promoted: release body is the published text' ($calls.Count -ge 1 -and $calls[0].notes -match 'third change')
     $dep = if ($calls.Count -ge 2) { $calls[1] } else { $null }
@@ -437,6 +482,13 @@ try {
     $r = Invoke-Release @('status') @{ FAKE_STEAMCMD_BRANCHES = 'public=98765,development=98765' }
     Check 'status: no mismatch when they agree' ($r.Code -eq 0 -and $r.Output -notmatch 'MISMATCH') $r.Output
     Check 'status: lists open SETUP-CHECKLIST items only' ($r.Output -match 'Add the depot' -and $r.Output -match 'Build account' -and $r.Output -notmatch 'Create the app') $r.Output
+    $statusLog = Join-Path $fx.Root 'status-args.log'
+    $r = Invoke-Release @('status') @{ FAKE_STEAMCMD_BRANCHES = 'public=98765,development=98765'; FAKE_STEAMCMD_LOG = $statusLog }
+    Check 'status: steamcmd never prompts for a password' ((Test-Path -LiteralPath $statusLog) -and (Get-Content -LiteralPath $statusLog -Raw) -match '\+@NoPromptForPassword 1') $r.Output
+    $r = Invoke-Release @('status') @{ FAKE_STEAMCMD_INFO = 'fail' }
+    Check 'status: steamcmd failing is "Steam state: unknown", not MISMATCH' ($r.Code -eq 0 -and $r.Output -match 'Steam state: unknown' -and $r.Output -notmatch 'MISMATCH') $r.Output
+    $r = Invoke-Release @('status') @{ FAKE_STEAMCMD_INFO = 'nobranches' }
+    Check 'status: no branches block is "Steam state: unknown", not MISMATCH' ($r.Code -eq 0 -and $r.Output -match 'Steam state: unknown' -and $r.Output -notmatch 'MISMATCH') $r.Output
     $r = Invoke-Release @('status') @{ STEAM_BUILD_ACCOUNT = $null }
     Check 'status without Steam access still shows the ledger and checklist' ($r.Code -eq 0 -and $r.Output -match 'Add the depot' -and $r.Output -match '0\.1\.1') $r.Output
 }

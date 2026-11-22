@@ -16,6 +16,7 @@ _release/
 .env.*
 !.env.example
 *cookies*.txt
+*cookies*.json
 steam/KEYS*
 *KEYS*.md
 steam_appid.txt

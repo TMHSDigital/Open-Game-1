@@ -7,6 +7,7 @@
 #   bad-branch   uploads (BuildID printed) but cannot set the build live: the branch does not exist
 # FAKE_STEAMCMD_BUILDID   BuildID to print (default 98765)
 # FAKE_STEAMCMD_BRANCHES  for +app_info_print: "public=100,development=200" (branch=buildid pairs)
+# FAKE_STEAMCMD_INFO      for +app_info_print: 'fail' (error, exit 5) or 'nobranches' (no branches block)
 # FAKE_STEAMCMD_LOG       if set, each invocation's arguments are appended to this file
 
 $joined = $args -join ' '
@@ -17,6 +18,8 @@ Write-Output 'Logging in user ... OK'
 
 if ($args -contains '+app_info_print') {
     $appId = $args[[array]::IndexOf($args, '+app_info_print') + 1]
+    if ($env:FAKE_STEAMCMD_INFO -eq 'fail') { Write-Output 'ERROR! Not logged on.'; exit 5 }
+    if ($env:FAKE_STEAMCMD_INFO -eq 'nobranches') { Write-Output "AppID : $appId, change number : 0/0"; Write-Output 'No app info for this account.'; exit 0 }
     Write-Output "AppID : $appId, change number : 1/0"
     Write-Output "`"$appId`""
     Write-Output '{'

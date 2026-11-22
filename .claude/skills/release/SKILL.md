@@ -20,7 +20,7 @@ Full reference: `docs/steam/BUILD-WORKFLOW.md`. History: `docs/steam/BUILDS.md`.
 
 1. Run `pwsh tools/steam/release.ps1 status` and report open setup items. If checklist step 7 is still open (no build yet), the first upload is `upload-only`, not `dev`.
 2. Run `pwsh tools/steam/release.ps1 dry-run`. It runs gates 4 to 10 for real, warns on gates 1 to 3 (branch, clean tree, pushed), packages a Shipping build and renders the VDFs. It does not bump the version.
-3. On a gate failure, read the exit code (`10 + n` is gate n) and fix that gate: commit or push, rebuild and retest, clean the secret or asset finding, or tell the owner which env var names are missing.
+3. On a gate failure, read the exit code (`10 + n` is gate n) and fix that gate: commit or push, rebuild and retest, clean the secret or asset finding (gate 7 scans every tracked file with `og secrets --tracked` and the `-Notes` text), or tell the owner which env var names are missing.
 4. When the dry run passes and the tree is committed and pushed, print for the owner:
 
    ```powershell
@@ -29,7 +29,7 @@ Full reference: `docs/steam/BUILD-WORKFLOW.md`. History: `docs/steam/BUILDS.md`.
 
    Do not add `-SkipPackage` here: `dev` bumps the version before packaging, and a reused package would report the previous version in game. For the very first build print `pwsh tools/steam/release.ps1 upload-only` and remind the owner of checklist step 7.
 
-5. After the owner reports back: exit 0 means the ledger row is committed and pushed, the prerelease and deployment exist. Exit 30 or 31 means nothing was recorded; read `_scratch/steam/steamcmd.log` with the owner. Exit 30 mentioning a branch usually means the `development` branch does not exist yet.
+5. After the owner reports back: exit 0 means the ledger row is committed and pushed, the prerelease and deployment exist. Exit 30 or 31 means nothing was recorded; read `_scratch/steam/steamcmd.log` with the owner. Exit 30 mentioning a branch usually means the `development` branch does not exist yet. Exit 1 with "Upload done as BuildID N; do not re-run" means the upload worked but the ledger commit or push failed: commit and push `docs/steam/BUILDS.md` by hand, never re-run the upload.
 
 ## Promote a build to default
 
@@ -46,7 +46,7 @@ Full reference: `docs/steam/BUILD-WORKFLOW.md`. History: `docs/steam/BUILDS.md`.
    pwsh tools/steam/release.ps1 promoted <ver>
    ```
 
-   It refuses while a `[narrative]` marker is left, records `default_live_utc`, turns the prerelease into the Latest full release with `github-release.md` as its body, and records a `steam-default` deployment.
+   It refuses while a `[narrative]` marker is left or when `og secrets` finds anything in `_release/<ver>/` (keep IDs, emails and Steamworks text out of the drafts), records `default_live_utc`, turns the prerelease into the Latest full release with `github-release.md` as its body, and records a `steam-default` deployment.
 
 ## Check what is on Steam
 

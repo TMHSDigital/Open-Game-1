@@ -13,13 +13,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          lfs: false
+          # LFS content is needed: og secrets --tracked scans the real content of LFS files and
+          # fails closed on a pointer whose content is missing.
+          lfs: true
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v5
       - name: Tests
         run: uv run --project tools pytest tools/tests -q
       - name: Secrets scan (all tracked files)
-        run: git ls-files -z | xargs -0 uv run --project tools python -m og secrets
+        run: uv run --project tools python -m og secrets --tracked
       - name: Asset license check
         run: uv run --project tools python -m og assets check
       - name: Decisions consistency

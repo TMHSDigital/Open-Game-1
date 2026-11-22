@@ -64,7 +64,7 @@ Skill: `decide`. Tool: `gh`.
 Skill: `release` (reference: `docs/steam/BUILD-WORKFLOW.md`). Script: `tools/steam/release.ps1`. Tools: steamcmd (owner only), `gh`, optional steam-mcp for checks.
 
 1. `pwsh tools/steam/release.ps1 status` to see open setup items and the ledger.
-2. `pwsh tools/steam/release.ps1 dry-run` runs gates 4 to 10 for real: UE 5.8.x, version not in the ledger, tests (`tools/ue/test.ps1`), `og secrets`, `og assets check`, Steam env var names, fresh staging. It also packages a Shipping build (`tools/ue/package.ps1`) and renders the VDFs from `steam/templates/`. Gates 1 to 3 (on main, clean tree, HEAD pushed) only warn in a dry run.
+2. `pwsh tools/steam/release.ps1 dry-run` runs gates 4 to 10 for real: UE 5.8.x, version not in the ledger, tests (`tools/ue/test.ps1`), `og secrets --tracked` (every tracked file, plus the `-Notes` text), `og assets check`, Steam env var names, fresh staging. It also packages a Shipping build (`tools/ue/package.ps1`) and renders the VDFs from `steam/templates/`. Gates 1 to 3 (on main, clean tree, HEAD pushed) only warn in a dry run.
 3. Fix whichever gate failed (exit code `10 + n` is gate n); the tree must be committed and pushed before a real run.
 4. Claude prints the command; the owner runs `pwsh tools/steam/release.ps1 dev` in their own terminal (`upload-only` for the very first build). Real uploads refuse to run inside Claude Code.
 5. On success the script commits a row to `docs/steam/BUILDS.md`, creates a `v<ver>` prerelease and a `steam-development` deployment with `gh`, and pushes. If steamcmd printed an error or no BuildID, nothing is recorded.

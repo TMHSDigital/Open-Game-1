@@ -32,6 +32,8 @@ RULES = [
      re.compile(r"[\"'](?:appid|depotid)[\"']\s+[\"'](?P<s>(?!480[\"'])\d{4,})[\"']", re.I)),
     ("steam-id",
      re.compile(r"steam.{0,40}?app\s*id\D{0,6}(?P<s>\d{5,})", re.I)),
+    ("steam-build-account",
+     re.compile(r"STEAM_BUILD_ACCOUNT[\"']?\s*[=:][ \t]*[\"']?(?P<s>[A-Za-z0-9_.@-]+)")),
     ("steam-cookie",
      re.compile(r"(?:steamLoginSecure|steamMachineAuth\w*)\s*[=:]\s*(?P<s>\S+)")),
     ("github-token",
@@ -181,23 +183,32 @@ def _resolve_lfs(name: str, pointer: bytes, root: Path):
     return data, None
 
 
-def scan_staged() -> list[Finding]:
-    """Scan the staged (index) content, not the working tree. Paths resolve from the repo root."""
-    root = Path(subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True,
+def _repo_root() -> Path:
+    return Path(subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True,
                                check=True, text=True).stdout.strip())
-    out = subprocess.run(
-        ["git", "diff", "--cached", "--name-only", "-z", "--no-renames",
-         "--diff-filter=ACMRT"],
-        capture_output=True, check=True, cwd=root).stdout.decode("utf-8")
+
+
+def _index_blob(name: str, root: Path):
+    """Return (data, None) for the index content of name, or (None, Finding) when unreadable."""
+    r = subprocess.run(["git", "show", ":" + name], capture_output=True, cwd=root)
+    if r.returncode != 0:
+        why = r.stderr.decode("utf-8", "replace").strip().splitlines()
+        return None, Finding(name, 0, "unscannable-blob",
+                             (why[0] if why else f"git show exit {r.returncode}")[:EXCERPT_MAX])
+    return r.stdout, None
+
+
+def _scan_index_entries(names: list[str], root: Path) -> list[Finding]:
+    """Scan index content for each path: LFS pointers resolve to verified working-tree
+    content, images also get their OCR sidecars. Anything unreadable is a finding."""
     findings: list[Finding] = []
-    for name in filter(None, out.split("\0")):
-        blob = subprocess.run(["git", "show", ":" + name], capture_output=True,
-                              cwd=root).stdout
-        if blob.startswith(LFS_POINTER):
+    for name in names:
+        blob, bad = _index_blob(name, root)
+        if bad is None and blob.startswith(LFS_POINTER):
             blob, bad = _resolve_lfs(name, blob, root)
-            if bad:
-                findings.append(bad)
-                continue
+        if bad:
+            findings.append(bad)
+            continue
         findings += _scan_blob(name, blob)
         if Path(name).suffix.lower() in IMAGE_SUFFIXES:
             for sc in (Path(name).with_suffix(".ocr.txt").as_posix(), name + ".ocr.txt"):
@@ -212,15 +223,41 @@ def scan_staged() -> list[Finding]:
     return findings
 
 
+def scan_staged() -> list[Finding]:
+    """Scan the staged (index) content, not the working tree. Paths resolve from the repo root."""
+    root = _repo_root()
+    out = subprocess.run(
+        ["git", "diff", "--cached", "--name-only", "-z", "--no-renames",
+         "--diff-filter=ACMRT"],
+        capture_output=True, check=True, cwd=root).stdout.decode("utf-8")
+    return _scan_index_entries(list(filter(None, out.split("\0"))), root)
+
+
+def scan_tracked() -> list[Finding]:
+    """Scan the index content of every tracked file (git ls-files), skipping submodules."""
+    root = _repo_root()
+    out = subprocess.run(["git", "ls-files", "-s", "-z"], capture_output=True, check=True,
+                         cwd=root).stdout.decode("utf-8")
+    names = []
+    for entry in filter(None, out.split("\0")):
+        meta, _, name = entry.partition("\t")
+        if meta.split(" ")[0] == "160000":
+            continue  # gitlink (submodule): no blob here
+        if name not in names:
+            names.append(name)  # unmerged paths list several stages; scan once
+    return _scan_index_entries(names, root)
+
+
 _POSITIVE = {
     "steam-api-key": "STEAM_API_KEY=" + "0123456789abcdef" * 2,
     "steam-id": "STEAM_APPID=" + "1234567",  # og-secrets: allow
+    "steam-build-account": "STEAM_BUILD_ACCOUNT=" + "builder",  # og-secrets: allow
     "steam-cookie": "steamLoginSecure=" + "abc123",  # og-secrets: allow
     "github-token": "ghp_" + "a" * 36,
     "valve-confidential": "Valve " + "Confidential",
     "private-email": "someone@" + "gmail.com",
 }
-_NEGATIVE = ["STEAM_APPID=", "STEAM_APPID=480", "noreply@anthropic.com",
+_NEGATIVE = ["STEAM_APPID=", "STEAM_BUILD_ACCOUNT=", "STEAM_APPID=480", "noreply@anthropic.com",
              "1+n@users.noreply.github.com", "just some ordinary text",
              "STEAM_APPID=" + "1234567  # " + PRAGMA]  # og-secrets: allow
 
@@ -242,6 +279,8 @@ def add_parser(sub) -> None:
     p = sub.add_parser("secrets", help="scan for secrets before they reach a public repo")
     p.add_argument("paths", nargs="*", type=Path)
     p.add_argument("--staged", action="store_true", help="scan files staged in git")
+    p.add_argument("--tracked", action="store_true",
+                   help="scan every tracked file (git ls-files), as committed to the index")
     p.add_argument("--selftest", action="store_true", help="run built-in samples")
     p.set_defaults(func=run)
 
@@ -255,6 +294,8 @@ def run(args) -> int:
     findings = scan_paths(args.paths)
     if args.staged:
         findings += scan_staged()
+    if args.tracked:
+        findings += scan_tracked()
     for f in findings:
         print(f"{f.path}:{f.line}: [{f.rule}] {f.excerpt_redacted}")
     if findings:

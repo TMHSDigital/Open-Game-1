@@ -35,7 +35,7 @@ What `dev` does, in order:
 ## Branches
 
 - Every `dev` upload goes live on the password-protected `development` branch. `upload-only` sets nothing live.
-- The script refuses `-Branch default` (exit 40). Promotion to `default` is by hand in Steamworks; `release.ps1 promote` drafts the steps and `promoted` records them.
+- The script accepts only `-Branch development` (trimmed) and refuses anything else with exit 40: `default` or `public` in any case, other branch names such as `qa`, and malformed names. Promotion to `default` is by hand in Steamworks; `release.ps1 promote` drafts the steps and `promoted` records them.
 - A branch name that does not exist in Steamworks makes the set-live step fail after the upload: the script exits 30 and points at setup checklist step 7.
 
 ## CI (later)

@@ -9,11 +9,12 @@
 #   pwsh tools/steam/release.ps1 promote <ver>      drafts the default-branch promotion into _release/<ver>/
 #   pwsh tools/steam/release.ps1 promoted <ver>     records a promotion the owner made in Steamworks
 #
-# Switches: -SkipPackage (reuse the last package), -Notes "text".
+# Switches: -SkipPackage (reuse the last package), -Notes "text" (secret-scanned in gate 7).
+# -Branch exists only to be refused: anything but 'development' exits 40.
 # Test overrides: -BuildDir -LedgerPath -SteamCmd -SkipGitGates -NoGitHub -RepoDir -WorkDir -CheckCommand.
 #
 # Exit codes: 0 ok, 1 other error, 10+n gate n failed, 30 steamcmd error, 31 no BuildID,
-#             40 refused (default branch, or CLAUDECODE set for a real Steam step).
+#             40 refused (a -Branch other than development, or CLAUDECODE set for a real Steam step).
 #
 # The owner runs every real Steam step (dev, upload-only, preview, promoted) in their own terminal:
 # the script refuses them when CLAUDECODE is set. No script ever sets the default branch live.
@@ -37,7 +38,8 @@ param(
     [switch]$NoGitHub,       # skips every gh call
     [string]$RepoDir,
     [string]$WorkDir,
-    [string]$CheckCommand    # replaces gates 6-8 with: pwsh -File <CheckCommand> tests|secrets|assets
+    [string]$CheckCommand    # replaces gates 6-8 and the promoted draft scan with:
+                             # pwsh -File <CheckCommand> tests|secrets|assets (real command in $env:RELEASE_REAL_CHECK)
 )
 
 Set-StrictMode -Version Latest
@@ -74,6 +76,16 @@ function Test-SteamIds([string]$AppId, [string]$DepotId) {
     if ($DepotId -notmatch '^\d+$') { $problems += 'STEAM_DEPOT_WIN is not a numeric Depot ID.' }
     elseif ($DepotId -eq $AppId) { $problems += 'STEAM_DEPOT_WIN equals STEAM_APPID; the depot has its own ID.' }
     return , $problems
+}
+
+# Returns $null when the Steam branch is usable, else why it is refused. The ledger only has
+# development and default columns, and no script sets default live, so only 'development' passes.
+function Test-ReleaseBranch([string]$Name) {
+    $b = $Name.Trim()
+    if ($b -in 'default', 'public') { return "Refusing to set the default branch live. Upload to development, test, then promote by hand in Steamworks (release.ps1 promote drafts the steps)." }
+    if ($b -cnotmatch '^[a-z0-9_-]+$') { return "Steam branch '$b' is not a valid name (lowercase letters, digits, '_' and '-')." }
+    if ($b -cne 'development') { return "Steam branch '$b' is refused: releases go live on 'development' only (the ledger tracks development and default)." }
+    $null
 }
 
 function Stop-Release([int]$Code, [string]$Message) {
@@ -246,8 +258,11 @@ function Invoke-Gate([int]$N, [string]$Name, [scriptblock]$Check, [switch]$WarnO
 
 # Runs a check command with output shown; returns its exit code.
 function Invoke-Check([string]$Gate, [string[]]$Command) {
-    if ($CheckCommand) { $Command = @('pwsh', '-NoProfile', '-File', $CheckCommand, $Gate) }
-    Write-Host ">> $($Command -join ' ')"
+    Write-Host ">> $($Command -join ' ')$(if ($CheckCommand) { " (test override: $CheckCommand $Gate)" })"
+    if ($CheckCommand) {
+        $env:RELEASE_REAL_CHECK = ConvertTo-Json -InputObject @($Command) -Compress
+        $Command = @('pwsh', '-NoProfile', '-File', $CheckCommand, $Gate)
+    }
     $exe = $Command[0]; $rest = @($Command | Select-Object -Skip 1)
     & $exe @rest | Out-Host
     $LASTEXITCODE
@@ -279,6 +294,8 @@ function New-Deployment([string]$Environment, [string]$Ref, [string]$Description
     Invoke-Gh api "repos/:owner/:repo/deployments/$id/statuses" --method POST --input $statusPayload | Out-Null
     Write-Host "Recorded a $Environment deployment for $Ref."
 }
+
+function Get-OgSecretsCommand { @('uv', 'run', '--project', $ToolsDir, 'python', '-m', 'og', 'secrets') }
 
 function Save-LedgerCommit([string]$Message) {
     if ($SkipGitGates) { Write-Host "Ledger updated (not committed: -SkipGitGates): $LedgerPath"; return }
@@ -338,8 +355,17 @@ function Invoke-Upload {
         if ($code -ne 0) { "repo checks (pytest) failed (exit $code)." }
     }
     Invoke-Gate 7 'secret scan clean' {
-        $code = Invoke-Check 'secrets' @('uv', 'run', '--project', $ToolsDir, 'python', '-m', 'og', 'secrets')
-        if ($code -ne 0) { "og secrets reported findings (exit $code)." }
+        # Every tracked file, plus the -Notes text that goes into the build description, the
+        # ledger and the GitHub release body.
+        $scan = @(Get-OgSecretsCommand) + '--tracked'
+        if ($Notes) {
+            New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
+            $notesCheck = Join-Path $WorkDir 'release-notes-check.txt'
+            Set-Content -LiteralPath $notesCheck -Value $Notes -Encoding utf8
+            $scan += $notesCheck
+        }
+        $code = Invoke-Check 'secrets' $scan
+        if ($code -ne 0) { "og secrets reported findings in tracked files or -Notes (exit $code)." }
     }
     Invoke-Gate 8 'asset check clean' {
         $code = Invoke-Check 'assets' @('uv', 'run', '--project', $ToolsDir, 'python', '-m', 'og', 'assets', 'check')
@@ -447,7 +473,10 @@ function Invoke-Upload {
                 development_live_utc = $(if ($setLive) { $now } else { '' }); notes = $Notes }))
     Write-Ledger $ledger
     Write-Host "Uploaded build $buildId ($version, $sha)$(if ($setLive) { ", live on $Branch" } else { ', not set live' }). Ledger: $LedgerPath"
-    Save-LedgerCommit "docs: record Steam build $version (BuildID $buildId)"
+    try { Save-LedgerCommit "docs: record Steam build $version (BuildID $buildId)" }
+    catch {
+        Stop-Release 1 "Upload done as BuildID $buildId; do not re-run. The ledger row is written to $LedgerPath but its commit or push failed: commit and push docs/steam/BUILDS.md by hand, then create the GitHub release if wanted. ($($_.Exception.Message.Trim()))"
+    }
 
     if ($NoGitHub) { Write-Host 'GitHub release and deployment skipped (-NoGitHub).'; return }
     $notesFile = Join-Path $WorkDir "github-release-$version.md"
@@ -485,13 +514,17 @@ function Invoke-Status {
     elseif (-not $env:STEAM_APPID -or -not $env:STEAM_BUILD_ACCOUNT) { $reason = 'STEAM_APPID or STEAM_BUILD_ACCOUNT not set.' }
     elseif (-not (Test-Path -LiteralPath $SteamCmd)) { $reason = "steamcmd not found at $SteamCmd." }
     Write-Host ''
+    if (-not $reason) {
+        $run = Invoke-SteamCmdQuiet @('+@NoPromptForPassword', '1', '+login', $env:STEAM_BUILD_ACCOUNT, '+app_info_update', '1', '+app_info_print', $env:STEAM_APPID, '+quit')
+        $steam = Get-SteamBranchBuilds $run.Lines
+        if ($run.Code -ne 0) { $reason = "steamcmd exited $($run.Code); is the build account logged in? Run steamcmd once in your terminal." }
+        elseif (($run.Lines -join "`n") -notmatch '"branches"') { $reason = 'steamcmd printed no branches block for the app.' }
+    }
     if ($reason) {
         Write-Host "Steam state: unknown ($reason)"
         foreach ($b in $expected.Keys) { Write-Host "  ${b}: ledger says $(if ($expected[$b]) { "BuildID $($expected[$b].build_id) ($($expected[$b].version))" } else { 'nothing live' })" }
     }
     else {
-        $run = Invoke-SteamCmdQuiet @('+login', $env:STEAM_BUILD_ACCOUNT, '+app_info_update', '1', '+app_info_print', $env:STEAM_APPID, '+quit')
-        $steam = Get-SteamBranchBuilds $run.Lines
         Write-Host 'Steam branch    ledger      Steam'
         foreach ($b in $expected.Keys) {
             $steamName = if ($b -eq 'default') { 'public' } else { $b }
@@ -584,6 +617,14 @@ function Invoke-Promoted {
         if ($unfilled.Count) { Stop-Release 1 "Fill the [narrative] marker in $($unfilled -join ' and ') under $draft first. Nothing was recorded." }
     }
     if (-not (Test-Path -LiteralPath $notesFile)) { Write-Warning "No $notesFile; the GitHub Release body is left as it is."; $notesFile = $null }
+    if (Test-Path -LiteralPath $draft) {
+        # Everything in the draft is published text (Steam post, GitHub release body): scan it first.
+        $draftFiles = @(Get-ChildItem -LiteralPath $draft -Recurse -File | ForEach-Object { $_.FullName })
+        if ($draftFiles.Count) {
+            $code = Invoke-Check 'secrets' (@(Get-OgSecretsCommand) + $draftFiles)
+            if ($code -ne 0) { Stop-Release 1 "og secrets reported findings in $draft (exit $code). Nothing was recorded." }
+        }
+    }
 
     $now = Get-UtcNow
     foreach ($r in $ledger.Rows) { if ($r -ne $row -and $r.default_live_utc -and -not $r.default_replaced_utc) { $r.default_replaced_utc = $now } }
@@ -617,9 +658,9 @@ try {
     Import-SteamEnv (Join-Path $RepoDir '.env')
     if (-not $SteamCmd) { $SteamCmd = if ($env:STEAMCMD_PATH) { $env:STEAMCMD_PATH } else { 'C:\steamcmd\steamcmd.exe' } }
 
-    if ($Branch -in 'default', 'public') {
-        Stop-Release 40 'Refusing to set the default branch live. Upload to development, test, then promote by hand in Steamworks (release.ps1 promote drafts the steps).'
-    }
+    $branchProblem = Test-ReleaseBranch $Branch
+    if ($branchProblem) { Stop-Release 40 $branchProblem }
+    $Branch = $Branch.Trim()
     if ($Mode -in 'dev', 'upload-only', 'preview', 'promoted' -and $env:CLAUDECODE) {
         $cmd = "pwsh tools/steam/release.ps1 $Mode$(if ($Version) { " $Version" })"
         Stop-Release 40 "Refusing '$Mode' inside Claude Code (CLAUDECODE is set). The owner runs it in their own terminal: $cmd"

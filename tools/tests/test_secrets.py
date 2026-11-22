@@ -272,3 +272,69 @@ def test_staged_image_sidecar_is_scanned(tmp_path):
     git(tmp_path, "add", "s.png")  # sidecar only in the working tree
     r = og("secrets", "--staged", cwd=tmp_path)
     assert r.returncode == 1 and "valve-confidential" in r.stdout
+
+
+def commit_all(repo):
+    git(repo, "add", "-A")
+    git(repo, "-c", "user.name=t", "-c", "user.email=t@example.com",
+        "-c", "core.hooksPath=none", "commit", "-q", "-m", "x")
+
+
+def test_tracked_scans_every_tracked_file(tmp_path):
+    git(tmp_path, "init", "-q")
+    (tmp_path / "clean.txt").write_text("hello")
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "notes.md").write_text("token " + GHP)
+    commit_all(tmp_path)
+    r = og("secrets", "--tracked", cwd=tmp_path)
+    assert r.returncode == 1 and "docs/notes.md" in r.stdout and "github-token" in r.stdout
+
+
+def test_tracked_clean_repo_passes_and_ignores_untracked(tmp_path):
+    git(tmp_path, "init", "-q")
+    (tmp_path / "clean.txt").write_text("hello")
+    commit_all(tmp_path)
+    (tmp_path / "untracked.txt").write_text("token " + GHP)
+    r = og("secrets", "--tracked", cwd=tmp_path)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_tracked_from_subdirectory_scans_whole_repo(tmp_path):
+    git(tmp_path, "init", "-q")
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "a.txt").write_text("fine")
+    (tmp_path / "leak.txt").write_text("STEAM_APPID=" + "1234567")  # og-secrets: allow
+    commit_all(tmp_path)
+    r = og("secrets", "--tracked", cwd=tmp_path / "sub")
+    assert r.returncode == 1 and "leak.txt" in r.stdout
+
+
+def test_tracked_lfs_pointer_without_content_fails_closed(tmp_path):
+    git(tmp_path, "init", "-q")
+    stage_lfs_pointer(tmp_path, "Art/gone.png", "0" * 64, 10)
+    r = og("secrets", "--tracked", cwd=tmp_path)
+    assert r.returncode == 1 and "unscannable-lfs" in r.stdout
+
+
+def test_tracked_lfs_content_is_scanned(tmp_path):
+    git(tmp_path, "init", "-q")
+    (tmp_path / "Art").mkdir()
+    img = png(tmp_path / "Art" / "x.png", Comment="STEAM_APPID=" + "1234567")  # og-secrets: allow
+    stage_lfs_pointer(tmp_path, "Art/x.png", sha(img), img.stat().st_size)
+    r = og("secrets", "--tracked", cwd=tmp_path)
+    assert r.returncode == 1 and "steam-id" in r.stdout
+
+
+def test_index_blob_read_failure_is_a_finding(tmp_path):
+    from og.secrets import _index_blob
+    git(tmp_path, "init", "-q")
+    data, bad = _index_blob("not-in-index.txt", tmp_path)
+    assert data is None and bad is not None and bad.rule == "unscannable-blob"
+
+
+def test_build_account_literal_is_flagged():
+    assert "steam-build-account" in rules("STEAM_BUILD_ACCOUNT=" + "builder_name")
+    assert "steam-build-account" in rules('"STEAM_BUILD_ACCOUNT": "' + "builder_name" + '"')
+    assert "steam-build-account" not in rules("STEAM_BUILD_ACCOUNT=")
+    assert "steam-build-account" not in rules("STEAM_BUILD_ACCOUNT=\n")
+    assert "steam-build-account" not in rules("+login $env:STEAM_BUILD_ACCOUNT +quit")
