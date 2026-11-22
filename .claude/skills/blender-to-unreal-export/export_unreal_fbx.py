@@ -6,7 +6,7 @@ Run headless:
         --out Art/Export/SM_Barrel.fbx --kind static --all
 
 --kind static    meshes (+ UCX_ collision, SOCKET_ empties)
---kind skeletal  armature + skinned meshes, no animation
+--kind skeletal  armature + skinned meshes, no animation (from a centimetre scene, Unit Scale 0.01)
 --kind anim      armature animation only (bakes the active action)
 --all            select every exportable object first (otherwise uses the saved selection)
 --check-only     validate without writing the file
@@ -25,8 +25,9 @@ UE_FBX_PRESET = dict(
     # conversion is baked in; Unreal's importer handles the right-to-left-handed conversion.
     axis_forward="-Y",
     axis_up="Z",
-    # Scene in meters (scale_length 1.0). FBX_SCALE_UNITS writes the unit into the file and
-    # Unreal converts meters to centimeters on import. Never bake 100x into the vertices.
+    # FBX_SCALE_UNITS writes the scene unit into the file and Unreal converts on import. Static
+    # meshes: metre scene (Unit Scale 1.0). Skeletal meshes: centimetre scene (Unit Scale 0.01),
+    # so no conversion lands on the root bone (see UNIT_SCALE). Never bake 100x with global_scale.
     global_scale=1.0,
     apply_unit_scale=True,
     apply_scale_options="FBX_SCALE_UNITS",
@@ -62,10 +63,20 @@ def fail(msg):
     sys.exit(2)
 
 
-def check_scene_units(scene):
+# Unit Scale per export kind. Static meshes and animations come from a metre scene (1.0). Skeletal
+# meshes come from a centimetre scene (0.01, armature scaled 100 and applied): from a metre scene
+# UE 5.8 folds the metre-to-centimetre conversion of the top Armature node into the root bone,
+# which then imports at scale 100 (verified 2026-11-22, see Art/Characters/Base/NOTES.md).
+UNIT_SCALE = {"static": 1.0, "skeletal": 0.01, "anim": 1.0}
+
+
+def check_scene_units(scene, kind):
     u = scene.unit_settings
-    if u.system not in {"METRIC", "NONE"} or abs(u.scale_length - 1.0) > 1e-6:
-        fail(f"scene units must be metric with Unit Scale 1.0 (got {u.system}, {u.scale_length})")
+    want = UNIT_SCALE[kind]
+    if u.system not in {"METRIC", "NONE"} or abs(u.scale_length - want) > 1e-6:
+        scene_name = "centimetre" if want == 0.01 else "metre"
+        fail(f"--kind {kind} needs a metric {scene_name} scene with Unit Scale {want} "
+             f"(got {u.system}, {u.scale_length}); see the export skill")
 
 
 def check_transforms(objs):
@@ -108,7 +119,7 @@ def main():
     if not objs:
         fail("nothing selected (use --all or save the .blend with the export objects selected)")
 
-    check_scene_units(scene)
+    check_scene_units(scene, args.kind)
     check_transforms(objs)
     check_names(objs, args.kind)
     if args.kind == "skeletal":

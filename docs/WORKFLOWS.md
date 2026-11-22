@@ -32,7 +32,7 @@ Skill: `asset-import`. Policy: `docs/assets/ASSET-POLICY.md`.
 
 Skills: `blender-to-unreal-export`, and `asset-import` for anything not made from scratch. Tools: Blender (4.4 or 5.1 installed), optional Blender MCP or Blender-Developer-Tools skills.
 
-1. Model or clean up in Blender under `Art/` (Metric, unit scale 1.0). Blender-Developer-Tools skills help with cleanup, LODs and collision.
+1. Model or clean up in Blender under `Art/` (Metric, unit scale 1.0; skeletal meshes are exported from a centimetre scene, unit scale 0.01, see the export skill). Blender-Developer-Tools skills help with cleanup, LODs and collision.
 2. Apply transforms and use the project names: `SM_`, `SK_`, `A_`, `UCX_`, `SOCKET_`.
 3. Check without writing: `blender -b <file>.blend --python-exit-code 1 --python .claude/skills/blender-to-unreal-export/export_unreal_fbx.py -- --out Art/Export/<name>.fbx --kind static --all --check-only`.
 4. Export with the same command minus `--check-only`.
