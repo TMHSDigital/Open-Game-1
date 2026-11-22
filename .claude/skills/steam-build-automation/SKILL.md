@@ -28,7 +28,7 @@ What `dev` does, in order:
 
 ## IDs and credentials
 
-- From environment variables, else only these keys from `.env`: `STEAM_APPID`, `STEAM_DEPOT_WIN`, `STEAM_BUILD_ACCOUNT`, `STEAMCMD_PATH`. Templates never hold real IDs, and the script prints names, never values.
+- Only these keys are read from the repo's `.env`: `STEAM_APPID`, `STEAM_DEPOT_WIN`, `STEAM_BUILD_ACCOUNT`, `STEAMCMD_PATH`. A non-empty `.env` value wins over an inherited environment variable (with a warning naming the variable), so a user-level `STEAM_APPID` from another project can never redirect an upload; environment variables are used only for keys `.env` leaves empty. Templates never hold real IDs, and the script prints names, never values.
 - No password anywhere: steamcmd prompts for it and Steam Guard on first login, then caches a session in its own folder (`config\config.vdf`, `ssfn*`: secrets, never in the repo).
 - Uploads use the owner's own Steam account (decision 0010); there is no separate build account. The cached steamcmd session carries full account rights, so never copy it anywhere.
 

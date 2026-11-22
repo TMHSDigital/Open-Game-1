@@ -53,16 +53,21 @@ $script:ExitCode = 1
 
 # --- Helpers (dot-sourced by the test) ------------------------------------------------------------
 
-# Sets allowlisted keys from a .env file into this process only, without printing them, and only
-# where the environment does not already have a value.
+# Sets allowlisted keys from the repo's .env file into this process only, without printing them.
+# A non-empty .env value wins over an inherited environment variable: a user-level STEAM_APPID left
+# over from another project must never redirect this game's upload. When they differ, a warning
+# names the variable (never either value).
 function Import-SteamEnv([string]$EnvFile) {
     if (-not (Test-Path -LiteralPath $EnvFile)) { return }
     foreach ($line in Get-Content -LiteralPath $EnvFile) {
         if ($line -match '^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$' -and $Matches[1] -in $SteamEnvKeys) {
             $key = $Matches[1]; $value = $Matches[2].Trim('"', "'")
-            if ($value -and -not [Environment]::GetEnvironmentVariable($key)) {
-                [Environment]::SetEnvironmentVariable($key, $value, 'Process')
+            if (-not $value) { continue }
+            $inherited = [Environment]::GetEnvironmentVariable($key)
+            if ($inherited -and $inherited -ne $value) {
+                Write-Warning "$key from .env overrides a different value inherited from the environment (another project?)."
             }
+            [Environment]::SetEnvironmentVariable($key, $value, 'Process')
         }
     }
 }

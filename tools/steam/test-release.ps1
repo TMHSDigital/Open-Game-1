@@ -354,6 +354,15 @@ try {
     Check 'VDF: depot excludes *.pdb, *.log, steam_appid.txt, Saved\*, Intermediate\*' (@($excl | Where-Object { $depotText -notmatch [regex]::Escape("`"FileExclusion`" `"$_`"") }).Count -eq 0) $depotText
     Check 'VDF: IDs come from env, SetLive development, Preview 0' ($appText -match '"AppID" "1234560"' -and $depotText -match '"DepotID" "1234561"' -and $appText -match '"SetLive" "development"' -and $appText -match '"Preview" "0"') $appText  # og-secrets: allow (fake test IDs)
     Check 'dry-run prints the steamcmd line without the account name' ($r.Output -match '\+run_app_build' -and $r.Output -notmatch 'fake_builder') $r.Output
+
+    # The repo's .env wins over a conflicting inherited environment variable (another project's App ID).
+    Set-Content (Join-Path $fx.Repo '.env') "STEAM_APPID=7777770`nSTEAM_DEPOT_WIN=7777771"  # og-secrets: allow (fake test IDs)
+    $r = Invoke-Release @('dry-run')
+    $appText = if (Test-Path $appVdf) { Get-Content $appVdf -Raw } else { '' }
+    $depotText = if (Test-Path $depotVdf) { Get-Content $depotVdf -Raw } else { '' }
+    Check '.env overrides a conflicting inherited STEAM_APPID / STEAM_DEPOT_WIN' ($r.Code -eq 0 -and $appText -match '"AppID" "7777770"' -and $depotText -match '"DepotID" "7777771"') $appText  # og-secrets: allow (fake test IDs)
+    Check '.env override warns by variable name, never value' ($r.Output -match 'STEAM_APPID' -and $r.Output -match 'overrides' -and $r.Output -notmatch '1234560|7777770') $r.Output  # og-secrets: allow (fake test IDs)
+    Remove-Item (Join-Path $fx.Repo '.env')
     Check 'dry-run does not bump the version' ((Get-Content (Join-Path $fx.Repo 'Game\Config\DefaultGame.ini') -Raw) -eq $iniBefore)
     $staged = @(Get-ChildItem -LiteralPath (Join-Path $fx.Work 'content') -Recurse -File | ForEach-Object { [IO.Path]::GetRelativePath((Join-Path $fx.Work 'content'), $_.FullName) })
     Check 'Staging was recreated (left-over file gone)' ($staged -notcontains 'left-over-from-last-run.txt') ($staged -join "`n")
