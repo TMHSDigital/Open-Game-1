@@ -27,13 +27,14 @@ Skip steps 1 to 4 if there is no recording.
 
 1. screencast `stop_recording`.
 2. screencast `find_text` with `redact: true` over the recording, then `redact_region` on every hit (tokens, App or Depot IDs next to "Steam", confidentiality banners, Steamworks partner pages, emails).
-3. screencast `pipeline` with recipe `pr_demo` to produce a clip of 90 seconds or less.
-4. screencast `contact_sheet` of the clip. Save the OCR text for each image next to it as a `.ocr.txt` sidecar (`<name>.ocr.txt`); `og session end` scans those sidecars and refuses to commit an image whose text contains a secret.
+3. screencast `pipeline` with recipe `pr_demo` to produce a clip of 90 seconds or less. Run screencast `find_text` over the finished clip and save all the text it found as `<clip>.ocr.txt` next to the clip (for `demo.mp4`: `demo.mp4.ocr.txt`).
+4. screencast `contact_sheet` of the clip. Save its OCR text (screencast `find_text` on the sheet) next to it as `<sheet>.ocr.txt` (for `sheet.png`: `sheet.png.ocr.txt`).
+   `og session end` refuses a `--clip` or `--contact-sheet` that has no `.ocr.txt` next to it, scans that text like any other text, and refuses to publish anything whose text contains a secret. Only if the owner has looked at the media and says so, add `--no-ocr-ok`: `end` then prints that it published without an OCR check. Unreal capture stills are game renders and need no OCR text.
 5. If the editor is available, capture stills: `pwsh tools/ue/capture.ps1 -Cameras all -OutDir _scratch/capture` (or let `og session end --capture` run it).
 6. Run:
    `uv run --project tools python -m og session end --capture --clip <clip.mp4> --contact-sheet <sheet.png> --co-author "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"`
-   Leave out `--capture`, `--clip`, `--contact-sheet` when you do not have them (use `--capture-dir <dir>` for stills already rendered). `end` fills Changes and Decisions touched from `git log`, converts stills to `docs/devlog/media/<id>/*.webp`, updates `docs/captures/INDEX.md`, scans every new image and text file, uploads the clip, and commits `docs: session <id> devlog`.
-   If it exits non-zero it found a secret: nothing was committed. Fix the source (re-redact, re-capture), then run it again. Never use `--no-verify`.
+   Leave out `--capture`, `--clip`, `--contact-sheet` when you do not have them (use `--capture-dir <dir>` for stills already rendered). `end` fills Changes and Decisions touched from `git log`, converts stills to `docs/devlog/media/<id>/*.webp`, updates `docs/captures/INDEX.md` (with the commit recorded in `capture.json`), scans every new image and text file and the clip's OCR text, uploads the clip, and commits `docs: session <id> devlog` with only its own files (anything else you had staged stays staged).
+   If it exits non-zero it found a secret or a missing `.ocr.txt`: nothing was committed or uploaded. Fix the source (re-redact, re-capture), then run it again. Never use `--no-verify`.
 7. Open the new entry and replace the `<!-- narrative -->` marker with a short paragraph: what was done, what was decided, what comes next. Plain prose, no emojis.
 8. Amend nothing. Commit the narrative as a new commit: `docs: session <id> narrative`, ending with the `Co-Authored-By` trailer.
 

@@ -12,7 +12,7 @@ Skill: `session`.
 4. If recording: write the screencast session id into `_scratch/session.json`.
 5. Work. Decisions go through the `decide` skill, assets through `asset-import`, builds through `ue-build-test`.
 6. To end: if recording, screencast MCP `stop_recording`, `find_text` with `redact: true`, `redact_region`, `pipeline` (recipe `pr_demo`), `contact_sheet`.
-7. `og session end --capture [--clip ...] [--contact-sheet ...] --co-author "..."`. It runs `tools/ue/capture.ps1` for the fixed cameras, converts stills to WebP under `docs/devlog/media/<id>/`, updates `docs/captures/INDEX.md`, runs `og secrets` on every new file, uploads any clip to the `media-YYYY-MM` prerelease with `gh`, and commits.
+7. `og session end --capture [--clip ...] [--contact-sheet ...] --co-author "..."`. It runs `tools/ue/capture.ps1` for the fixed cameras, converts stills to WebP under `docs/devlog/media/<id>/`, updates `docs/captures/INDEX.md`, runs `og secrets` on every new file and on the OCR text of the clip and contact sheet, uploads any clip to the `media-YYYY-MM` prerelease with `gh`, and commits only those files. A `--clip` or `--contact-sheet` without its `<file>.ocr.txt` (from screencast `find_text`) is refused unless the owner passes `--no-ocr-ok`.
 8. Write the narrative paragraph at the `<!-- narrative -->` marker and commit it as `docs: session <id> narrative`.
 
 ## Import a third-party asset

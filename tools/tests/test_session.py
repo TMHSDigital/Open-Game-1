@@ -174,6 +174,7 @@ def test_end_uploads_clip_to_monthly_release(repo, monkeypatch):
     session.start(repo, "Clip", today=DAY)
     clip = repo / "demo.mp4"
     clip.write_bytes(b"not really a video")
+    ocr(clip)
     assert session.end(repo, clip=clip, today=DAY) == 0
     creates = [c for c in calls if c[:2] == ["release", "create"]]
     uploads = [c for c in calls if c[:2] == ["release", "upload"]]
@@ -195,6 +196,7 @@ def test_end_skips_release_create_when_present(repo, monkeypatch):
     session.start(repo, "Clip", today=DAY)
     clip = repo / "demo.mp4"
     clip.write_bytes(b"x")
+    ocr(clip)
     assert session.end(repo, clip=clip, today=DAY) == 0
     assert not [c for c in calls if c[:2] == ["release", "create"]]
 
@@ -241,6 +243,7 @@ def test_end_second_scan_block_leaves_no_side_effects(repo, monkeypatch):
     png(caps / "stage-overview.png")
     clip = repo / "demo.mp4"
     clip.write_bytes(b"x")
+    ocr(clip)
     index_before = (repo / "docs/captures/INDEX.md").read_text("utf-8")
     head = git(repo, "rev-parse", "HEAD")
     entry_before = only_entry(repo).read_text("utf-8")
@@ -320,6 +323,7 @@ def test_end_upload_failure_warns_with_manual_command_and_commits(repo, monkeypa
     session.start(repo, "Upload fails", today=DAY)
     clip = repo / "demo.mp4"
     clip.write_bytes(b"x")
+    ocr(clip)
     head = git(repo, "rev-parse", "HEAD")
     assert session.end(repo, clip=clip, today=DAY) == 0
     err = capsys.readouterr().err
@@ -337,5 +341,109 @@ def test_end_gh_binary_missing_for_release_view(repo, monkeypatch, capsys):
     session.start(repo, "No gh", today=DAY)
     clip = repo / "demo.mp4"
     clip.write_bytes(b"x")
+    ocr(clip)
     assert session.end(repo, clip=clip, today=DAY) == 0
     assert "manually" in capsys.readouterr().err
+
+
+def ocr(path: Path, text: str = "Unreal Editor  CombatSimulator\n") -> Path:
+    side = path.with_name(path.name + ".ocr.txt")
+    side.write_text(text, "utf-8")
+    return side
+
+
+def test_end_refuses_contact_sheet_without_ocr_sidecar(repo, capsys):
+    session.start(repo, "Sheet", today=DAY)
+    sheet = png(repo / "_scratch/sheet.png")
+    head = git(repo, "rev-parse", "HEAD")
+    assert session.end(repo, contact_sheet=sheet, today=DAY) != 0
+    assert "ocr" in capsys.readouterr().err.lower()
+    assert git(repo, "rev-parse", "HEAD") == head
+    assert not (repo / "docs/devlog/media").exists()
+    (repo / "_scratch/sheet.ocr.txt").write_text("Unreal Editor\n", "utf-8")
+    assert session.end(repo, contact_sheet=sheet, today=DAY) == 0
+
+
+def test_end_refuses_clip_without_ocr_text(repo, monkeypatch, capsys):
+    calls = []
+    monkeypatch.setattr(gh, "_gh", lambda a: calls.append(list(a)) or "owner/name\n")
+    session.start(repo, "Clip no OCR", today=DAY)
+    clip = repo / "_scratch/demo.mp4"
+    clip.parent.mkdir(parents=True, exist_ok=True)
+    clip.write_bytes(b"x")
+    head = git(repo, "rev-parse", "HEAD")
+    assert session.end(repo, clip=clip, today=DAY) != 0
+    assert "--no-ocr-ok" in capsys.readouterr().err
+    assert git(repo, "rev-parse", "HEAD") == head and not calls
+
+
+def test_end_no_ocr_ok_publishes_and_says_so(repo, monkeypatch, capsys):
+    monkeypatch.setattr(gh, "_gh", lambda a: "owner/name\n")
+    session.start(repo, "Owner override", today=DAY)
+    clip = repo / "_scratch/demo.mp4"
+    clip.parent.mkdir(parents=True, exist_ok=True)
+    clip.write_bytes(b"x")
+    sheet = png(repo / "_scratch/sheet.png")
+    assert session.end(repo, clip=clip, contact_sheet=sheet, no_ocr_ok=True, today=DAY) == 0
+    err = capsys.readouterr().err
+    assert "--no-ocr-ok" in err and "demo.mp4" in err and "sheet.png" in err
+
+
+def test_end_blocks_secret_in_clip_ocr_text(repo, monkeypatch):
+    calls = []
+    monkeypatch.setattr(gh, "_gh", lambda a: calls.append(list(a)) or "owner/name\n")
+    session.start(repo, "Leaky clip", today=DAY)
+    clip = repo / "_scratch/demo.mp4"
+    clip.parent.mkdir(parents=True, exist_ok=True)
+    clip.write_bytes(b"x")
+    ocr(clip, "Steamworks  " + "Valve " + "Confidential\n")
+    head = git(repo, "rev-parse", "HEAD")
+    assert session.end(repo, clip=clip, today=DAY) != 0
+    assert git(repo, "rev-parse", "HEAD") == head
+    assert not [c for c in calls if c[:2] in (["release", "upload"], ["release", "create"])]
+    ocr(clip)
+    assert session.end(repo, clip=clip, today=DAY) == 0
+    assert [c for c in calls if c[:2] == ["release", "upload"]]
+
+
+@pytest.mark.parametrize("with_capture_flag", [False, True])
+def test_end_reads_commit_from_capture_json(repo, monkeypatch, with_capture_flag):
+    session.start(repo, "Capture sha", today=DAY)
+    caps = repo / "_scratch/capture"
+    png(caps / "stage-overview.png")
+    sha = "c" * 40
+    (caps / "capture.json").write_text(json.dumps({"commit": sha, "cameras": []}), "utf-8")
+    monkeypatch.setattr(session, "_run_capture", lambda r, d: None)
+    assert session.end(repo, capture=with_capture_flag, capture_dir=caps, today=DAY) == 0
+    row = [l for l in (repo / "docs/captures/INDEX.md").read_text("utf-8").splitlines()
+           if "stage-overview" in l][0]
+    assert row.rstrip().endswith(f"| {sha} |")
+
+
+def test_end_ignores_malformed_capture_json_commit(repo):
+    session.start(repo, "Bad capture sha", today=DAY)
+    caps = repo / "_scratch/capture"
+    png(caps / "stage-overview.png")
+    (caps / "capture.json").write_text(json.dumps({"commit": "not-a-sha"}), "utf-8")
+    head = git(repo, "rev-parse", "HEAD")
+    assert session.end(repo, capture_dir=caps, today=DAY) == 0
+    row = [l for l in (repo / "docs/captures/INDEX.md").read_text("utf-8").splitlines()
+           if "stage-overview" in l][0]
+    assert row.rstrip().endswith(f"| {head} |")
+
+
+def test_end_commits_only_session_outputs(repo):
+    session.start(repo, "Pre-staged", today=DAY)
+    (repo / "unrelated.txt").write_text("work in progress", "utf-8")
+    git(repo, "add", "unrelated.txt")
+    assert session.end(repo, today=DAY) == 0
+    assert "unrelated.txt" not in git(repo, "show", "--name-only", "--format=", "HEAD")
+    assert "A  unrelated.txt" in git(repo, "status", "--porcelain")
+
+
+def test_milestone_commits_only_its_page(repo):
+    (repo / "unrelated.txt").write_text("work in progress", "utf-8")
+    git(repo, "add", "unrelated.txt")
+    assert session.milestone(repo, 1, "first", today=DAY) == 0
+    assert git(repo, "show", "--name-only", "--format=", "HEAD") == "docs/milestones/m1-first.md"
+    assert "A  unrelated.txt" in git(repo, "status", "--porcelain")

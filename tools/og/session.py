@@ -2,7 +2,12 @@
 
 State lives in `_scratch/session.json` (gitignored). `end` writes the devlog entry, converts
 captures to WebP, scans everything with og.secrets (a finding blocks the commit), uploads the
-clip to the monthly media release and commits.
+clip to the monthly media release and commits only its own outputs.
+
+Desktop-derived media (the contact sheet and the clip) must come with OCR text next to them
+(`<file>.ocr.txt`, made with screencast find_text), which is scanned like any other text. Without
+it `end` refuses, unless the owner passes --no-ocr-ok. Unreal capture PNGs are game renders and
+need no OCR text.
 """
 from __future__ import annotations
 
@@ -212,6 +217,28 @@ def _upload_clip(repo: Path, sid: str, clip: Path) -> None:
     gh._gh(["release", "upload", tag, str(asset), "--clobber"])
 
 
+def _ocr_sidecars(media: Path) -> list[Path]:
+    """Existing OCR text files for a media file: <name>.ocr.txt or <stem>.ocr.txt."""
+    media = Path(media)
+    cands = (media.with_name(media.name + ".ocr.txt"), media.with_suffix(".ocr.txt"))
+    return [c for c in dict.fromkeys(cands) if c.is_file()]
+
+
+def _clip_text_findings(clip: Path) -> list:
+    """Scan the clip's OCR text and, if present, its transcript (<clip>.srt / <stem>.srt)."""
+    clip = Path(clip)
+    texts = _ocr_sidecars(clip) + [t for t in dict.fromkeys(
+        (clip.with_name(clip.name + ".srt"), clip.with_suffix(".srt"))) if t.is_file()]
+    found = []
+    for t in texts:
+        found += secrets.scan_text(t.read_text("utf-8", "replace"), str(clip))
+    return found
+
+
+def _missing_ocr(clip: Path | None, contact_sheet: Path | None) -> list[Path]:
+    return [Path(m) for m in (contact_sheet, clip) if m and not _ocr_sidecars(Path(m))]
+
+
 def _merge_index(existing: str, rows: list[str]) -> str:
     """Append rows whose image path is not already listed (idempotent on rerun)."""
     if existing and not existing.endswith("\n"):
@@ -223,11 +250,23 @@ def _merge_index(existing: str, rows: list[str]) -> str:
 def end(repo: Path, capture: bool = False, clip: Path | None = None,
         contact_sheet: Path | None = None, capture_dir: Path | None = None,
         commit: bool = True, co_author: str | None = None,
-        today: datetime.date | None = None) -> int:
+        today: datetime.date | None = None, no_ocr_ok: bool = False) -> int:
     repo = Path(repo)
     if clip and not Path(clip).is_file():
         print(f"og session: clip not found: {clip}", file=sys.stderr)
         return 1
+    missing = _missing_ocr(clip, contact_sheet)
+    if missing and not no_ocr_ok:
+        for m in missing:
+            print(f"og session: no OCR text for {m} (expected {m.name}.ocr.txt next to it, "
+                  "from screencast find_text).", file=sys.stderr)
+        print("Refusing to publish desktop media without an OCR secret check; nothing written. "
+              "Add the .ocr.txt file, or pass --no-ocr-ok if you have checked it yourself.",
+              file=sys.stderr)
+        return 1
+    for m in missing:
+        print(f"NOTE: --no-ocr-ok: publishing {m} without an OCR text check (owner's decision).",
+              file=sys.stderr)
     state, warning = _resolve_start(repo, today or datetime.date.today())
     if warning:
         print(f"WARNING: {warning}", file=sys.stderr)
@@ -244,10 +283,12 @@ def end(repo: Path, capture: bool = False, clip: Path | None = None,
     if contact_sheet:
         sources.append(("contact-sheet", Path(contact_sheet)))
     findings = [f for _, p in sources for f in secrets.scan_image(p)]
+    if clip:
+        findings += _clip_text_findings(Path(clip))
     if findings:
         _print_findings(findings)
-        print("Blocked: secrets found in capture images; nothing written or committed.",
-              file=sys.stderr)
+        print("Blocked: secrets found in capture images or clip text; nothing written, uploaded "
+              "or committed.", file=sys.stderr)
         return 1
 
     # 2. build every output in a staging dir; docs/ is untouched until all scans pass.
@@ -265,11 +306,16 @@ def _end_staged(repo, stage, state, warning, sources, cdir, capture, clip, commi
     end_sha = _git(repo, "rev-parse", "HEAD", check=False)
     cap_sha = end_sha
     meta = cdir / "capture.json"
-    if capture and meta.is_file():
+    if meta.is_file():  # written by tools/ue/capture.ps1, for --capture and --capture-dir alike
         try:
-            cap_sha = json.loads(meta.read_text("utf-8")).get("sha") or end_sha
-        except ValueError:
-            pass
+            recorded = json.loads(meta.read_text("utf-8-sig")).get("commit")
+        except (ValueError, AttributeError):
+            recorded = None
+        if isinstance(recorded, str) and re.fullmatch(r"[0-9a-f]{40}", recorded):
+            cap_sha = recorded
+        else:
+            print(f"WARNING: {meta} has no valid 40-hex 'commit'; INDEX rows use HEAD.",
+                  file=sys.stderr)
     media_rel = Path("docs") / "devlog" / "media" / sid
     captures: list[tuple[str, str]] = []
     rows: list[str] = []
@@ -336,11 +382,12 @@ def _end_staged(repo, stage, state, warning, sources, cdir, capture, clip, commi
     print(f"Wrote {entry.relative_to(repo).as_posix()}")
     if not commit:
         return 0
-    _git(repo, "add", "--", *[f.relative_to(repo).as_posix() for _, f in outputs])
+    paths = [f.relative_to(repo).as_posix() for _, f in outputs]
+    _git(repo, "add", "--", *paths)
     msg = f"docs: session {sid} devlog\n\nSession: {sid}\n"
     if co_author:
         msg += f"\n{co_author}\n"
-    _git(repo, "commit", "-m", msg)
+    _git(repo, "commit", "-m", msg, "--", *paths)  # only the session outputs, not other staged work
     _state_path(repo).unlink(missing_ok=True)
     return 0
 
@@ -405,8 +452,9 @@ def milestone(repo: Path, n: int, slug: str, today: datetime.date | None = None,
     page.parent.mkdir(parents=True, exist_ok=True)
     page.write_text(text, "utf-8")
     if commit:
-        _git(repo, "add", "--", page.relative_to(repo).as_posix())
-        _git(repo, "commit", "-m", f"docs: milestone {tag}")
+        rel = page.relative_to(repo).as_posix()
+        _git(repo, "add", "--", rel)
+        _git(repo, "commit", "-m", f"docs: milestone {tag}", "--", rel)
         _git(repo, "tag", "-a", tag, "-m", f"Milestone {n}: {slug}")
     print(tag)
     return 0
@@ -430,7 +478,8 @@ def _run_session(args) -> int:
             return 0
         return end(repo, capture=args.capture, clip=args.clip,
                    contact_sheet=args.contact_sheet, capture_dir=args.capture_dir,
-                   commit=not args.no_commit, co_author=args.co_author)
+                   commit=not args.no_commit, co_author=args.co_author,
+                   no_ocr_ok=args.no_ocr_ok)
     except SessionError as exc:
         print(f"og session: {exc}", file=sys.stderr)
         return 1
@@ -455,8 +504,10 @@ def add_parser(sub) -> None:
     e = ss.add_parser("end", help="write the devlog entry and commit it")
     e.add_argument("--capture", action="store_true", help="run tools/ue/capture.ps1 -Cameras all")
     e.add_argument("--capture-dir", type=Path, help="use existing capture PNGs from this dir")
-    e.add_argument("--clip", type=Path)
-    e.add_argument("--contact-sheet", type=Path)
+    e.add_argument("--clip", type=Path, help="needs <clip>.ocr.txt next to it")
+    e.add_argument("--contact-sheet", type=Path, help="needs <sheet>.ocr.txt next to it")
+    e.add_argument("--no-ocr-ok", action="store_true",
+                   help="publish the clip or contact sheet without .ocr.txt (owner checked it)")
     e.add_argument("--no-commit", action="store_true")
     e.add_argument("--co-author", help="full 'Co-Authored-By: ...' trailer line")
     m = sub.add_parser("milestone", help="tag a milestone and write its page")
