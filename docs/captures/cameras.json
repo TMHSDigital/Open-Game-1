@@ -1,0 +1,20 @@
+[
+  {
+    "name": "stage-overview",
+    "map": "/Game/Maps/L_CaptureStage",
+    "location": [-500, -1000, 500],
+    "rotation": [-20, 42, 0],
+    "fov": 70,
+    "resolution": [1920, 1080],
+    "since": "2026-11-22"
+  },
+  {
+    "name": "stage-closeup",
+    "map": "/Game/Maps/L_CaptureStage",
+    "location": [-250, -300, 180],
+    "rotation": [-18, 50, 0],
+    "fov": 60,
+    "resolution": [1920, 1080],
+    "since": "2026-11-22"
+  }
+]
