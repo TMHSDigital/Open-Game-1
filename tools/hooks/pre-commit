@@ -1,0 +1,5 @@
+#!/bin/sh
+# Enable with: git config core.hooksPath tools/hooks
+uv run --project tools python -m og secrets --staged || exit 1
+# Tolerates the not-yet-existing subcommand (argparse exit 2) until Task 2 removes this.
+uv run --project tools python -m og assets check || [ $? -eq 2 ]

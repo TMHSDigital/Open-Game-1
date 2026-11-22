@@ -1,0 +1,30 @@
+{
+  "mcpServers": {
+    "unreal": {
+      "type": "http",
+      "url": "http://127.0.0.1:8000/mcp"
+    },
+    "screencast": {
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "@tmhs/screencast-mcp"]
+    },
+    "steam": {
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "@tmhs/steam-mcp"],
+      "env": {
+        "STEAM_API_KEY": "<your-steam-web-api-key>",
+        "STEAM_MCP_READ_ONLY": "1"
+      }
+    },
+    "blender": {
+      "_note": "Blender Lab MCP live session; see the 'Live Blender session' section of the Blender-Developer-Tools README. Pin the commit you have reviewed.",
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://projects.blender.org/lab/blender_mcp.git#subdirectory=mcp",
+        "blender-mcp"
+      ]
+    }
+  }
+}

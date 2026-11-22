@@ -1,0 +1,77 @@
+# ---------------------------------------------------------------
+# Open-Game-1 (Combat Simulator)
+# This repo is PUBLIC. Anything committed is published.
+# See docs/decisions (public-repo secrets policy).
+# ---------------------------------------------------------------
+
+# Local planning and design work (superpowers specs and plans)
+docs/superpowers/
+
+# Scratch, drafts, and unpublished release material
+_scratch/
+_release/
+
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+*cookies*.txt
+steam/KEYS*
+*KEYS*.md
+steam_appid.txt
+steam/.depot-confirmed
+
+# Generated per-run Steam build configs (contain real IDs)
+app_build_*.vdf
+depot_build_*.vdf
+!steam/templates/*.vdf
+
+# MCP client configs (local paths, ports); commit the .example instead
+.mcp.json
+!.mcp.json.example
+
+# Unreal Engine (project lives in Game/)
+Game/Binaries/
+Game/DerivedDataCache/
+Game/Intermediate/
+Game/Saved/
+Game/Plugins/*/Binaries/
+Game/Plugins/*/Intermediate/
+Game/.vs/
+Game/*.sln
+Game/*.VC.db
+Game/*.opensdf
+Game/*.sdf
+Game/*.suo
+Game/*.xcworkspace
+*.pdb
+*.log
+
+# Packaged builds and staging
+Packaged/
+Staging/
+dist/
+
+# Blender
+*.blend1
+*.blend2
+*.blend@
+
+# Raw recordings and capture intermediates (published clips go to GitHub Releases)
+*.mp4
+*.mkv
+*.mov
+
+# Tooling
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+
+# OS and editors
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+.idea/
+_site/
