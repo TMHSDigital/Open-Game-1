@@ -39,6 +39,7 @@ Game/Plugins/*/Binaries/
 Game/Plugins/*/Intermediate/
 Game/.vs/
 Game/*.sln
+Game/*.slnx
 Game/*.VC.db
 Game/*.opensdf
 Game/*.sdf
