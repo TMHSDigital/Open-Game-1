@@ -59,3 +59,46 @@ So Blender (x, y, z) m becomes Unreal (x, -y, z) x 100 cm. The UE5 mannequin mes
 which is Blender -Y. Build the base character facing Blender -Y, as the export skill says, with
 its left side on Blender +X, and it faces the same way as the mannequin after import. As with the
 mannequin, the character's mesh component needs -90 degrees yaw so it faces actor +X.
+
+## Base character build (Task 2)
+
+`build_base_character.py` builds the armature and the faceless mesh from scratch, checks them,
+saves `SK_BaseCharacter.blend` and exports `SK_BaseCharacter.fbx` through the export skill's own
+script. Build choices:
+
+- Joint positions come from Drillis and Contini (1966) segment fractions of stature for a 180 cm
+  adult (listed in the script). The local engine dump is only printed as a comparison: body
+  joints land within about 3 cm of it; the hands sit about 10 cm further back because the
+  forearm swings forward only 12 degrees.
+- All 89 bones are built. `root`, `ik_foot_root`, `ik_hand_root`, `interaction` and
+  `center_of_mass` sit at the origin pointing +Y with roll 0, so they import with no rotation.
+  `ik_foot_*` and `ik_hand_*` copy the foot and hand bones. The ik and helper bones, and `root`,
+  carry no weights.
+- Mesh: skin modifier over a node graph, subdivided twice (about 16,700 triangles). Rest pose is
+  the A-pose above, with a 12 degree elbow bend and a slight knee bend.
+
+## Skeletal round-trip (verified 2026-11-22, Blender 5.1.1, UE 5.8.3)
+
+Method: the committed FBX was imported headless into a throwaway scratch project with the default
+UE 5.8 import (Interchange, automated `AssetImportTask`, no option changes), placed in a scratch
+map at the origin with no rotation, and read back through the skeletal mesh component and the
+skeleton's reference pose.
+
+| Check | Result |
+|---|---|
+| Bone count | 89, names as in `skeleton_reference.json` |
+| Height | mesh bounds z 0 to 180 cm |
+| Root position and rotation | at the origin, no rotation |
+| Facing | Unreal +Y (toes and hands toward +Y), left side on +X |
+| Actor scale | 1 |
+| Root bone scale | **100, not 1** (all bones inherit it in component space) |
+
+The root bone arrives at scale 100: the "root bone at scale 100" symptom from the export skill.
+It does not depend on the preset's scale option: `FBX_SCALE_UNITS`, `FBX_SCALE_ALL` and
+`FBX_SCALE_NONE` all import with root scale 100, because Unreal applies the metre-to-centimetre
+conversion on the top `Armature` node and folds it into `root`. A scratch export from a
+centimetre scene (Unit Scale 0.01, armature scaled 100 and applied, preset otherwise unchanged)
+imported with root scale 1, pelvis at 97.6 cm and the mesh at 180 cm. The preset's unit check
+currently rejects such a scene, so the fix is a preset change and needs a decision first. The
+FBX here is exported with the preset as it stands. Interchange also logs a harmless-looking
+"BindPose Matrix generation acquired 2 different Matrices" warning on import.
