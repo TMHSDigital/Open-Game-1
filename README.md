@@ -35,7 +35,7 @@ Every design decision, every work session and every Steam build is recorded in t
 | **Phase** | Pre-production. The framework is finished; the base character and its movement are built and being tuned. No gameplay yet. |
 | **Engine** | Unreal Engine 5.8, C++ project in [`Game/`](Game/): a blank plane with one character, a movement gym and a capture stage |
 | **Next decision** | [OD-001: what does a player do in the first 10 minutes?](https://github.com/TMHSDigital/Open-Game-1/issues/1) |
-| **Steam** | App created. No builds uploaded yet ([setup checklist](docs/steam/SETUP-CHECKLIST.md), [build history](https://tmhsdigital.github.io/Open-Game-1/builds.html)) |
+| **Steam** | Build 0.1.1 is live on the private development branch; nothing is on the public default branch yet ([setup checklist](docs/steam/SETUP-CHECKLIST.md), [build history](https://tmhsdigital.github.io/Open-Game-1/builds.html)) |
 | **Latest devlog** | [Session 0: framework](docs/devlog/2026-11-22-01-session-0-framework.md) |
 
 ## Follow along

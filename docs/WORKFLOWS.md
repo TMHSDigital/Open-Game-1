@@ -44,20 +44,21 @@ Skills: `blender-to-unreal-export`, and `asset-import` for anything not made fro
 
 Plugin: `Game/Plugins/CSCharacter/`. Tuning asset: `Game/Content/Characters/Base/DA_MovementTuning` (a `UCSMovementTuning` data asset). Tools: the Unreal editor; no MCP server is needed.
 
-1. Open `L_MovementGym` in the editor and press Play. The gym is a tuning map only and is not cooked into builds. It has a 30 m sprint lane with 1 m markers, ramps at 15, 30, 44 and 50 degrees, stairs with 15, 25 and 40 cm steps, gaps from 50 to 300 cm, ledges from 1 m to 6 m, and movable physics boxes. `L_Plane` is the default map: a blank grid floor and one character.
+1. Open `L_MovementGym` in the editor and press Play. The gym is cooked into the Steam build too (decision 0013): in any build, F2 (gamepad D-pad right) switches between `L_Plane` and the gym when `bDevTools` is on. It has a 30 m sprint lane with 1 m markers, ramps at 15, 30, 44 and 50 degrees, stairs with 15, 25 and 40 cm steps, gaps from 50 to 300 cm, ledges from 1 m to 6 m, and movable physics boxes. `L_Plane` is the default map: a blank grid floor and one character.
 2. Edit `DA_MovementTuning` and save it. The asset holds the gait speeds, sprint ramp, acceleration and friction, slope and landing costs, jump and air control, camera FOVs, blend time and arm values, and the ragdoll and stagger values. Each field has a tooltip.
-3. In the running game press F5 (gamepad D-pad left), or type `cs.Tuning.Reload` in the console. The result shows on screen: green when accepted, red when a value was rejected. A rejected asset leaves the last good values in place; the message names the field. The console is compiled out of Shipping builds, so F5 is the way to reload there.
+3. In the running game press F5 (gamepad D-pad left), or type `cs.Tuning.Reload` in the console. Both need `bDevTools` on. The result shows on screen: green when accepted, red when a value was rejected. A rejected asset leaves the last good values in place; the message names the field. Live tuning is editor-only: in a packaged (cooked) build the asset cannot be edited, so F5 there only re-applies the packaged values. The console is compiled out of Shipping builds.
 4. Use the dev keys to check the result. They work only while `bDevTools` is on in the applied tuning (it is on by default; turn it off for a build you do not want them in). Turning it off by reload stays off until the next play session.
 
 | Key | Gamepad | Does |
 |---|---|---|
-| F1 | View/Back | Debug overlay: speed, gait, state, camera, and the tuning in use |
-| F5 | D-pad left | Reload `DA_MovementTuning` |
+| F1 | View/Back | Feel overlay: horizontal speed, horizontal acceleration, vertical speed, grounded, floor slope angle, gait and camera view |
+| F2 | D-pad right | Switch map: `L_Plane` to `L_MovementGym` and back (the game mode's `DevSwitchMaps` in `DefaultGame.ini`) |
+| F5 | D-pad left | Reload `DA_MovementTuning` (editor: picks up your edits; packaged build: re-applies the packaged values) |
 | R | D-pad down | Ragdoll the character, or recover it |
 | P | D-pad up | Push the upper body (`DevPushSpeed`; raise it above the ragdoll threshold to knock the character down) |
 | V | R3 | Switch first and third person (works with `bDevTools` off) |
 
-Play keys: WASD and mouse, Space jump, Left Shift sprint, Left Alt walk, Left Ctrl crouch toggle.
+Play keys: WASD and mouse, Space jump (from a crouch it stands up and jumps), Left Shift sprint, Left Alt walk, Left Ctrl crouch toggle. Falling off the plane (below 50 m under it, `RespawnKillZ`) respawns the character at the PlayerStart.
 
 5. After changing a gait speed, rerun `Game/Content/Python/setup_animation.py` so the blend space samples follow the new speeds (headless: `UnrealEditor-Cmd` with `-run=pythonscript -script=...`). The other editor scripts in `Game/Content/Python/` are rerunnable: `import_base_character.py` (mesh, eyes socket, physics asset; never overwrites `DA_MovementTuning`), `create_input_assets.py` (input actions and `IMC_Character`), `create_movement_maps.py` (`L_Plane`, `L_MovementGym`, grid materials) and `create_capture_stage.py`.
 6. Run `pwsh tools/ue/test.ps1 -Filter CombatSimulator.CS` (movement, animation, camera, body, dev tools, maps). Add capture cameras for the gym with the `capture` skill; owner-view shots use the `view`, `commands` and `settleSeconds` fields described there.
