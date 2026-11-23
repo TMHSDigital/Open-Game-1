@@ -1,7 +1,8 @@
 """Imports the base character into /Game/Characters/Base/ and builds its Unreal-side assets.
 
 Makes or refreshes:
-  SK_BaseCharacter            skeletal mesh, from Art/Characters/Base/SK_BaseCharacter.fbx
+  SK_BaseCharacter            skeletal mesh, from Art/Characters/Base/SK_BaseCharacter.fbx, with the
+                              socket `eyes` on the head bone (first-person camera, EYES_CM below)
   SK_BaseCharacter_Skeleton   its skeleton (UE5 humanoid bone names, 89 bones)
   M_BaseCharacter             the material instance the import makes for the one material slot
   PHYS_BaseCharacter          ragdoll physics asset: a capsule per major bone, human-range joint
@@ -32,6 +33,14 @@ AUTO_PHYS_PATH = DEST + "/SK_BaseCharacter_PhysicsAsset"
 TUNING_NAME = "DA_MovementTuning"
 EXPECTED_BONES = 89
 EXPECTED_HEIGHT_CM = 180.0
+
+# First-person camera socket: between the eyes, in mesh space (cm; the mesh faces +Y, feet at the
+# origin). Build_base_character.py makes a featureless egg head whose widest ring (head_mid) is at
+# 167 cm with its front surface about 12 cm ahead of the head axis; real eyes sit about 12 cm below
+# the crown (180 cm) and 2 to 3 cm behind the face surface. The socket's X axis looks forward (+Y).
+EYE_SOCKET = "eyes"
+EYE_BONE = "head"
+EYES_CM = (0.0, 9.5, 168.0)
 
 # (bone, swing deg, twist deg, hinge, flex deg, extend deg). Ball joints swing up to `swing` in any
 # direction from the rest (A-pose) direction; hinges bend from -extend to +flex measured from
@@ -107,6 +116,20 @@ def check_mesh(mesh):
         % (bones, lo.z, hi.z, lo.x, hi.x, lo.y, hi.y))
 
 
+def add_eye_socket(mesh):
+    """Adds (or moves) the `eyes` socket on the head bone so it sits at EYES_CM in the rest pose.
+
+    Python cannot name a socket, so UCSSocketBuilder (CSCharacter editor module) does the work.
+    """
+    # A bool UFUNCTION with an out parameter returns the out value on success and None on failure
+    # (the reason is in the log).
+    message = unreal.CSSocketBuilder.set_mesh_socket(
+        mesh, EYE_SOCKET, EYE_BONE, unreal.Vector(*EYES_CM), unreal.Rotator(roll=0.0, pitch=0.0, yaw=90.0))
+    if message is None:
+        raise RuntimeError("Could not place socket %s on %s (see the UCSSocketBuilder error above)" % (EYE_SOCKET, EYE_BONE))
+    log(message)
+
+
 def build_physics(mesh):
     joints = []
     for bone, swing, twist, hinge, flex, extend in RAGDOLL:
@@ -142,6 +165,7 @@ def main():
     lib = unreal.EditorAssetLibrary
     mesh = import_mesh()
     check_mesh(mesh)
+    add_eye_socket(mesh)
     build_physics(mesh)
 
     if not lib.save_loaded_asset(mesh, False) or not lib.save_asset(PHYS_PATH, False):

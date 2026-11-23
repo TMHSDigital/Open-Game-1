@@ -2,7 +2,7 @@ using UnrealBuildTool;
 
 // Editor module of the CSCharacter plugin: Python- and Blueprint-callable builders for a human-range
 // ragdoll physics asset (UCSRagdollBuilder) and for blend spaces and a locomotion AnimGraph
-// (UCSAnimGraphBuilder). Never part of a packaged game.
+// (UCSAnimGraphBuilder), and mesh sockets (UCSSocketBuilder). Never part of a packaged game.
 public class CSCharacterEditor : ModuleRules
 {
 	public CSCharacterEditor(ReadOnlyTargetRules Target) : base(Target)

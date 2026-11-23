@@ -1,6 +1,6 @@
 using UnrealBuildTool;
 
-// Runtime module of the CSCharacter plugin: ACSCharacter, UCSMovementTuning and UCSDevTools.
+// Runtime module of the CSCharacter plugin: ACSCharacter, UCSMovementTuning, UCSDevTools and UCSCameraRig.
 // Self-contained: no game module, content path or project setting is assumed.
 public class CSCharacter : ModuleRules
 {

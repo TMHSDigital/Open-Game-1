@@ -16,5 +16,41 @@
     "fov": 60,
     "resolution": [1920, 1080],
     "since": "2026-11-22"
+  },
+  {
+    "name": "char-front",
+    "map": "/Game/Maps/L_CaptureStage",
+    "location": [-150, 300, 95],
+    "rotation": [0, 0, 0],
+    "fov": 45,
+    "resolution": [1920, 1080],
+    "since": "2026-11-23"
+  },
+  {
+    "name": "char-side",
+    "map": "/Game/Maps/L_CaptureStage",
+    "location": [300, -150, 95],
+    "rotation": [0, 90, 0],
+    "fov": 45,
+    "resolution": [1920, 1080],
+    "since": "2026-11-23"
+  },
+  {
+    "name": "char-three-quarter",
+    "map": "/Game/Maps/L_CaptureStage",
+    "location": [-18, 618, 120],
+    "rotation": [-4, -45, 0],
+    "fov": 45,
+    "resolution": [1920, 1080],
+    "since": "2026-11-23"
+  },
+  {
+    "name": "fp-look-down",
+    "map": "/Game/Maps/L_CaptureStage",
+    "location": [290, 300, 165],
+    "rotation": [-89, 180, 0],
+    "fov": 85,
+    "resolution": [1920, 1080],
+    "since": "2026-11-23"
   }
 ]

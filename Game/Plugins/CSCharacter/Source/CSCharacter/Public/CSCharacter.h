@@ -4,15 +4,20 @@
 #include "GameFramework/Character.h"
 #include "CSCharacter.generated.h"
 
+class UCameraComponent;
+class UCSCameraRig;
 class UCSDevTools;
+class UCSSpringArmComponent;
 class UCSMovementTuning;
 class UInputAction;
 class UInputMappingContext;
+class UPoseableMeshComponent;
 class UAnimInstance;
 class USkeletalMesh;
 struct FInputActionValue;
 
 DECLARE_MULTICAST_DELEGATE(FCSToggleCameraRequested);
+DECLARE_MULTICAST_DELEGATE_OneParam(FCSRagdollStateChanged, bool /* bRagdolled */);
 
 /** Movement gait. Jog is the default; walk and sprint are held, crouch is toggled (see ResolveGait). */
 UENUM(BlueprintType)
@@ -45,8 +50,13 @@ enum class ECSGait : uint8
  * Input is Enhanced Input. The mapping context and actions are soft references read from the game's
  * config (section [/Script/CSCharacter.CSCharacter] in DefaultGame.ini) or set on a subclass, so the
  * plugin assumes no content paths. Look values are degrees with +X right and +Y up (keep
- * bEnableLegacyInputScales off). Dev keys go to UCSDevTools (DevTools), the camera key to
+ * bEnableLegacyInputScales off). Dev keys go to UCSDevTools (DevTools); the camera key (V) switches
+ * the camera rig (CameraRig: first and third person on one camera) and broadcasts
  * OnToggleCameraRequested.
+ *
+ * Ragdoll contract: whatever drives the ragdoll (the physics body) calls SetRagdolled(true) when the
+ * body goes fully simulated and SetRagdolled(false) when control returns after recovery. The camera
+ * rig reads IsRagdolled every frame and uses third person in between.
  */
 UCLASS(Config = Game, Blueprintable)
 class CSCHARACTER_API ACSCharacter : public ACharacter
@@ -91,18 +101,38 @@ public:
 	/** Dev tools (ragdoll and push keys, feel overlay, tuning reload). */
 	UCSDevTools* GetDevTools() const { return DevTools; }
 
-	/**
-	 * Name of the camera in use, shown by the feel overlay. None (shown as n/a) until a camera rig
-	 * overrides this.
-	 */
-	virtual FName GetActiveCameraName() const { return NAME_None; }
+	/** Name of the view in use (FirstPerson or ThirdPerson), shown by the feel overlay. */
+	virtual FName GetActiveCameraName() const;
 
-	/** The camera key (V). Broadcasts OnToggleCameraRequested; a camera rig overrides or binds to it. */
+	/** The camera key (V): switches the camera rig's view, then broadcasts OnToggleCameraRequested. */
 	UFUNCTION(BlueprintCallable, Category = "CS|Camera")
 	virtual void ToggleCamera();
 
-	/** Extension point for the camera rig: V was pressed. */
+	/** V was pressed (after the camera rig switched). */
 	FCSToggleCameraRequested OnToggleCameraRequested;
+
+	/** First- and third-person views on one camera. */
+	UCSCameraRig* GetCameraRig() const { return CameraRig; }
+	UCameraComponent* GetCamera() const { return Camera; }
+
+	/** The engine's camera query; adds the camera rig's first-person near plane. */
+	virtual void CalcCamera(float DeltaTime, struct FMinimalViewInfo& OutResult) override;
+
+	// ----- Ragdoll state (driven by the physics body; read by the camera rig) -----
+
+	/** True from the moment the body goes fully simulated until control returns after recovery. */
+	UFUNCTION(BlueprintPure, Category = "CS|Body")
+	virtual bool IsRagdolled() const { return bRagdolled; }
+
+	/**
+	 * Called by the ragdoll owner on entering ragdoll (true) and when control returns (false).
+	 * Broadcasts OnRagdollStateChanged on a change.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "CS|Body")
+	void SetRagdolled(bool bInRagdolled);
+
+	/** The ragdoll state changed (parameter: ragdolled). */
+	FCSRagdollStateChanged OnRagdollStateChanged;
 
 	// ----- Visuals (set in config or on a subclass) -----
 
@@ -206,6 +236,21 @@ private:
 	UPROPERTY(VisibleAnywhere, Category = "CS|Dev tools")
 	TObjectPtr<UCSDevTools> DevTools;
 
+	UPROPERTY(VisibleAnywhere, Category = "CS|Camera")
+	TObjectPtr<UCSCameraRig> CameraRig;
+
+	/** Third-person spring arm (right shoulder), run by CameraRig. */
+	UPROPERTY(VisibleAnywhere, Category = "CS|Camera")
+	TObjectPtr<UCSSpringArmComponent> CameraArm;
+
+	/** The one camera; CameraRig places it each frame. */
+	UPROPERTY(VisibleAnywhere, Category = "CS|Camera")
+	TObjectPtr<UCameraComponent> Camera;
+
+	/** Owner-only copy of the body without head and neck, shown in first person (see UCSCameraRig). */
+	UPROPERTY(VisibleAnywhere, Category = "CS|Camera")
+	TObjectPtr<UPoseableMeshComponent> FirstPersonBody;
+
 	/** The values in use, copied from Tuning by ApplyTuning. */
 	UPROPERTY(Transient)
 	TObjectPtr<UCSMovementTuning> AppliedTuning;
@@ -213,6 +258,7 @@ private:
 	bool bSprintHeld = false;
 	bool bWalkHeld = false;
 	bool bCrouchToggled = false;
+	bool bRagdolled = false;
 
 	ECSGait Gait = ECSGait::Jog;
 	float SlopeSpeedFactor = 1.f;

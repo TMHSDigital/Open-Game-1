@@ -1,8 +1,12 @@
 #include "CSCharacter.h"
 
 #include "Animation/AnimInstance.h"
+#include "Camera/CameraComponent.h"
+#include "Camera/CameraTypes.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/PoseableMeshComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "CSCameraRig.h"
 #include "CSCharacterLog.h"
 #include "CSDevTools.h"
 #include "CSMovementTuning.h"
@@ -23,6 +27,15 @@ namespace
 	constexpr float CapsuleRadius = 35.f;
 	constexpr float CapsuleHalfHeight = 90.f;
 	constexpr float CrouchedHalfHeight = 60.f;
+	// Pawn eye heights above the capsule centre (the camera rig uses the mesh's eye socket; these are
+	// its fallback and the engine's eye viewpoint): eyes at 168 cm standing, about 110 cm crouched.
+	constexpr float StandingEyeHeightAboveCentre = 78.f;
+	constexpr float CrouchedEyeHeightAboveCentre = 50.f;
+	// Third-person arm: over the right shoulder, slight positional lag, no rotational lag (spec 5.3).
+	constexpr float ArmLength = 260.f;
+	const FVector ShoulderOffset(0.f, 45.f, 10.f);
+	constexpr float ArmLagSpeed = 12.f;
+	constexpr float ArmLagMaxDistance = 60.f;
 	// Used only before the character is in a world (no gravity to read yet).
 	constexpr float FallbackGravity = 980.f;
 	// The sprint ramp is defined as reaching this share of SprintSpeed in SprintRampSeconds.
@@ -37,7 +50,14 @@ ACSCharacter::ACSCharacter(const FObjectInitializer& ObjectInitializer)
 	GetCapsuleComponent()->InitCapsuleSize(CapsuleRadius, CapsuleHalfHeight);
 
 	// UE5 humanoid meshes face +Y with the origin at the feet; the actor faces +X.
-	GetMesh()->SetRelativeLocationAndRotation(FVector(0.f, 0.f, -CapsuleHalfHeight), FRotator(0.f, -90.f, 0.f));
+	USkeletalMeshComponent* Body = GetMesh();
+	Body->SetRelativeLocationAndRotation(FVector(0.f, 0.f, -CapsuleHalfHeight), FRotator(0.f, -90.f, 0.f));
+	// In first person the owner does not see this mesh (it sees FirstPersonBody), so it is not
+	// rendered locally; it must still pose every frame (eye socket, pose copy) and cast the owner's shadow.
+	Body->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
+	Body->bCastHiddenShadow = true;
+	BaseEyeHeight = StandingEyeHeightAboveCentre;
+	CrouchedEyeHeight = CrouchedEyeHeightAboveCentre;
 
 	bUseControllerRotationYaw = false;
 	bUseControllerRotationPitch = false;
@@ -55,6 +75,33 @@ ACSCharacter::ACSCharacter(const FObjectInitializer& ObjectInitializer)
 	Move->bTickBeforeOwner = false;
 
 	DevTools = CreateDefaultSubobject<UCSDevTools>(TEXT("DevTools"));
+
+	CameraArm = CreateDefaultSubobject<UCSSpringArmComponent>(TEXT("CameraArm"));
+	CameraArm->SetupAttachment(GetCapsuleComponent());
+	CameraArm->TargetArmLength = ArmLength;
+	CameraArm->SocketOffset = ShoulderOffset;
+	CameraArm->bUsePawnControlRotation = true;
+	CameraArm->bDoCollisionTest = true;
+	CameraArm->bEnableCameraLag = true;
+	CameraArm->CameraLagSpeed = ArmLagSpeed;
+	CameraArm->CameraLagMaxDistance = ArmLagMaxDistance;
+	CameraArm->bEnableCameraRotationLag = false;
+
+	Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
+	Camera->SetupAttachment(GetCapsuleComponent());
+	Camera->bUsePawnControlRotation = false;
+
+	FirstPersonBody = CreateDefaultSubobject<UPoseableMeshComponent>(TEXT("FirstPersonBody"));
+	FirstPersonBody->SetupAttachment(Body);
+	FirstPersonBody->SetOnlyOwnerSee(true);
+	FirstPersonBody->SetCastShadow(false);
+	FirstPersonBody->SetCollisionProfileName(UCollisionProfile::NoCollision_ProfileName);
+	FirstPersonBody->SetGenerateOverlapEvents(false);
+	FirstPersonBody->SetVisibility(false);
+	// Posed by the camera rig after the body; it needs no tick of its own.
+	FirstPersonBody->PrimaryComponentTick.bCanEverTick = false;
+
+	CameraRig = CreateDefaultSubobject<UCSCameraRig>(TEXT("CameraRig"));
 }
 
 const UCSMovementTuning& ACSCharacter::GetActiveTuning() const
@@ -191,6 +238,7 @@ void ACSCharacter::PostInitializeComponents()
 	// Before Super: ACharacter sets up the mesh's tick and pose there.
 	ApplyCharacterVisuals();
 	Super::PostInitializeComponents();
+	CameraRig->Setup(GetMesh(), CameraArm, Camera, FirstPersonBody);
 }
 
 void ACSCharacter::BeginPlay()
@@ -377,7 +425,33 @@ void ACSCharacter::UpdateGaitFromInput()
 
 void ACSCharacter::ToggleCamera()
 {
+	CameraRig->ToggleView();
 	OnToggleCameraRequested.Broadcast();
+}
+
+FName ACSCharacter::GetActiveCameraName() const
+{
+	return CameraRig ? CameraRig->GetActiveCameraName() : FName(NAME_None);
+}
+
+void ACSCharacter::CalcCamera(float DeltaTime, FMinimalViewInfo& OutResult)
+{
+	Super::CalcCamera(DeltaTime, OutResult);
+	const float NearClip = CameraRig ? CameraRig->GetNearClipPlane() : 0.f;
+	if (NearClip > 0.f)
+	{
+		OutResult.PerspectiveNearClipPlane = NearClip;
+	}
+}
+
+void ACSCharacter::SetRagdolled(bool bInRagdolled)
+{
+	if (bRagdolled == bInRagdolled)
+	{
+		return;
+	}
+	bRagdolled = bInRagdolled;
+	OnRagdollStateChanged.Broadcast(bRagdolled);
 }
 
 void ACSCharacter::OnToggleCameraStarted()

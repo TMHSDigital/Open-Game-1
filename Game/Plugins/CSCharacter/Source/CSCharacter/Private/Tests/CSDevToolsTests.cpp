@@ -267,7 +267,7 @@ bool FCSDevToolsOffDisablesKeysTest::RunTest(const FString& Parameters)
 			{
 				TestTrue(FString::Printf(TEXT("Overlay shows %s"), Field), Text.Contains(Field));
 			}
-			TestTrue(TEXT("Overlay camera reads n/a until a camera rig reports one"), Text.Contains(TEXT("n/a")));
+			TestTrue(TEXT("Overlay camera reads the camera rig's view (third person by default)"), Text.Contains(TEXT("ThirdPerson")));
 
 			// Acceleration: about Acceleration while speeding up from rest, about 0 at a steady speed.
 			Sim.Run(FVector::ZeroVector, 2.f);
@@ -333,12 +333,13 @@ bool FCSDevToolsGaitKeysTest::RunTest(const FString& Parameters)
 	Rig.Fire(TEXT("Jump"), ETriggerEvent::Completed);
 	TestFalse(TEXT("Space released"), Character->bPressedJump);
 
-	// V reaches the camera extension point (Task 6 fills it in); it is not a dev tool.
+	// V switches the camera rig's view and still reaches the extension point; it is not a dev tool.
 	int32 Toggles = 0;
 	Character->OnToggleCameraRequested.AddLambda([&Toggles]() { ++Toggles; });
+	TestEqual(TEXT("Active camera before V"), Character->GetActiveCameraName(), FName(TEXT("ThirdPerson")));
 	TestEqual(TEXT("V is bound"), Rig.Fire(TEXT("ToggleCamera"), ETriggerEvent::Started), 1);
 	TestEqual(TEXT("V reaches ToggleCamera"), Toggles, 1);
-	TestEqual(TEXT("Active camera reads none until a camera rig reports one"), Character->GetActiveCameraName(), FName(NAME_None));
+	TestEqual(TEXT("Active camera after V"), Character->GetActiveCameraName(), FName(TEXT("FirstPerson")));
 	return true;
 }
 
