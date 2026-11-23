@@ -13,7 +13,9 @@ clip: null
 
 ## Narrative
 
-<!-- narrative -->
+Combat Simulator now has its first playable character. The faceless base model is built entirely by a Blender script: an 89-bone skeleton with the standard UE5 humanoid layout, a 180 cm mannequin of about 21,000 triangles, with separated fingers and shoulders, hips and hands reworked over several review rounds until they bend cleanly at 90 degrees. In Unreal it runs on a new self-contained CSCharacter plugin. The plugin covers weighty movement: a sprint that builds over 0.6 s, braking that slides, landings that cost speed, a wider turn at a sprint. It adds first and third person on V, with the head hidden only from your own view and no head bob, and a physics-driven body that sways, staggers, ragdolls and gets back up. Every feel value lives in one tuning asset that F5 reloads live. Free CC0 Quaternius animations stand in until the project has its own. The game now starts on L_Plane, a plain grid plane, and F2 switches to L_MovementGym, a measured course of ramps, stairs, gaps, ledges and boxes (decision 0013). The secrets scan stopped treating random bytes in binary assets as email addresses, and skeletal exports moved to a centimetre scene (decision 0012).
+
+Known in this build: the stand-in run and sprint cycles look slow and bounding, and walking looks hurried. A foot can dip through the floor while the body gets up. With the arm raised overhead the shoulder still folds. Looking steeply down in first person shows no hands in the idle pose. In first person your own floor shadow has no head. Live tuning only changes values in the editor; a Steam build re-applies its packaged values. Next: the owner plays the build from the Steam development branch and judges the feel; the milestone is tagged when it feels right.
 
 ## Changes
 
