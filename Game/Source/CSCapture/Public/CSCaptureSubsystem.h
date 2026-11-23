@@ -7,6 +7,7 @@
 #include "CSCaptureSubsystem.generated.h"
 
 class ACameraActor;
+class UPrimitiveComponent;
 
 /**
  * Runs one fixed-camera capture job, then quits the game. Exists only when the command line has
@@ -37,7 +38,8 @@ private:
 	void Finish();
 
 	void BeginShot(const FCSCaptureShot& Shot);
-	void HidePlayer(bool bHide) const;
+	/** Hides the player's pawn (or shows it again), shadow included. */
+	void HidePlayer(bool bHide);
 	/** Points the player's view at the capture camera, or at its own pawn for a "player" shot (and sets the aim when bSetRotation). */
 	void ApplyView(const FCSCaptureShot& Shot, bool bSetRotation);
 	void RequestImage(const FCSCaptureShot& Shot);
@@ -57,6 +59,9 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<ACameraActor> Camera;
+
+	/** CastShadow of each pawn component before HidePlayer turned it off; restored on show. */
+	TMap<TWeakObjectPtr<UPrimitiveComponent>, bool> SavedCastShadow;
 
 	bool bFailed = false;
 	FString FailReason;

@@ -20,6 +20,7 @@ PLANE = "/Engine/BasicShapes/Plane.Plane"  # 100 cm x 100 cm
 CUBE = "/Engine/BasicShapes/Cube.Cube"  # 100 cm on each side, pivot at the centre
 FLOOR_SIZE_M = 100
 RULER_LENGTH_M = 10
+SKY_INTENSITY = 2.0  # sky fill so shadows read as grey shade (see build)
 
 
 def log(msg):
@@ -81,6 +82,9 @@ def build():
     sky = spawn(unreal.SkyLight, "SkyLight", unreal.Vector(0, 0, 300))
     sky.light_component.set_editor_property("real_time_capture", True)
     sky.light_component.set_mobility(unreal.ComponentMobility.MOVABLE)
+    # Sky fill at SKY_INTENSITY: at the engine default (1) shadows lit only by the sky read as saturated
+    # navy, and the owner's head shadow on the chest in first person looked like a hole.
+    sky.light_component.set_editor_property("intensity", SKY_INTENSITY)
     spawn(unreal.ExponentialHeightFog, "HeightFog", unreal.Vector(0, 0, 0))
 
     sun = spawn(unreal.DirectionalLight, "Sun", unreal.Vector(0, 0, 500), unreal.Rotator(roll=0, pitch=-45, yaw=30))

@@ -13,8 +13,9 @@ Gym layout (feet of every feature at x = 0 unless noted, rows side by side along
   - Sprint lane: y -150..150, x 0..3000 (30 m), a marker bar across it every 1 m (thicker every
     5 m) with a label beside each metre. Markers have no collision.
   - Ramps (tags Ramp15, Ramp30, Ramp44, Ramp50): 400 wide at y 700, 1200, 1700, 2200, each rising
-    to 200 cm onto a 300 cm platform. Walkable slope is 44 degrees (DA_MovementTuning), so 44 is the
-    steepest walkable ramp and 50 is not walkable.
+    to 200 cm onto a 300 cm platform. Walkable slope is 44 degrees (DA_MovementTuning). Ramp44 is
+    built at 43.9 degrees and labelled 44: at exactly 44.0000 it passes or fails on float rounding,
+    so it keeps 0.1 degree of margin. It is the steepest walkable ramp; 50 is not walkable.
   - Stairs (tags Stairs15, Stairs25, Stairs40): 300 wide at y 2900, 3400, 3900, 35 cm treads,
     step heights 15, 25 and 40 cm (8, 5 and 3 steps, about 120 cm up) onto a 200 cm landing.
     The movement component's MaxStepHeight is 45 cm.
@@ -57,6 +58,8 @@ FLOOR_COLOR = (0.22, 0.22, 0.22)
 LINE_COLOR = (0.12, 0.12, 0.12)
 OBSTACLE_COLOR = (0.45, 0.44, 0.42)
 MARKER_COLOR = (0.8, 0.8, 0.8)
+
+SKY_INTENSITY = 2.0
 
 RAMP_RISE = 200.0
 RAMP_WIDTH = 400.0
@@ -215,6 +218,9 @@ def build_plane_and_sky(floor_material):
     sky = spawn(unreal.SkyLight, "SkyLight", unreal.Vector(0, 0, 300))
     sky.light_component.set_editor_property("real_time_capture", True)
     sky.light_component.set_mobility(unreal.ComponentMobility.MOVABLE)
+    # Sky fill at SKY_INTENSITY: at the engine default (1) shadows lit only by the sky read as saturated
+    # navy, and the owner's head shadow on the chest in first person looked like a hole.
+    sky.light_component.set_editor_property("intensity", SKY_INTENSITY)
     spawn(unreal.ExponentialHeightFog, "HeightFog", unreal.Vector(0, 0, 0))
     sun = spawn(unreal.DirectionalLight, "Sun", unreal.Vector(0, 0, 500), unreal.Rotator(roll=0, pitch=-45, yaw=30))
     sun.light_component.set_editor_property("atmosphere_sun_light", True)
@@ -285,9 +291,12 @@ def build_lane(marker):
 
 
 def build_ramps(obstacle):
-    for angle, y in ((15, 700), (30, 1200), (44, 1700), (50, 2200)):
+    # (label angle, built angle, y). The "44" ramp is built at 43.9 deg: the walkable limit is exactly
+    # 44 deg, and a surface built at 44.0000 passes or fails on float rounding. 0.1 deg of margin keeps
+    # it reliably walkable; the label stays 44, the limit it demonstrates.
+    for angle, built, y in ((15, 15.0, 700), (30, 30.0, 1200), (44, 43.9, 1700), (50, 50.0, 2200)):
         name = "Ramp%d" % angle
-        ramp_to_platform(name, 0.0, y, float(angle), RAMP_RISE, RAMP_WIDTH, obstacle, tags=(name,))
+        ramp_to_platform(name, 0.0, y, built, RAMP_RISE, RAMP_WIDTH, obstacle, tags=(name,))
         spawn_text(name + "_Label", "%d deg%s" % (angle, " (not walkable)" if angle > 44 else ""),
                    (-60, y, 40), size=35)
 

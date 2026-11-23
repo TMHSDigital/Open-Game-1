@@ -186,13 +186,19 @@ void UCSCameraRig::SetHeadHiddenForOwner(bool bHidden)
 	}
 	bHeadHiddenForOwner = bHidden;
 	// The owner sees the copy without head and neck; everyone else keeps seeing the full body.
+	// Shadows swap with it: while the head is hidden the owner's shadow comes from the headless copy
+	// (the hidden head's shadow on the chest the owner looks down at read as a hole), and the body
+	// casts no hidden shadow. Views that draw the body still get its full shadow.
 	if (Body)
 	{
 		Body->SetOwnerNoSee(bHidden);
+		Body->bCastHiddenShadow = !bHidden;
+		Body->MarkRenderStateDirty();
 	}
 	if (FirstPersonBody)
 	{
 		FirstPersonBody->SetVisibility(bHidden);
+		FirstPersonBody->SetCastShadow(bHidden);
 	}
 }
 

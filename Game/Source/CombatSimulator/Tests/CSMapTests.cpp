@@ -225,7 +225,7 @@ bool FCSMapsGymSlopesTest::RunTest(const FString& Parameters)
 	const TArray<FRampCase> Cases = {
 		{TEXT("Ramp15"), 15.f, true},
 		{TEXT("Ramp30"), 30.f, true},
-		{TEXT("Ramp44"), 44.f, true},
+		{TEXT("Ramp44"), 43.9f, true}, // built 0.1 deg under the 44 deg limit (create_movement_maps.py)
 		{TEXT("Ramp50"), 50.f, false},
 	};
 	TSharedRef<FRampRun> Run = MakeShared<FRampRun>();
@@ -251,6 +251,8 @@ bool FCSMapsGymSlopesTest::RunTest(const FString& Parameters)
 
 		if (!Run->bStarted)
 		{
+			// The gym's ramps are measured against the tuning's walkable limit of 44 deg.
+			TestNearlyEqual(TEXT("Walkable slope limit"), Move->GetWalkableFloorAngle(), 44.f, 0.001f);
 			// The ramp is a scaled 1 m engine cube pitched up toward its +X: the top face runs from
 			// local (-50, 0, 50) at the ground to (50, 0, 50) at the top.
 			const FTransform& T = Ramp->GetActorTransform();

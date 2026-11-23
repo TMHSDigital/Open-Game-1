@@ -7,6 +7,7 @@
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
+#include "Components/PrimitiveComponent.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/FileManager.h"
@@ -240,13 +241,39 @@ void UCSCaptureSubsystem::ApplyView(const FCSCaptureShot& Shot, bool bSetRotatio
 	}
 }
 
-void UCSCaptureSubsystem::HidePlayer(bool bHide) const
+void UCSCaptureSubsystem::HidePlayer(bool bHide)
 {
 	UWorld* World = GetGameInstance() ? GetGameInstance()->GetWorld() : nullptr;
 	APlayerController* PC = World ? World->GetFirstPlayerController() : nullptr;
-	if (APawn* Player = PC ? PC->GetPawn() : nullptr)
+	APawn* Player = PC ? PC->GetPawn() : nullptr;
+	if (!Player)
 	{
-		Player->SetActorHiddenInGame(bHide);
+		return;
+	}
+	Player->SetActorHiddenInGame(bHide);
+
+	// Hidden is not enough: a mesh with bCastHiddenShadow (the character's body does, for its
+	// first-person view) still casts a shadow, which would float in the shot with no body.
+	// Turn shadow casting off while hidden and put each component's own setting back after.
+	TInlineComponentArray<UPrimitiveComponent*> Primitives(Player);
+	for (UPrimitiveComponent* Primitive : Primitives)
+	{
+		if (bHide)
+		{
+			if (!SavedCastShadow.Contains(Primitive))
+			{
+				SavedCastShadow.Add(Primitive, Primitive->CastShadow);
+				Primitive->SetCastShadow(false);
+			}
+		}
+		else if (const bool* Saved = SavedCastShadow.Find(Primitive))
+		{
+			Primitive->SetCastShadow(*Saved);
+		}
+	}
+	if (!bHide)
+	{
+		SavedCastShadow.Reset();
 	}
 }
 

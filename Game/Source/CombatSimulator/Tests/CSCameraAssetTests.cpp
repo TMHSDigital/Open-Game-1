@@ -196,8 +196,17 @@ bool FCSCameraFirstPersonHidesHeadForOwnerOnlyTest::RunTest(const FString& Param
 	}
 	TestTrue(TEXT("The owner-only body is the same mesh"), OwnerBody->GetSkinnedAsset() == Body->GetSkeletalMeshAsset());
 	TestTrue(TEXT("The owner-only body is seen only by its owner"), OwnerBody->bOnlyOwnerSee);
-	TestFalse(TEXT("The owner-only body casts no second shadow"), OwnerBody->CastShadow);
-	TestTrue(TEXT("The body keeps its shadow while hidden from the owner"), Body->bCastHiddenShadow);
+	// Shadows swap per view: in third person only the body casts; in first person the owner's shadow
+	// comes from the headless owner-only body (its head would shadow the chest the owner looks at,
+	// a dark patch that reads as a hole), and the body casts no hidden shadow. Other viewers still
+	// see the full body, which casts its normal shadow for them.
+	auto CheckShadows = [&](const TCHAR* ViewName, bool bFirstPerson)
+	{
+		TestEqual(FString::Printf(TEXT("%s: the owner-only body casts a shadow only in first person"), ViewName), OwnerBody->CastShadow, bFirstPerson);
+		TestEqual(FString::Printf(TEXT("%s: the body casts a hidden shadow only in third person"), ViewName), bool(Body->bCastHiddenShadow), !bFirstPerson);
+		TestTrue(FString::Printf(TEXT("%s: the body casts its shadow for other viewers"), ViewName), Body->CastShadow);
+	};
+	CheckShadows(TEXT("Third person"), false);
 	const TArray<USkinnedMeshComponent*> Meshes = {Body, OwnerBody};
 	const AActor* Owner = Character;
 	const AActor* Other = Sim.OtherPlayer;
@@ -230,6 +239,7 @@ bool FCSCameraFirstPersonHidesHeadForOwnerOnlyTest::RunTest(const FString& Param
 	TestEqual(TEXT("First person"), Rig->GetEffectiveView(), ECSView::FirstPerson);
 	TestTrue(TEXT("First person: head hidden from the owner"), Rig->IsHeadHiddenForOwner());
 	CheckView(TEXT("First person"), false);
+	CheckShadows(TEXT("First person"), true);
 	for (const TCHAR* Bone : HeadBones)
 	{
 		TestTrue(FString::Printf(TEXT("First person: %s hidden on the owner-only body"), Bone), OwnerBody->IsBoneHiddenByName(Bone));
@@ -274,6 +284,7 @@ bool FCSCameraFirstPersonHidesHeadForOwnerOnlyTest::RunTest(const FString& Param
 	Sim.Run(Character->GetActiveTuning().CameraBlendSeconds + Sim.Dt);
 	TestEqual(TEXT("Back in third person"), Rig->GetEffectiveView(), ECSView::ThirdPerson);
 	CheckView(TEXT("Third person again"), true);
+	CheckShadows(TEXT("Third person again"), false);
 	return true;
 }
 

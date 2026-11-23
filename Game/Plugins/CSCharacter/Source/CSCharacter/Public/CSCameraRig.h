@@ -56,7 +56,9 @@ public:
  * viewer, so the rig shows an owner-only copy of the body (FirstPersonBody: a poseable mesh with
  * bOnlyOwnerSee, a per-frame copy of the body's pose, OwnerHiddenBones hidden) and makes the body
  * bOwnerNoSee while the camera is within HeadHideRadius of the eyes. Other viewers keep seeing the
- * full body; the owner keeps its shadow (the body has bCastHiddenShadow).
+ * full body. Shadows swap with the views: in third person the body casts the shadow (it has
+ * bCastHiddenShadow); in first person the headless copy casts the owner's shadow and the body's
+ * hidden shadow is off, so the owner never sees its own head's shadow on its chest.
  *
  * While the character is ragdolled (ACSCharacter::IsRagdolled) the effective view is third person,
  * whatever the chosen view; the chosen view returns on recovery.

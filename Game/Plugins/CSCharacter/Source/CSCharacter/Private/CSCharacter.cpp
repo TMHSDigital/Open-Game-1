@@ -50,7 +50,8 @@ ACSCharacter::ACSCharacter(const FObjectInitializer& ObjectInitializer)
 	USkeletalMeshComponent* Body = GetMesh();
 	Body->SetRelativeLocationAndRotation(FVector(0.f, 0.f, -CapsuleHalfHeight), FRotator(0.f, -90.f, 0.f));
 	// In first person the owner does not see this mesh (it sees FirstPersonBody), so it is not
-	// rendered locally; it must still pose every frame (eye socket, pose copy) and cast the owner's shadow.
+	// rendered locally; it must still pose every frame (eye socket, pose copy). Its hidden shadow is the
+	// owner's shadow in third person; the camera rig swaps it to FirstPersonBody in first person.
 	Body->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
 	Body->bCastHiddenShadow = true;
 	BaseEyeHeight = StandingEyeHeightAboveCentre;
@@ -89,7 +90,7 @@ ACSCharacter::ACSCharacter(const FObjectInitializer& ObjectInitializer)
 	FirstPersonBody = CreateDefaultSubobject<UPoseableMeshComponent>(TEXT("FirstPersonBody"));
 	FirstPersonBody->SetupAttachment(Body);
 	FirstPersonBody->SetOnlyOwnerSee(true);
-	FirstPersonBody->SetCastShadow(false);
+	FirstPersonBody->SetCastShadow(false); // on only in first person (UCSCameraRig::SetHeadHiddenForOwner)
 	FirstPersonBody->SetCollisionProfileName(UCollisionProfile::NoCollision_ProfileName);
 	FirstPersonBody->SetGenerateOverlapEvents(false);
 	FirstPersonBody->SetVisibility(false);
