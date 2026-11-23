@@ -44,10 +44,12 @@ public:
  * between the two views and skips the stretch, if any, that is inside the capsule but outside the
  * hidden head, so the camera is never inside the visible body.
  *
- * First person: the camera sits on the body's eye socket (EyeSocketName). The eye position is
+ * First person: the camera follows the body's eye socket (EyeSocketName) sideways and forward,
  * smoothed in the mesh's own space, so movement and turning are followed at once but sway of the
- * head (animation, later physics) is filtered. The view rotation is always the control rotation with
- * the roll removed: the head's pitch and roll never reach the view, there is no head bob, and the
+ * head (animation, later physics) is filtered. Its height above the feet is the tuning's fixed eye
+ * height for the stance (standing or crouched), eased between the two: the run cycle bounces the
+ * head by up to 24 cm and none of that reaches the view (no head bob). The view rotation is always
+ * the control rotation with the roll removed: the head's pitch and roll never reach the view and the
  * view is never rolled. The near plane is pulled in (FirstPersonNearClip) so hands do not clip.
  *
  * Head and neck are hidden from the owner only. Bone hiding on the body would hide them from every
@@ -59,8 +61,9 @@ public:
  * While the character is ragdolled (ACSCharacter::IsRagdolled) the effective view is third person,
  * whatever the chosen view; the chosen view returns on recovery.
  *
- * Times come from the owner's applied tuning (UCSMovementTuning: ThirdPersonFOV, FirstPersonFOV,
- * CameraBlendSeconds). Ticks in TG_PostPhysics after the movement component and the body mesh.
+ * Feel values come from the owner's applied tuning every frame (UCSMovementTuning: FOVs, blend
+ * time, arm length, shoulder offset, lag, first-person smoothing and eye heights), so a tuning
+ * reload changes the rig at once. Ticks in TG_PostPhysics after the movement component and the body mesh.
  */
 UCLASS(ClassGroup = CS, meta = (BlueprintSpawnableComponent))
 class CSCHARACTER_API UCSCameraRig : public UActorComponent
@@ -95,7 +98,7 @@ public:
 	UFUNCTION(BlueprintPure, Category = "CS|Camera")
 	float GetFirstPersonWeight() const { return FirstPersonWeight; }
 
-	/** The smoothed first-person camera point in world space (the eye socket, or the pawn's eye height without one). */
+	/** The first-person camera point in world space: the eye socket (or the pawn eye without one) sideways and forward, smoothed, at the stance eye height. */
 	UFUNCTION(BlueprintPure, Category = "CS|Camera")
 	FVector GetEyeLocation() const;
 
@@ -131,13 +134,6 @@ public:
 	/** Bones hidden from the owner in first person (UE5 humanoid names). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "CS|Camera")
 	TArray<FName> OwnerHiddenBones = {TEXT("neck_01"), TEXT("neck_02"), TEXT("head")};
-
-	/**
-	 * Time constant of the first-person eye smoothing, seconds: how long sway of the head takes to
-	 * reach the camera (63 percent of it). Movement and turning are not delayed.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "CS|Camera", meta = (ClampMin = "0", Units = "s"))
-	float FirstPersonSmoothSeconds = 0.1f;
 
 	/** Near plane in first person, cm (the engine default is 10). Close enough that hands raised to the face do not clip. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "CS|Camera", meta = (ClampMin = "1", Units = "cm"))

@@ -280,15 +280,23 @@ void UCSCameraRig::UpdateRig(float DeltaSeconds)
 	const FTransform Frame = Body ? Body->GetComponentTransform() : OwnerActor->GetActorTransform();
 	const FVector RawEye = ReadEyeInBodySpace();
 	const bool bFirstUpdate = !bHasEye;
-	if (bFirstUpdate || FirstPersonSmoothSeconds <= 0.f)
+	const ACharacter* OwnerCharacter = Cast<ACharacter>(OwnerActor);
+	const float TargetHeight = OwnerCharacter && OwnerCharacter->bIsCrouched ? T.FirstPersonCrouchedEyeHeightCm : T.FirstPersonEyeHeightCm;
+	// Sideways and forward: the eye socket, smoothed. Height: the stance's fixed eye height above
+	// the feet (the mesh origin), eased between standing and crouched; the head's run-cycle bounce
+	// never reaches the camera (spec 5.3: no head bob).
+	auto Ease = [DeltaSeconds](float Seconds) { return Seconds > 0.f ? 1.f - FMath::Exp(-DeltaSeconds / Seconds) : 1.f; };
+	if (bFirstUpdate)
 	{
-		SmoothedEyeInBody = RawEye;
+		SmoothedEyeInBody = FVector(RawEye.X, RawEye.Y, TargetHeight);
 		bHasEye = true;
 	}
 	else
 	{
-		const float Alpha = 1.f - FMath::Exp(-DeltaSeconds / FirstPersonSmoothSeconds);
-		SmoothedEyeInBody = FMath::Lerp(SmoothedEyeInBody, RawEye, Alpha);
+		const float Alpha = Ease(T.FirstPersonSmoothSeconds);
+		SmoothedEyeInBody.X = FMath::Lerp(SmoothedEyeInBody.X, RawEye.X, Alpha);
+		SmoothedEyeInBody.Y = FMath::Lerp(SmoothedEyeInBody.Y, RawEye.Y, Alpha);
+		SmoothedEyeInBody.Z = FMath::Lerp(SmoothedEyeInBody.Z, TargetHeight, Ease(T.FirstPersonHeightSmoothSeconds));
 	}
 	const FVector Eye = Frame.TransformPosition(SmoothedEyeInBody);
 
@@ -302,6 +310,11 @@ void UCSCameraRig::UpdateRig(float DeltaSeconds)
 	FVector ThirdPerson = Eye;
 	if (Arm)
 	{
+		// From the applied tuning every frame, so a reload takes effect at once.
+		Arm->TargetArmLength = T.ThirdPersonArmLength;
+		Arm->SocketOffset = T.ThirdPersonShoulderOffset;
+		Arm->CameraLagSpeed = T.ThirdPersonLagSpeed;
+		Arm->CameraLagMaxDistance = T.ThirdPersonLagMaxDistance;
 		Arm->SetWorldLocation(Eye);
 		Arm->UpdateArm(DeltaSeconds, !bFirstUpdate);
 		ThirdPerson = Arm->GetSocketLocation(USpringArmComponent::SocketName);

@@ -136,6 +136,52 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Camera", meta = (UIMin = "0.05", UIMax = "1", Units = "s"))
 	float CameraBlendSeconds = 0.2f;
 
+	/** Third-person spring arm length behind the eyes, cm (no spec value; default 260). Inside (0, 1000]. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Camera", meta = (UIMin = "100", UIMax = "600", Units = "cm"))
+	float ThirdPersonArmLength = 260.f;
+
+	/**
+	 * Third-person camera offset at the end of the arm, in the view's frame (X forward, Y right,
+	 * Z up), cm. Default (0, 45, 10): over the right shoulder. Each part within [-200, 200].
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Camera")
+	FVector ThirdPersonShoulderOffset = FVector(0.f, 45.f, 10.f);
+
+	/**
+	 * Third-person positional lag: how fast the camera catches up with the character, 1/s (higher is
+	 * tighter; default 12, a slight lag for weight). There is no rotational lag. Must be positive.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Camera", meta = (UIMin = "2", UIMax = "30"))
+	float ThirdPersonLagSpeed = 12.f;
+
+	/** Most the third-person camera may trail the character, cm (default 60; 0 means no limit). Not negative. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Camera", meta = (UIMin = "0", UIMax = "200", Units = "cm"))
+	float ThirdPersonLagMaxDistance = 60.f;
+
+	/**
+	 * First person: time constant of the eye's horizontal smoothing, seconds (default 0.1). Sway of
+	 * the head reaches the camera this slowly; moving and turning are followed at once. Within [0, 1].
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Camera", meta = (UIMin = "0", UIMax = "0.5", Units = "s"))
+	float FirstPersonSmoothSeconds = 0.1f;
+
+	/**
+	 * First person, standing: camera height above the feet, cm (default 165; the base character's
+	 * eyes are at 168 at rest and about 162 in the idle pose). The camera follows the head only
+	 * sideways and forward; its height is this fixed value, because the run cycle bounces the head
+	 * by up to 24 cm (spec 5.3: no head bob). Inside (0, 300].
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Camera", meta = (UIMin = "100", UIMax = "220", Units = "cm"))
+	float FirstPersonEyeHeightCm = 165.f;
+
+	/** First person, crouched: camera height above the feet, cm (default 90; the crouch pose puts the eyes at about 86). Positive, not above the standing height. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Camera", meta = (UIMin = "50", UIMax = "160", Units = "cm"))
+	float FirstPersonCrouchedEyeHeightCm = 90.f;
+
+	/** First person: time constant of the move between the standing and crouched heights, seconds (default 0.15). Within [0, 2]. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Camera", meta = (UIMin = "0", UIMax = "0.5", Units = "s"))
+	float FirstPersonHeightSmoothSeconds = 0.15f;
+
 	// ----- Ragdoll -----
 
 	/** Seconds to blend from the settled ragdoll pose back to the movement pose. Must be positive. */
@@ -166,7 +212,8 @@ public:
 	/**
 	 * True if every value is usable. Otherwise false, with OutReason naming the first bad value.
 	 * Rejects non-finite values, non-positive speeds, walk above jog or jog above sprint, ramp and
-	 * blend times of 0 or less, a slope outside (0, 90) and a field of view outside [60, 120].
+	 * blend times of 0 or less, a slope outside (0, 90), a field of view outside [60, 120] and camera
+	 * arm, lag and smoothing values outside their documented ranges.
 	 */
 	bool IsValid(FString& OutReason) const;
 };

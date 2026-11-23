@@ -401,6 +401,20 @@ bool FCSMovementTuningValidationTest::RunTest(const FString& Parameters)
 	ExpectInvalid(TEXT("sprint grip scale above 1"), [](UCSMovementTuning& T) { T.SprintGripScale = 1.5f; });
 	ExpectInvalid(TEXT("negative rotation rate"), [](UCSMovementTuning& T) { T.RotationRateYaw = -90.f; });
 	ExpectInvalid(TEXT("NaN jump height"), [](UCSMovementTuning& T) { T.JumpHeightCm = std::numeric_limits<float>::quiet_NaN(); });
+	ExpectInvalid(TEXT("zero arm length"), [](UCSMovementTuning& T) { T.ThirdPersonArmLength = 0.f; });
+	ExpectInvalid(TEXT("arm length above 1000"), [](UCSMovementTuning& T) { T.ThirdPersonArmLength = 1500.f; });
+	ExpectInvalid(TEXT("shoulder offset beyond 200"), [](UCSMovementTuning& T) { T.ThirdPersonShoulderOffset = FVector(0.f, 250.f, 0.f); });
+	ExpectInvalid(TEXT("NaN shoulder offset"), [](UCSMovementTuning& T) { T.ThirdPersonShoulderOffset.Z = std::numeric_limits<float>::quiet_NaN(); });
+	ExpectInvalid(TEXT("zero camera lag speed"), [](UCSMovementTuning& T) { T.ThirdPersonLagSpeed = 0.f; });
+	ExpectInvalid(TEXT("negative camera lag distance"), [](UCSMovementTuning& T) { T.ThirdPersonLagMaxDistance = -1.f; });
+	ExpectInvalid(TEXT("negative first-person smoothing"), [](UCSMovementTuning& T) { T.FirstPersonSmoothSeconds = -0.1f; });
+	ExpectInvalid(TEXT("first-person smoothing above 1 s"), [](UCSMovementTuning& T) { T.FirstPersonSmoothSeconds = 2.f; });
+	ExpectInvalid(TEXT("negative eye height smoothing"), [](UCSMovementTuning& T) { T.FirstPersonHeightSmoothSeconds = -1.f; });
+	ExpectInvalid(TEXT("eye height smoothing above 2 s"), [](UCSMovementTuning& T) { T.FirstPersonHeightSmoothSeconds = 3.f; });
+	ExpectInvalid(TEXT("zero eye height"), [](UCSMovementTuning& T) { T.FirstPersonEyeHeightCm = 0.f; });
+	ExpectInvalid(TEXT("eye height above 300 cm"), [](UCSMovementTuning& T) { T.FirstPersonEyeHeightCm = 400.f; });
+	ExpectInvalid(TEXT("negative crouched eye height"), [](UCSMovementTuning& T) { T.FirstPersonCrouchedEyeHeightCm = -5.f; });
+	ExpectInvalid(TEXT("crouched eyes above standing eyes"), [](UCSMovementTuning& T) { T.FirstPersonCrouchedEyeHeightCm = 170.f; });
 
 	UCSMovementTuning* Edge = NewTuning();
 	Edge->ThirdPersonFOV = 60.f;

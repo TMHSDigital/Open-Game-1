@@ -18,6 +18,7 @@
 #include "CSCameraRig.h"
 #include "CSCharacter.h"
 #include "CSMoveSim.h"
+#include "CSDevTools.h"
 #include "CSMovementTuning.h"
 #include "GameFramework/PlayerController.h"
 
@@ -433,6 +434,47 @@ bool FCSCameraSwitchMidAirAndCrouchedTest::RunTest(const FString& Parameters)
 	RunChecked(*this, Sim, 0.3f, TEXT("crouched, to first person again"));
 	Character->SetGait(ECSGait::Jog);
 	RunChecked(*this, Sim, 0.6f, TEXT("standing up in first person"));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSCameraTuningReloadChangesRigTest, "CombatSimulator.CS.Camera.TuningReloadChangesRig", CSCameraTests::TestFlags)
+bool FCSCameraTuningReloadChangesRigTest::RunTest(const FString& Parameters)
+{
+	// Spec 5.2: camera feel lives in the tuning asset; a reload (F5, cs.Tuning.Reload) changes the
+	// rig at once, without a restart.
+	UCSMovementTuning* Tuning = NewTuning();
+	FMoveSim Sim;
+	if (!Sim.Init(*this, 1.f / 60.f, Tuning))
+	{
+		return false;
+	}
+	ACSCharacter* Character = Sim.Character;
+	UCSCameraRig* Rig = Character->GetCameraRig();
+	const UCSSpringArmComponent* Arm = Rig->GetArm();
+	auto CheckArm = [&](const TCHAR* When, const UCSMovementTuning& T)
+	{
+		TestNearlyEqual(FString::Printf(TEXT("%s: arm length"), When), Arm->TargetArmLength, T.ThirdPersonArmLength, 0.001f);
+		TestTrue(FString::Printf(TEXT("%s: shoulder offset"), When), Arm->SocketOffset.Equals(T.ThirdPersonShoulderOffset, 0.001f));
+		TestNearlyEqual(FString::Printf(TEXT("%s: lag speed"), When), Arm->CameraLagSpeed, T.ThirdPersonLagSpeed, 0.001f);
+		TestNearlyEqual(FString::Printf(TEXT("%s: lag distance"), When), Arm->CameraLagMaxDistance, T.ThirdPersonLagMaxDistance, 0.001f);
+		// Standing still the lag has settled: the camera is the arm's length and offset from the eyes.
+		const float Expected = (FVector(-T.ThirdPersonArmLength, 0.f, 0.f) + T.ThirdPersonShoulderOffset).Size();
+		TestNearlyEqual(FString::Printf(TEXT("%s: camera distance from the eyes"), When), float(FVector::Dist(View(*Character).Location, Rig->GetEyeLocation())), Expected, 1.f);
+	};
+	CheckArm(TEXT("Start"), *Tuning);
+
+	Tuning->ThirdPersonArmLength = 400.f;
+	Tuning->ThirdPersonShoulderOffset = FVector(0.f, -40.f, 25.f);
+	Tuning->ThirdPersonLagSpeed = 6.f;
+	Tuning->ThirdPersonLagMaxDistance = 30.f;
+	Tuning->FirstPersonSmoothSeconds = 0.3f;
+	Sim.Run(FVector::ZeroVector, 0.2f);
+	TestNearlyEqual(TEXT("An edit does nothing until it is reloaded"), Arm->TargetArmLength, 260.f, 0.001f);
+	FString Message;
+	TestTrue(TEXT("Reload accepted"), UCSDevTools::ReloadTuning(*Character, Message));
+	Sim.Run(FVector::ZeroVector, 2.f);
+	CheckArm(TEXT("After reload"), *Tuning);
+	TestNearlyEqual(TEXT("After reload: first-person smoothing in use"), Character->GetActiveTuning().FirstPersonSmoothSeconds, 0.3f, 0.0001f);
 	return true;
 }
 

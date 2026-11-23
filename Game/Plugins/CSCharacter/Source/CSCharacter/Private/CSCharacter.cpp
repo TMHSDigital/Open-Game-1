@@ -31,11 +31,6 @@ namespace
 	// its fallback and the engine's eye viewpoint): eyes at 168 cm standing, about 110 cm crouched.
 	constexpr float StandingEyeHeightAboveCentre = 78.f;
 	constexpr float CrouchedEyeHeightAboveCentre = 50.f;
-	// Third-person arm: over the right shoulder, slight positional lag, no rotational lag (spec 5.3).
-	constexpr float ArmLength = 260.f;
-	const FVector ShoulderOffset(0.f, 45.f, 10.f);
-	constexpr float ArmLagSpeed = 12.f;
-	constexpr float ArmLagMaxDistance = 60.f;
 	// Used only before the character is in a world (no gravity to read yet).
 	constexpr float FallbackGravity = 980.f;
 	// The sprint ramp is defined as reaching this share of SprintSpeed in SprintRampSeconds.
@@ -78,13 +73,11 @@ ACSCharacter::ACSCharacter(const FObjectInitializer& ObjectInitializer)
 
 	CameraArm = CreateDefaultSubobject<UCSSpringArmComponent>(TEXT("CameraArm"));
 	CameraArm->SetupAttachment(GetCapsuleComponent());
-	CameraArm->TargetArmLength = ArmLength;
-	CameraArm->SocketOffset = ShoulderOffset;
+	// Over the right shoulder, positional lag only (spec 5.3). Length, offset and lag come from the
+	// applied tuning; the camera rig sets them every frame.
 	CameraArm->bUsePawnControlRotation = true;
 	CameraArm->bDoCollisionTest = true;
 	CameraArm->bEnableCameraLag = true;
-	CameraArm->CameraLagSpeed = ArmLagSpeed;
-	CameraArm->CameraLagMaxDistance = ArmLagMaxDistance;
 	CameraArm->bEnableCameraRotationLag = false;
 
 	Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));

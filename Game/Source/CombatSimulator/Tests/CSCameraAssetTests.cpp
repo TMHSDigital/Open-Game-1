@@ -85,7 +85,7 @@ namespace CSCameraAssetTests
 		AActor* OtherPlayer = nullptr;
 		float Dt = 1.f / 60.f;
 
-		bool Init(FAutomationTestBase& Test)
+		bool Init(FAutomationTestBase& Test, bool bPossess = true)
 		{
 			if (!World.CreateTestWorld(EWorldType::Game) || !World.BeginPlayInTestWorld())
 			{
@@ -113,6 +113,10 @@ namespace CSCameraAssetTests
 			Character->GetCharacterMovement()->bRunPhysicsWithNoController = true;
 			Character->GetCharacterMovement()->SetDefaultMovementMode();
 			Run(0.5f);
+			if (!bPossess)
+			{
+				return true;
+			}
 			Controller = W->SpawnActor<APlayerController>();
 			if (!Controller)
 			{
@@ -270,6 +274,66 @@ bool FCSCameraFirstPersonHidesHeadForOwnerOnlyTest::RunTest(const FString& Param
 	Sim.Run(Character->GetActiveTuning().CameraBlendSeconds + Sim.Dt);
 	TestEqual(TEXT("Back in third person"), Rig->GetEffectiveView(), ECSView::ThirdPerson);
 	CheckView(TEXT("Third person again"), true);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSCameraNoHeadBobRunningTest, "CombatSimulator.CS.Camera.NoHeadBobRunning", CSCameraAssetTests::TestFlags)
+bool FCSCameraNoHeadBobRunningTest::RunTest(const FString& Parameters)
+{
+	// Spec 5.3: no head bob. Jogging and sprinting in first person with the real animation, the
+	// camera's height above the capsule varies by less than 1 cm (the head itself bounces).
+	FCameraSim Sim;
+	if (!Sim.Init(*this, false))
+	{
+		return false;
+	}
+	ACSCharacter* Character = Sim.Character;
+	UCSCameraRig* Rig = Character->GetCameraRig();
+	USkeletalMeshComponent* Body = Character->GetMesh();
+	Rig->SetView(ECSView::FirstPerson);
+	Sim.Run(0.5f);
+	for (const ECSGait Gait : {ECSGait::Jog, ECSGait::Sprint})
+	{
+		const TCHAR* Name = Gait == ECSGait::Jog ? TEXT("Jog") : TEXT("Sprint");
+		Character->SetGait(Gait);
+		auto Step = [&]()
+		{
+			Character->AddMovementInput(FVector::ForwardVector, 1.f);
+			Sim.World.TickTestWorld(Sim.Dt);
+		};
+		// Reach a steady speed and let the filters settle.
+		for (int32 i = 0; i < FMath::CeilToInt(2.5f / Sim.Dt); ++i)
+		{
+			Step();
+		}
+		float CamMin = TNumericLimits<float>::Max(), CamMax = -CamMin, HeadMin = CamMin, HeadMax = -CamMin;
+		TArray<float> Heads;
+		for (int32 i = 0; i < FMath::CeilToInt(2.f / Sim.Dt); ++i)
+		{
+			Step();
+			const float Capsule = Character->GetActorLocation().Z;
+			FMinimalViewInfo POV;
+			Character->CalcCamera(0.f, POV);
+			const float Cam = POV.Location.Z - Capsule;
+			const float Head = Body->GetSocketLocation(TEXT("eyes")).Z - Capsule;
+			CamMin = FMath::Min(CamMin, Cam);
+			CamMax = FMath::Max(CamMax, Cam);
+			HeadMin = FMath::Min(HeadMin, Head);
+			HeadMax = FMath::Max(HeadMax, Head);
+			Heads.Add(Head);
+		}
+		// Bounces of the head per second: rising crossings of its mean height.
+		float Mean = 0.f;
+		for (const float H : Heads) { Mean += H / Heads.Num(); }
+		int32 Crossings = 0;
+		for (int32 i = 1; i < Heads.Num(); ++i) { Crossings += Heads[i - 1] < Mean && Heads[i] >= Mean; }
+		const float Speed = Character->GetCharacterMovement()->Velocity.Size2D();
+		AddInfo(FString::Printf(TEXT("%s at %.0f cm/s over 2 s: eye socket height varies %.2f cm (%.1f bounces/s), camera height %.2f cm"),
+			Name, Speed, HeadMax - HeadMin, Crossings / 2.f, CamMax - CamMin));
+		TestTrue(FString::Printf(TEXT("%s: moving at speed"), Name), Speed > 300.f);
+		TestTrue(FString::Printf(TEXT("%s: in first person"), Name), Rig->GetEffectiveView() == ECSView::FirstPerson);
+		TestTrue(FString::Printf(TEXT("%s: the camera bounces less than 1 cm"), Name), CamMax - CamMin < 1.f);
+	}
 	return true;
 }
 
