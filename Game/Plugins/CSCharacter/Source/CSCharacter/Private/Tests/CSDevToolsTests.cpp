@@ -97,7 +97,7 @@ namespace CSDevToolsTests
 
 using namespace CSDevToolsTests;
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSDevToolsReloadRejectsBadValuesTest, "CombatSimulator.CS.DevTools.ReloadRejectsBadValues", TestFlags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSDevToolsReloadRejectsBadValuesTest, "CombatSimulator.CS.DevTools.ReloadRejectsBadValues", CSDevToolsTests::TestFlags)
 bool FCSDevToolsReloadRejectsBadValuesTest::RunTest(const FString& Parameters)
 {
 	// Review Focus 3: bad tuning values reloaded are rejected with a message naming the field, and
@@ -202,7 +202,7 @@ bool FCSDevToolsReloadRejectsBadValuesTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSDevToolsOffDisablesKeysTest, "CombatSimulator.CS.DevTools.DevToolsOffDisablesKeys", TestFlags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSDevToolsOffDisablesKeysTest, "CombatSimulator.CS.DevTools.DevToolsOffDisablesKeys", CSDevToolsTests::TestFlags)
 bool FCSDevToolsOffDisablesKeysTest::RunTest(const FString& Parameters)
 {
 	for (const bool bDevTools : {false, true})
@@ -285,7 +285,7 @@ bool FCSDevToolsOffDisablesKeysTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSDevToolsGaitKeysTest, "CombatSimulator.CS.DevTools.GaitKeys", TestFlags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSDevToolsGaitKeysTest, "CombatSimulator.CS.DevTools.GaitKeys", CSDevToolsTests::TestFlags)
 bool FCSDevToolsGaitKeysTest::RunTest(const FString& Parameters)
 {
 	// Spec 5.2: Shift held sprints, Alt held walks, Ctrl toggles crouch, otherwise jog.

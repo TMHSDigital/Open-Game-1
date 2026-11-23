@@ -1,11 +1,13 @@
 #include "CSCharacter.h"
 
+#include "Animation/AnimInstance.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "CSCharacterLog.h"
 #include "CSDevTools.h"
 #include "CSMovementTuning.h"
 #include "Engine/LocalPlayer.h"
+#include "Engine/SkeletalMesh.h"
 #include "Engine/World.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
@@ -144,6 +146,51 @@ void ACSCharacter::SetGait(ECSGait NewGait)
 	{
 		GetCharacterMovement()->MaxWalkSpeed = GetGaitSpeed(Gait) * SlopeSpeedFactor;
 	}
+}
+
+void ACSCharacter::ApplyCharacterVisuals()
+{
+	USkeletalMeshComponent* MeshComp = GetMesh();
+	if (!MeshComp)
+	{
+		return;
+	}
+	if (!MeshComp->GetSkeletalMeshAsset() && !CharacterMesh.IsNull())
+	{
+		if (USkeletalMesh* Loaded = CharacterMesh.LoadSynchronous())
+		{
+			MeshComp->SetSkeletalMeshAsset(Loaded);
+		}
+		else
+		{
+			UE_LOG(LogCSCharacter, Warning, TEXT("%s: CharacterMesh %s could not be loaded."), *GetName(), *CharacterMesh.ToString());
+		}
+	}
+	if (!MeshComp->GetAnimClass() && !CharacterAnimClass.IsNull())
+	{
+		if (UClass* Loaded = CharacterAnimClass.LoadSynchronous())
+		{
+			MeshComp->SetAnimationMode(EAnimationMode::AnimationBlueprint);
+			MeshComp->SetAnimInstanceClass(Loaded);
+		}
+		else
+		{
+			UE_LOG(LogCSCharacter, Warning, TEXT("%s: CharacterAnimClass %s could not be loaded."), *GetName(), *CharacterAnimClass.ToString());
+		}
+	}
+}
+
+void ACSCharacter::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+	ApplyCharacterVisuals();
+}
+
+void ACSCharacter::PostInitializeComponents()
+{
+	// Before Super: ACharacter sets up the mesh's tick and pose there.
+	ApplyCharacterVisuals();
+	Super::PostInitializeComponents();
 }
 
 void ACSCharacter::BeginPlay()

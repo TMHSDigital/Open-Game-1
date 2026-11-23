@@ -8,6 +8,8 @@ class UCSDevTools;
 class UCSMovementTuning;
 class UInputAction;
 class UInputMappingContext;
+class UAnimInstance;
+class USkeletalMesh;
 struct FInputActionValue;
 
 DECLARE_MULTICAST_DELEGATE(FCSToggleCameraRequested);
@@ -35,6 +37,10 @@ enum class ECSGait : uint8
  *
  * The mesh component faces the actor's +X when the skeletal mesh faces +Y (the UE5 humanoid
  * convention), with its origin at the feet and the capsule fitted to a 180 cm figure.
+ *
+ * The skeletal mesh and its animation class are soft references read from the same config section
+ * (CharacterMesh, CharacterAnimClass); they fill the mesh component only when it has none, so a
+ * subclass or a placed character can set its own.
  *
  * Input is Enhanced Input. The mapping context and actions are soft references read from the game's
  * config (section [/Script/CSCharacter.CSCharacter] in DefaultGame.ini) or set on a subclass, so the
@@ -98,6 +104,16 @@ public:
 	/** Extension point for the camera rig: V was pressed. */
 	FCSToggleCameraRequested OnToggleCameraRequested;
 
+	// ----- Visuals (set in config or on a subclass) -----
+
+	/** Given to the mesh component when it has no skeletal mesh (UE5 humanoid: faces +Y, origin at the feet). */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CS|Visuals")
+	TSoftObjectPtr<USkeletalMesh> CharacterMesh;
+
+	/** Given to the mesh component when it has no animation class, for example an animation Blueprint derived from UCSAnimInstance. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CS|Visuals")
+	TSoftClassPtr<UAnimInstance> CharacterAnimClass;
+
 	// ----- Input (Enhanced Input; set in config or on a subclass) -----
 
 	/** Added to the local player's Enhanced Input subsystem when a player controller possesses the character. */
@@ -159,11 +175,15 @@ public:
 	/** Vertical speed of the last landing, cm/s (positive down). */
 	float GetLastLandingSpeed() const { return LastLandingSpeed; }
 
+	virtual void OnConstruction(const FTransform& Transform) override;
+	virtual void PostInitializeComponents() override;
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void Landed(const FHitResult& Hit) override;
 
 private:
+	/** Fills an empty mesh component from CharacterMesh and CharacterAnimClass. */
+	void ApplyCharacterVisuals();
 	float ComputeSlopeSpeedFactor(const UCSMovementTuning& Values) const;
 	float GetGravityMagnitude() const;
 	void UpdateGaitFromInput();

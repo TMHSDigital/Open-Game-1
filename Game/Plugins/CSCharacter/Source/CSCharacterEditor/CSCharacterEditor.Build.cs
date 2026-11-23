@@ -1,7 +1,8 @@
 using UnrealBuildTool;
 
-// Editor module of the CSCharacter plugin: UCSRagdollBuilder, a Python- and Blueprint-callable
-// builder for a human-range ragdoll physics asset. Never part of a packaged game.
+// Editor module of the CSCharacter plugin: Python- and Blueprint-callable builders for a human-range
+// ragdoll physics asset (UCSRagdollBuilder) and for blend spaces and a locomotion AnimGraph
+// (UCSAnimGraphBuilder). Never part of a packaged game.
 public class CSCharacterEditor : ModuleRules
 {
 	public CSCharacterEditor(ReadOnlyTargetRules Target) : base(Target)
@@ -15,7 +16,10 @@ public class CSCharacterEditor : ModuleRules
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] {
+			"AnimGraph",            // AnimGraph editor nodes (blend list, players, slot, output)
+			"AnimGraphRuntime",     // the runtime anim nodes they wrap
 			"AssetRegistry",
+			"BlueprintGraph",       // K2Node_VariableGet
 			"MeshUtilitiesCommon",  // FBoneVertInfo
 			"MeshUtilitiesEngine",  // vertices weighted to each bone
 			"PhysicsCore",

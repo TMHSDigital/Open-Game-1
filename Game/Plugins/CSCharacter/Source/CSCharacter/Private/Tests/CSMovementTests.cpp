@@ -133,7 +133,7 @@ namespace CSMovementTests
 
 using namespace CSMovementTests;
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSMovementTuningAppliedTest, "CombatSimulator.CS.Movement.TuningApplied", TestFlags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSMovementTuningAppliedTest, "CombatSimulator.CS.Movement.TuningApplied", CSMovementTests::TestFlags)
 bool FCSMovementTuningAppliedTest::RunTest(const FString& Parameters)
 {
 	// Values different from the defaults, so the test proves they come from the asset.
@@ -193,7 +193,7 @@ bool FCSMovementTuningAppliedTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSMovementSprintRampTimeTest, "CombatSimulator.CS.Movement.SprintRampTime", TestFlags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSMovementSprintRampTimeTest, "CombatSimulator.CS.Movement.SprintRampTime", CSMovementTests::TestFlags)
 bool FCSMovementSprintRampTimeTest::RunTest(const FString& Parameters)
 {
 	// Review Focus 4: the time to sprint speed must not depend on the frame rate.
@@ -216,7 +216,7 @@ bool FCSMovementSprintRampTimeTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSMovementJumpHeightTest, "CombatSimulator.CS.Movement.JumpHeight", TestFlags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSMovementJumpHeightTest, "CombatSimulator.CS.Movement.JumpHeight", CSMovementTests::TestFlags)
 bool FCSMovementJumpHeightTest::RunTest(const FString& Parameters)
 {
 	for (const float Dt : {1.f / 30.f, 1.f / 144.f})
@@ -243,7 +243,7 @@ bool FCSMovementJumpHeightTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSMovementBrakingSlidesTest, "CombatSimulator.CS.Movement.BrakingSlides", TestFlags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSMovementBrakingSlidesTest, "CombatSimulator.CS.Movement.BrakingSlides", CSMovementTests::TestFlags)
 bool FCSMovementBrakingSlidesTest::RunTest(const FString& Parameters)
 {
 	UCSMovementTuning* Tuning = NewTuning();
@@ -271,7 +271,7 @@ bool FCSMovementBrakingSlidesTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSMovementLandingCostsSpeedTest, "CombatSimulator.CS.Movement.LandingCostsSpeed", TestFlags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSMovementLandingCostsSpeedTest, "CombatSimulator.CS.Movement.LandingCostsSpeed", CSMovementTests::TestFlags)
 bool FCSMovementLandingCostsSpeedTest::RunTest(const FString& Parameters)
 {
 	const float KeepHigh = MeasureLandingKeep(*this, 300.f);
@@ -282,7 +282,7 @@ bool FCSMovementLandingCostsSpeedTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSMovementTurnRadiusTest, "CombatSimulator.CS.Movement.TurnRadius", TestFlags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSMovementTurnRadiusTest, "CombatSimulator.CS.Movement.TurnRadius", CSMovementTests::TestFlags)
 bool FCSMovementTurnRadiusTest::RunTest(const FString& Parameters)
 {
 	// Spec 5.2: turning at sprint speed has a wider radius than at a walk.
@@ -311,7 +311,7 @@ bool FCSMovementTurnRadiusTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSMovementLandedListenerTest, "CombatSimulator.CS.Movement.LandedListenerSeesThisLanding", TestFlags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSMovementLandedListenerTest, "CombatSimulator.CS.Movement.LandedListenerSeesThisLanding", CSMovementTests::TestFlags)
 bool FCSMovementLandedListenerTest::RunTest(const FString& Parameters)
 {
 	// A LandedDelegate listener (Task 7's ragdoll trigger) must read this landing's speed.
@@ -343,7 +343,7 @@ bool FCSMovementLandedListenerTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSMovementSlopeChangesSpeedTest, "CombatSimulator.CS.Movement.SlopeChangesSpeed", TestFlags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSMovementSlopeChangesSpeedTest, "CombatSimulator.CS.Movement.SlopeChangesSpeed", CSMovementTests::TestFlags)
 bool FCSMovementSlopeChangesSpeedTest::RunTest(const FString& Parameters)
 {
 	// Spec 5.2: uphill slows, downhill speeds up slightly. The floor rises toward +X by 20 degrees.
@@ -369,7 +369,7 @@ bool FCSMovementSlopeChangesSpeedTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSMovementTuningValidationTest, "CombatSimulator.CS.Movement.TuningValidation", TestFlags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSMovementTuningValidationTest, "CombatSimulator.CS.Movement.TuningValidation", CSMovementTests::TestFlags)
 bool FCSMovementTuningValidationTest::RunTest(const FString& Parameters)
 {
 	FString Reason;
