@@ -74,17 +74,18 @@ script. Build choices:
   `center_of_mass` sit at the origin pointing +Y with roll 0, so they import with no rotation.
   `ik_foot_*` and `ik_hand_*` copy the foot and hand bones. The ik and helper bones, and `root`,
   carry no weights.
-- Mesh: skin modifier over a node graph, subdivided twice (about 18,000 triangles). Rest pose is
-  the A-pose above, with a 12 degree elbow bend and a slight knee bend. Each hand has a palm, four
-  fingers with a ring at every joint and a crease ring past the knuckle, and a thumb built from a
-  tapered thenar mass buried in the palm plus a free thumb from `thumb_02`. Thenars and thumbs
-  are separate pieces of the graph (an extra branch on a busy node makes the skin hull fail); an
-  exact boolean union joins them, and the union seam plus the folds at the thenars and armpits
-  are relaxed, so the body is one closed piece (checked: `mesh_islands` 1). Glutes are a smooth
-  displacement of the back of the pelvis (two lobes and a soft cleft), not extra geometry.
+- Mesh: skin modifier over a node graph, subdivided twice (about 17,000 triangles). Rest pose is
+  the A-pose above, with a 12 degree elbow bend and a slight knee bend. The arm branches straight
+  off the shoulder line (a separate trapezius node folded the hull into a groove that showed as
+  a collar round the moving arm). Each hand has a palm, four fingers with a ring at every joint
+  and a crease ring past the knuckle, and a thumb that is its own graph piece, starting buried
+  in the palm's thickness so it has no end cap; an exact boolean union joins the thumbs, and
+  the ball of the thumb is a smooth bulge of the palm surface. The body is one closed piece
+  (checked: `mesh_islands` 1). Glutes are a smooth displacement of the back of the pelvis.
 - Weights: bone heat on the main bones, then corrections (legs, crotch, a smooth upper-arm ramp
-  across the shoulder joint, one finger chain per finger vertex with linear blends only near the
-  joints, a slow thenar ramp, twist shares, 4 influences).
+  across the shoulder joint with the rib-cage flank kept on the torso, one finger chain per
+  finger vertex with linear blends only near the joints, a slow thumb_01 ramp, twist shares,
+  4 influences). Left and right weights mirror within 0.05 except a few hand vertices.
 - A failed check exits non-zero before anything is saved; the .blend and .fbx are written to
   temporary names and moved into place only when both succeed.
 - The scene is built in metres and converted to a centimetre scene (Unit Scale 0.01, armature

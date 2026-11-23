@@ -144,6 +144,7 @@ def left_joints():
     ha = df
     hf = (FORWARD - ha * FORWARD.dot(ha)).normalized()
     hn = ha.cross(hf).normalized()  # palm normal, toward the body for the left hand
+    j["_palm_normal_l"] = hn
     j["hand_l"] = (w, w + ha * 0.075)
     # Fingers: knuckle offset across the palm, knuckle distance from the wrist, fan, phalanx lengths.
     # Phalanx lengths follow the usual adult ratios (proximal about 1.6 to 2 times distal), scaled
@@ -169,7 +170,7 @@ def left_joints():
         j["_fingertips_l"][f] = p
     # Thumb: thumb_01 is the metacarpal, from the base of the palm toward the front and palm side.
     t = (ha * 0.70 + hf * 0.60 + hn * 0.38).normalized()
-    p = w + ha * 0.034 + hf * 0.020 + hn * 0.009
+    p = w + ha * 0.042 + hf * 0.020 + hn * 0.009
     for i, (ln, bend) in enumerate(zip((0.046, 0.033, 0.027), (0.0, 18.0, 30.0)), start=1):
         di = _rotate_toward(t, ha, bend)
         q = p + di * ln
@@ -239,6 +240,7 @@ class Graph:
     def __init__(self):
         self.pos, self.rad, self.edges, self.index = [], [], [], {}
         self.roots = []  # one per separate piece of the graph (see merge_islands)
+        self.thenars = []  # (thumb_01 head, tail, palm normal) per hand, for thenar_bulge
 
     def node(self, name, p, r):
         rx, ry = (r, r) if isinstance(r, (int, float)) else r
@@ -265,7 +267,7 @@ def build_graph(j):
         ("ribs", (0, -0.008, 1.225), (0.162, 0.127)),
         ("chest", (0, -0.012, 1.290), (0.176, 0.138)),
         ("chest_up", (0, -0.004, 1.360), (0.188, 0.134)),
-        ("shoulder_line", (0, 0.010, 1.420), (0.168, 0.110)),
+        ("shoulder_line", (0, 0.010, 1.420), (0.150, 0.110)),
         ("neck_base", (0, 0.020, 1.472), (0.098, 0.080)),
         ("neck_lo", (0, 0.022, 1.515), (0.072, 0.074)),
         ("neck_hi", (0, 0.016, 1.560), (0.070, 0.072)),
@@ -290,10 +292,12 @@ def build_graph(j):
         w = j["lowerarm_l"][1]
         du = (e - s).normalized()
         df = (w - e).normalized()
+        # The arm branches straight off the shoulder line into a modest deltoid: a separate
+        # trapezius node there made the skin hull fold into a groove on top of the shoulder,
+        # which showed as a collar round the arm whenever it moved.
         arm = [
-            N("trap", Vector((0.110, 0.018, SHOULDER_Z + 0.022)), 0.068),
-            N("deltoid", s + Vector((0.020, 0.0, 0.010)), 0.087),
-            N("arm_a", s + du * 0.060, 0.068),
+            N("deltoid", s + Vector((0.016, 0.0, 0.008)), 0.078),
+            N("arm_a", s + du * 0.060, 0.072),
             N("arm_b", s + du * 0.120, 0.062),
             N("arm_c", s + du * 0.185, 0.058),
             N("elbow_up", e - du * 0.045, 0.052),
@@ -328,26 +332,22 @@ def build_graph(j):
             n3 = N(f"{f}_tip", tip - (tip - b3[0]).normalized() * 0.004, r0 * 0.80)
             g.chain(k, n00, n0, n1, n1m, n2, n3)
         th1, th2, th3 = (j[f"thumb_{i:02d}_l"] for i in (1, 2, 3))
-        # Thumb: a broad thenar mass starting inside the base of the palm, and a free thumb
-        # cylinder from thumb_02; both are separate graph pieces unioned into the hand. A branch
-        # off the palm node makes the skin hull fail, and one off the wrist roots the thumb on
-        # the forearm.
-        # The thenar tapers in from a small start buried in the palm toward the centre of the
-        # hand, so no rounded end cap shows at the wrist when the thumb closes.
-        palm_c = w + df * 0.050
-        tin = N("thenar_in", th1[0].lerp(palm_c, 0.45), 0.0120)
-        t0 = N("thenar", th1[0].lerp(th1[1], 0.25), 0.0205)
-        t1 = N("thenar_end", th1[0].lerp(th1[1], 0.80), 0.0170)
-        g.chain(tin, t0, t1)
-        g.roots.append(tin)
-        t2s = N("thumb_2s", th1[0].lerp(th1[1], 0.62), 0.0150)  # overlaps the thenar end
-        t2 = N("thumb_2", th2[0], 0.0145)
-        g.roots.append(t2s)
+        # Thumb: a separate graph piece (a branch off the palm node makes the skin hull fail,
+        # one off the wrist roots the thumb on the forearm). It starts buried in the middle of
+        # the palm's thickness, so no end cap shows anywhere, leaves the palm at its thumb edge
+        # and is unioned in. The ball of the thumb (thenar) is a smooth bulge of the palm
+        # surface added after the union (see thenar_bulge), not a tube.
+        hn_l = j["_palm_normal_l"]
+        t0 = N("thumb_root", th1[0] - hn_l * 0.009, 0.0120)
+        t1 = N("thumb_mid", th1[0].lerp(th1[1], 0.60) - hn_l * 0.003, 0.0150)
+        t2 = N("thumb_2", th2[0], 0.0148)
+        g.roots.append(t0)
         t2m = N("thumb_2m", th2[0].lerp(th2[1], 0.5), 0.0132)
         t3 = N("thumb_3", th3[0], 0.0124)
         tip = j["_fingertips_l"]["thumb"]
         t4 = N("thumb_tip", tip - (tip - th3[0]).normalized() * 0.004, 0.0108)
-        g.chain(t2s, t2, t2m, t3, t4)
+        g.chain(t0, t1, t2, t2m, t3, t4)
+        g.thenars.append((P(th1[0]), P(th1[1]), Vector((hn_l.x * sx, hn_l.y, hn_l.z))))
 
         # Leg
         hip, knee = j["thigh_l"]
@@ -404,30 +404,94 @@ def skin_mesh(g):
     bpy.data.objects.remove(obj, do_unlink=True)
     bpy.data.meshes.remove(me)
     result = merge_islands(result)
-    # Fill the fold where the thenar meets the palm and wrist (a union seam in a tight corner).
-    for side in ("l", "r"):
-        relax_region(result, g.pos[g.index[f"thenar_{side}"]], 0.045, 40)
+    for a, b, n in g.thenars:
+        thenar_bulge(result, a, b, n)
+        # relax the seam where the thumb leaves the palm
+        relax_region(result, a.lerp(b, 0.4), 0.030, 30)
     # Same for the fold under each armpit, where the arm tube meets the ribs.
     for sx in (1.0, -1.0):
         relax_region(result, Vector((sx * (SHOULDER_X - 0.02), 0.020, SHOULDER_Z - 0.10)), 0.075, 40)
+        # and the whole junction of arm and torso: only concave points move, so the creases
+        # round out without shrinking the deltoid or the chest
+        fill_creases(result, Vector((sx * SHOULDER_X, 0.010, SHOULDER_Z - 0.04)),
+                     0.12, 60)
     return result
 
 
-def relax_region(me, centre, radius, iterations):
-    """Laplacian smoothing with a linear falloff inside a sphere; fills folds and seams there."""
+def fill_creases(me, centre, radius, iterations):
+    """Move only concave vertices toward their neighbours' average inside a sphere (with a linear
+    falloff), so folds and creases fill in while convex shapes keep their volume."""
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(me)
+        bm.verts.ensure_lookup_table()
+        bm.normal_update()
+        co = [v.co.copy() for v in bm.verts]
+        nrm = [v.normal.copy() for v in bm.verts]
+        active = [i for i, p in enumerate(co) if (p - centre).length < radius]
+        wts = {i: 1.0 - (co[i] - centre).length / radius for i in active}
+        nbrs = {i: [e.other_vert(bm.verts[i]).index for e in bm.verts[i].link_edges] for i in active}
+        for _ in range(iterations):
+            new = {}
+            for i in active:
+                lap = sum((co[n] for n in nbrs[i]), Vector()) / len(nbrs[i]) - co[i]
+                if lap.dot(nrm[i]) > 0.0:
+                    new[i] = co[i] + lap * 0.5 * wts[i]
+            for i, q in new.items():
+                co[i] = q
+        for i in active:
+            bm.verts[i].co = co[i]
+        bm.to_mesh(me)
+    finally:
+        bm.free()
+
+
+THENAR_HEIGHT, THENAR_WIDTH = 0.006, 0.020
+
+
+def thenar_bulge(me, a, b, n):
+    """Raise the ball of the thumb: push the palm-side surface out along the palm normal n with a
+    smooth (Gaussian) falloff round the thumb metacarpal a-b. A displacement, so no seam."""
+    co = [0.0] * (len(me.vertices) * 3)
+    me.vertices.foreach_get("co", co)
+    pts = [Vector(co[i:i + 3]) for i in range(0, len(co), 3)]
+    ab = b - a
+    for p in pts:
+        t = max(0.0, min(1.0, (p - a).dot(ab) / ab.length_squared))
+        d = p - a.lerp(b, t)
+        if d.length > 3.0 * THENAR_WIDTH or d.dot(n) <= 0.0:
+            continue
+        side = min(1.0, d.dot(n) / 0.008)  # only the palm side
+        along = math.sin(math.pi * min(1.0, max(0.0, (t + 0.15) / 1.0)))  # fades at both ends
+        p += n * THENAR_HEIGHT * side * along * math.exp(-(d.length / THENAR_WIDTH) ** 2)
+    me.vertices.foreach_set("co", [c for p in pts for c in p])
+    me.update()
+
+
+def relax_region(me, centre, radius, iterations, taubin=False):
+    """Laplacian smoothing with a smooth falloff inside a sphere; fills folds and seams there.
+
+    With taubin=True every smoothing step is followed by a slightly larger inflating step, so
+    the region keeps its volume instead of shrinking.
+    """
     bm = bmesh.new()
     try:
         bm.from_mesh(me)
         bm.verts.ensure_lookup_table()
         co = [v.co.copy() for v in bm.verts]
         active = [i for i, p in enumerate(co) if (p - centre).length < radius]
-        wts = {i: 1.0 - (co[i] - centre).length / radius for i in active}
+        wts = {}
+        for i in active:
+            t = 1.0 - (co[i] - centre).length / radius
+            wts[i] = t * t * (3.0 - 2.0 * t)  # smoothstep falloff, no step at the border
         nbrs = {i: [e.other_vert(bm.verts[i]).index for e in bm.verts[i].link_edges] for i in active}
+        steps = (0.5, -0.53) if taubin else (0.5,)
         for _ in range(iterations):
-            new = {i: co[i].lerp(sum((co[n] for n in nbrs[i]), Vector()) / len(nbrs[i]), 0.5 * wts[i])
-                   for i in active}
-            for i, q in new.items():
-                co[i] = q
+            for lam in steps:
+                new = {i: co[i] + (sum((co[n] for n in nbrs[i]), Vector()) / len(nbrs[i]) - co[i])
+                       * lam * wts[i] for i in active}
+                for i, q in new.items():
+                    co[i] = q
         for i in active:
             bm.verts[i].co = co[i]
         bm.to_mesh(me)
@@ -475,9 +539,9 @@ def merge_islands(me):
     """Make the subdivided skin mesh one closed piece.
 
     Separate graph pieces (the thenars and thumbs) and shells left where a busy branch node's
-    skin hull fails only overlap their neighbours. Loose vertices are removed, an exact boolean
-    union with self-intersection joins every shell, and the union seam (its n-gons plus three
-    rings round them) is welded, triangulated and relaxed.
+    skin hull fails only overlap their neighbours. Loose vertices are removed, each shell is
+    joined to the body with an exact boolean union, and the union seams (their n-gons plus three
+    rings round them) are welded, triangulated and relaxed.
     """
     bm = bmesh.new()
     try:
@@ -485,21 +549,27 @@ def merge_islands(me):
         bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
         bm.verts.index_update()
         pieces = sorted(_islands(bm), key=len, reverse=True)
-        main = _mesh_from_subset(bm, pieces[0], "merge_main")
-        rest = _mesh_from_subset(bm, set().union(*pieces[1:]), "merge_rest")
+        meshes = [_mesh_from_subset(bm, piece, f"merge_{i}") for i, piece in enumerate(pieces)]
     finally:
         bm.free()
-    a = bpy.data.objects.new("merge_main", main)
-    b = bpy.data.objects.new("merge_rest", rest)
-    for o in (a, b):
-        bpy.context.scene.collection.objects.link(o)
-    mod = a.modifiers.new("Union", "BOOLEAN")
-    mod.operation, mod.operand_type, mod.object = "UNION", "OBJECT", b
-    mod.solver, mod.use_self = "EXACT", True
-    result = _evaluated_copy(a)
-    for o, m in ((a, main), (b, rest)):
-        bpy.data.objects.remove(o, do_unlink=True)
-        bpy.data.meshes.remove(m)
+    # Union the pieces into the body one at a time, without self-intersection: each piece is a
+    # clean closed shell on its own, and a self-union would also cut the body where its own skin
+    # tubes overlap (the shoulders), leaving sharp creases there.
+    result = meshes[0]
+    for operand in meshes[1:]:
+        a = bpy.data.objects.new("merge_a", result)
+        b = bpy.data.objects.new("merge_b", operand)
+        for o in (a, b):
+            bpy.context.scene.collection.objects.link(o)
+        mod = a.modifiers.new("Union", "BOOLEAN")
+        mod.operation, mod.operand_type, mod.object = "UNION", "OBJECT", b
+        mod.solver, mod.use_self = "EXACT", False
+        merged = _evaluated_copy(a)
+        for o in (a, b):
+            bpy.data.objects.remove(o, do_unlink=True)
+        bpy.data.meshes.remove(result)
+        bpy.data.meshes.remove(operand)
+        result = merged
     bpy.data.meshes.remove(me)
     result.materials.clear()  # the boolean adds an empty slot for its operand
     bm = bmesh.new()
@@ -701,6 +771,15 @@ def _chain_share(bones, pl, i, t, hand):
     return share
 
 
+# Shoulder weights (see correct_weights): the upper arm's share ramps from SH_IN to SH_OUT along
+# the arm axis, for skin within SH_RAD of it (blended over SH_RAD_BLEND) and SH_REACH of the
+# joint. Below the armpit (SH_PIT_DZ under the joint) only skin outside the rib-cage wall
+# (SH_WALL from the midline) counts as arm.
+SH_IN, SH_OUT = -0.06, 0.10
+SH_RAD, SH_RAD_BLEND, SH_REACH = 0.13, 0.06, 0.18
+SH_WALL, SH_PIT_DZ = 0.150, 0.04
+
+
 def correct_weights(obj, joints):
     pts = [v.co.copy() for v in obj.data.vertices]
     weights = read_weights(obj)
@@ -724,26 +803,31 @@ def correct_weights(obj, joints):
     # Shoulders: bone heat gives the upper arm a hard edge at the joint, so the arm turns like a
     # tube plugged into the torso (a crease ring when it is raised) and torso skin around the
     # armpit trails as a lump. Instead the arm's share is a smooth ramp along the arm axis across
-    # the joint (none 5 cm inside it, all 5 cm outside) for skin within about 7 cm of the arm
-    # axis (blended out to 13 cm); the rest goes to the torso bones, keeping the heat split.
+    # the joint (SH_IN to SH_OUT) near the arm axis; the rest goes to the torso bones, keeping
+    # the heat split, and the rib-cage flank under the armpit stays torso.
     for side, sx in (("l", 1.0), ("r", -1.0)):
         s0, s1 = joints[f"upperarm_{side}"]
         du = (s1 - s0).normalized()
         arm_bones = (f"upperarm_{side}", f"upperarm_twist_01_{side}", f"upperarm_twist_02_{side}")
         for p, wd in zip(pts, weights):
             d = p - s0
-            if p.x * sx < 0.05 or d.length > 0.18:
+            if p.x * sx < 0.02 or d.length > SH_REACH:
                 continue
             depth = d.dot(du)
             radial = (d - du * depth).length
             arm_w = {b: w for b, w in wd.items() if b in arm_bones}
             body_w = {b: w for b, w in wd.items() if b not in arm_bones}
             a_tot, b_tot = sum(arm_w.values()), sum(body_w.values())
-            t = max(0.0, min(1.0, (depth + 0.05) / 0.10))
+            t = max(0.0, min(1.0, (depth - SH_IN) / (SH_OUT - SH_IN)))
             f = t * t * (3.0 - 2.0 * t)  # smoothstep
             # Only on the arm tube and the shoulder cap round the joint; the ribs and back further
             # from the arm axis keep their heat split, blended over 3 cm.
-            g = max(0.0, min(1.0, (0.13 - radial) / 0.06))
+            g = max(0.0, min(1.0, (SH_RAD - radial) / SH_RAD_BLEND))
+            # The arm hangs down and out, so the rib-cage flank under the armpit also lies along
+            # the arm axis; it is torso, not arm. Below the armpit only skin outside the torso
+            # wall counts as arm.
+            if p.z < s0.z - SH_PIT_DZ:
+                g *= max(0.0, min(1.0, (p.x * sx - SH_WALL) / 0.03))
             f = g * f + (1.0 - g) * (a_tot / (a_tot + b_tot) if a_tot + b_tot > 0.0 else 0.0)
             if a_tot <= 0.0:
                 arm_w, a_tot = {f"upperarm_{side}": 1.0}, 1.0
