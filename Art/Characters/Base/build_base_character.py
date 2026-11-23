@@ -16,14 +16,16 @@ How it is built:
    never from an Epic asset. Bone names, parents and roll notes come from skeleton_reference.json.
 2. The body is a skin modifier over a graph of nodes that follows the joints (extra nodes just
    above and below shoulders, elbows, hips and knees give separate edge loops there), subdivided
-   twice and applied. Palms are flat through elliptical skin radii; soles are flattened after.
-   Each thumb is a separate piece of the graph; overlapping shells (the thumb, and any branch
-   whose skin hull fails) are joined with an exact boolean union so the body is one piece.
+   twice and applied. Palms are flat through elliptical skin radii. Each thenar and thumb is a
+   separate piece of the graph; overlapping shells are joined with an exact boolean union so the
+   body is one piece, and the folds at the thenars and armpits are relaxed. Glutes are a smooth
+   displacement of the back of the pelvis; soles are flattened.
 3. Rest pose: A-pose, upper arm 55 degrees below horizontal, small elbow and knee bends so IK
    solvers know the bend direction. Faces Blender -Y, left side on +X (export skill convention).
 4. Weights: Blender's automatic (bone heat) weights on the main deform bones, then corrections:
-   no weight from the opposite leg, the crotch follows the pelvis, a light Laplacian smoothing,
-   fingers get distance-based weights per finger, twist bones get a share of their limb, at most
+   no weight from the opposite leg, the crotch follows the pelvis, the upper arm's share ramps
+   smoothly across the shoulder joint, a Laplacian weight smoothing, each finger vertex goes to
+   one finger chain, twist bones get a share of their limb, at most
    4 influences per vertex, renormalized, no vertex left unweighted. ik_*, interaction and
    center_of_mass are built (so retargeting and IK tools find them) but carry no weights.
 5. One neutral matte material, smart UV unwrap. The scene is built in metres, then converted to
@@ -255,7 +257,7 @@ def build_graph(j):
     # Torso and head, bottom to top. Radii are skin radii (the subdivided surface ends up a little
     # inside them). Head: an egg, slightly deeper than wide, no features.
     torso = [
-        ("pelvis_c", (0, 0.016, HIP_Z - 0.030), (0.172, 0.136)),
+        ("pelvis_c", (0, 0.004, HIP_Z - 0.030), (0.168, 0.118)),
         ("hip_band", (0, 0.010, HIP_Z + 0.030), (0.166, 0.132)),
         ("abdomen", (0, -0.002, 1.040), (0.152, 0.120)),
         ("waist", (0, 0.004, 1.105), (0.146, 0.111)),
@@ -275,14 +277,6 @@ def build_graph(j):
     for n, p, r in torso:
         g.node(n, p, r)
     g.chain(*[n for n, _, _ in torso])
-    # Crotch: a small mass below the pelvis so the inner thighs meet in a V, not a flat bridge.
-    # Like the other add-on masses it is its own piece of the graph (an extra branch on a busy
-    # node makes the skin hull fail) and merge_islands unions it into the body.
-    g.node("crotch_top", (0, 0.010, HIP_Z - 0.050), 0.050)
-    g.node("crotch", (0, 0.008, HIP_Z - 0.100), 0.048)
-    g.chain("crotch_top", "crotch")
-    g.roots.append("crotch_top")
-
     for side, sx in (("l", 1.0), ("r", -1.0)):
         def P(v):
             return Vector((v.x * sx, v.y, v.z))
@@ -314,12 +308,6 @@ def build_graph(j):
         ]
         g.edges.append((g.index["shoulder_line"], g.index[arm[0]]))
         g.chain(*arm)
-        # Armpit: a latissimus mass from the upper chest toward the back of the armpit, so the
-        # torso side meets the arm in a fold instead of a gap.
-        ax0 = N("axilla_in", Vector((0.060, 0.026, 1.330)), (0.055, 0.070))
-        ax1 = N("axilla", Vector((0.105, 0.026, 1.320)), (0.046, 0.064))
-        g.chain(ax0, ax1)
-        g.roots.append(ax0)
         # Knuckle row and fingers
         knuckles = [N(f"k_{f}", j[f"{f}_metacarpal_l"][1], 0.0125)
                     for f in ("index", "middle", "ring", "pinky")]
@@ -344,10 +332,14 @@ def build_graph(j):
         # cylinder from thumb_02; both are separate graph pieces unioned into the hand. A branch
         # off the palm node makes the skin hull fail, and one off the wrist roots the thumb on
         # the forearm.
-        t0 = N("thenar", th1[0].lerp(th1[1], 0.20), 0.0215)
+        # The thenar tapers in from a small start buried in the palm toward the centre of the
+        # hand, so no rounded end cap shows at the wrist when the thumb closes.
+        palm_c = w + df * 0.050
+        tin = N("thenar_in", th1[0].lerp(palm_c, 0.45), 0.0120)
+        t0 = N("thenar", th1[0].lerp(th1[1], 0.25), 0.0205)
         t1 = N("thenar_end", th1[0].lerp(th1[1], 0.80), 0.0170)
-        g.chain(t0, t1)
-        g.roots.append(t0)
+        g.chain(tin, t0, t1)
+        g.roots.append(tin)
         t2s = N("thumb_2s", th1[0].lerp(th1[1], 0.62), 0.0150)  # overlaps the thenar end
         t2 = N("thumb_2", th2[0], 0.0145)
         g.roots.append(t2s)
@@ -363,7 +355,7 @@ def build_graph(j):
         toe = j["ball_l"][1]
         heel_y = j["_heel_y"]
         leg = [
-            N("hips", Vector((HIP_X + 0.006, 0.036, HIP_Z - 0.085)), (0.092, 0.106)),
+            N("hips", Vector((HIP_X + 0.010, 0.046, HIP_Z - 0.080)), (0.094, 0.112)),
             N("thigh_up", hip.lerp(knee, 0.25), 0.098),
             N("thigh_mid", hip.lerp(knee, 0.45), 0.092),
             N("thigh_lo", hip.lerp(knee, 0.68), 0.082),
@@ -387,10 +379,11 @@ def build_graph(j):
 
 
 def skin_mesh(g):
-    """Skin cage over the graph, merged into one closed piece, then subdivided twice.
+    """Skin modifier over the graph, subdivided twice, then made one closed piece.
 
-    The union runs on the low-resolution cage, before Subsurf, so its seams get smoothed by the
-    subdivision like the rest of the surface. Returns a new applied mesh datablock.
+    The separate graph pieces (thenars, thumbs) and any shell left by a failed hull are joined by
+    merge_islands after the subdivision (a union on the low-resolution cage breaks bone heat).
+    The folds at the thenars and under the armpits are then relaxed. Returns a new mesh.
     """
     me = bpy.data.meshes.new("skin_graph")
     me.from_pydata([tuple(p) for p in g.pos], g.edges, [])
@@ -410,7 +403,36 @@ def skin_mesh(g):
     result = _evaluated_copy(obj)
     bpy.data.objects.remove(obj, do_unlink=True)
     bpy.data.meshes.remove(me)
-    return merge_islands(result)
+    result = merge_islands(result)
+    # Fill the fold where the thenar meets the palm and wrist (a union seam in a tight corner).
+    for side in ("l", "r"):
+        relax_region(result, g.pos[g.index[f"thenar_{side}"]], 0.045, 40)
+    # Same for the fold under each armpit, where the arm tube meets the ribs.
+    for sx in (1.0, -1.0):
+        relax_region(result, Vector((sx * (SHOULDER_X - 0.02), 0.020, SHOULDER_Z - 0.10)), 0.075, 40)
+    return result
+
+
+def relax_region(me, centre, radius, iterations):
+    """Laplacian smoothing with a linear falloff inside a sphere; fills folds and seams there."""
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(me)
+        bm.verts.ensure_lookup_table()
+        co = [v.co.copy() for v in bm.verts]
+        active = [i for i, p in enumerate(co) if (p - centre).length < radius]
+        wts = {i: 1.0 - (co[i] - centre).length / radius for i in active}
+        nbrs = {i: [e.other_vert(bm.verts[i]).index for e in bm.verts[i].link_edges] for i in active}
+        for _ in range(iterations):
+            new = {i: co[i].lerp(sum((co[n] for n in nbrs[i]), Vector()) / len(nbrs[i]), 0.5 * wts[i])
+                   for i in active}
+            for i, q in new.items():
+                co[i] = q
+        for i in active:
+            bm.verts[i].co = co[i]
+        bm.to_mesh(me)
+    finally:
+        bm.free()
 
 
 def _evaluated_copy(obj):
@@ -450,12 +472,12 @@ def _mesh_from_subset(bm, keep, name):
 
 
 def merge_islands(me):
-    """Make the skin cage one closed piece.
+    """Make the subdivided skin mesh one closed piece.
 
-    Separate graph pieces (the thumbs) and shells left where a busy branch node's skin hull fails
-    only overlap their neighbours; tubes can also pass through each other. Loose vertices are
-    removed, then an exact boolean union with self-intersection joins every shell and resolves
-    the overlaps.
+    Separate graph pieces (the thenars and thumbs) and shells left where a busy branch node's
+    skin hull fails only overlap their neighbours. Loose vertices are removed, an exact boolean
+    union with self-intersection joins every shell, and the union seam (its n-gons plus three
+    rings round them) is welded, triangulated and relaxed.
     """
     bm = bmesh.new()
     try:
@@ -511,10 +533,28 @@ def _seg_t(p, a, b):
     return max(0.0, min(1.0, (p - a).dot(ab) / ab.length_squared))
 
 
+GLUTE_X, GLUTE_Z = 0.072, HIP_Z - 0.065
+GLUTE_DEPTH, CLEFT_DEPTH = 0.030, 0.022
+
+
 def shape(me):
     co = [0.0] * (len(me.vertices) * 3)
     me.vertices.foreach_get("co", co)
     pts = [Vector(co[i:i + 3]) for i in range(0, len(co), 3)]
+
+    # Glutes: push the back of the pelvis out in two smooth (Gaussian) lobes and draw the
+    # midline in between them, so the back reads as two buttocks with a soft cleft. A
+    # displacement rather than more skin nodes, so there is no union seam on the surface.
+    for p in pts:
+        if p.y <= 0.0 or abs(p.x) > 0.20 or not (HIP_Z - 0.20 < p.z < HIP_Z + 0.10):
+            continue
+        back = min(1.0, p.y / 0.06)  # only the back surface
+        lobe = 0.0
+        for gx in (GLUTE_X, -GLUTE_X):
+            d2 = ((p.x - gx) / 0.065) ** 2 + ((p.z - GLUTE_Z) / 0.075) ** 2
+            lobe = max(lobe, math.exp(-d2))
+        cleft = math.exp(-(p.x / 0.016) ** 2 - ((p.z - (GLUTE_Z - 0.01)) / 0.09) ** 2)
+        p.y += back * (GLUTE_DEPTH * lobe - CLEFT_DEPTH * cleft)
 
     # Soles: squash what is below sole height so the feet stand flat.
     sole = 0.022
@@ -653,7 +693,9 @@ def _chain_share(bones, pl, i, t, hand):
     first = share.pop(bones[0], 0.0)
     if first:
         q = min(1.0, s / lengths[0])
-        q = 0.6 * q if "metacarpal" in bones[0] else min(1.0, q / 0.4)
+        # metacarpals: up to 60 percent toward the knuckle; thumb_01 (the thenar) ramps in
+        # slowly so the ball of the thumb stays attached to the palm when the thumb closes
+        q = 0.6 * q if "metacarpal" in bones[0] else 0.85 * q ** 1.5
         share[bones[0]] = first * q
         share[hand] = share.get(hand, 0.0) + first * (1.0 - q)
     return share
@@ -679,37 +721,41 @@ def correct_weights(obj, joints):
                 wd[b] *= (1.0 - f) / tot
             wd["pelvis"] = wd.get("pelvis", 0.0) + f
 
-    # Shoulders: bone heat lets the upper arm pull torso skin medial to the shoulder joint (chest,
-    # back and the latissimus mass), which balloons into a lump when the arm is raised. Cap the
-    # arm's share there, fading in across the joint, and hand the rest to the clavicle above the
-    # armpit and to spine_05 below it.
+    # Shoulders: bone heat gives the upper arm a hard edge at the joint, so the arm turns like a
+    # tube plugged into the torso (a crease ring when it is raised) and torso skin around the
+    # armpit trails as a lump. Instead the arm's share is a smooth ramp along the arm axis across
+    # the joint (none 5 cm inside it, all 5 cm outside) for skin within about 7 cm of the arm
+    # axis (blended out to 13 cm); the rest goes to the torso bones, keeping the heat split.
     for side, sx in (("l", 1.0), ("r", -1.0)):
         s0, s1 = joints[f"upperarm_{side}"]
         du = (s1 - s0).normalized()
-        arm_bones = [f"upperarm_{side}", f"upperarm_twist_01_{side}", f"upperarm_twist_02_{side}"]
+        arm_bones = (f"upperarm_{side}", f"upperarm_twist_01_{side}", f"upperarm_twist_02_{side}")
         for p, wd in zip(pts, weights):
-            if p.x * sx <= 0.0 or p.z < s0.z - 0.20:
+            d = p - s0
+            if p.x * sx < 0.05 or d.length > 0.18:
                 continue
-            depth = (p - s0).dot(du)
-            lateral = (p.x - s0.x) * sx  # the deltoid cap outside the joint follows the arm
-            if depth >= 0.06:
-                continue
-            if lateral > 0.0:
-                # the shoulder cap itself: the arm moves it at most 60 percent, fading to fully
-                # by 6 cm down the arm, so the deltoid ring does not swing round as a ball
-                keep = 0.6 + 0.4 * max(0.0, min(1.0, depth / 0.06))
-            else:
-                keep = max(0.0, min(1.0, (depth + 0.03) / 0.06)) ** 2
-                keep = keep + (1.0 - keep) * max(0.0, min(1.0, (lateral + 0.03) / 0.03))
-            moved = 0.0
-            for b in arm_bones:
-                if b in wd:
-                    moved += wd[b] * (1.0 - keep)
-                    wd[b] *= keep
-            if moved > 0.0:
-                target = f"clavicle_{side}" if p.z > s0.z - 0.06 else "spine_05"
-                wd[target] = wd.get(target, 0.0) + moved
-    smooth_weights(obj, weights, iterations=4, factor=0.5)
+            depth = d.dot(du)
+            radial = (d - du * depth).length
+            arm_w = {b: w for b, w in wd.items() if b in arm_bones}
+            body_w = {b: w for b, w in wd.items() if b not in arm_bones}
+            a_tot, b_tot = sum(arm_w.values()), sum(body_w.values())
+            t = max(0.0, min(1.0, (depth + 0.05) / 0.10))
+            f = t * t * (3.0 - 2.0 * t)  # smoothstep
+            # Only on the arm tube and the shoulder cap round the joint; the ribs and back further
+            # from the arm axis keep their heat split, blended over 3 cm.
+            g = max(0.0, min(1.0, (0.13 - radial) / 0.06))
+            f = g * f + (1.0 - g) * (a_tot / (a_tot + b_tot) if a_tot + b_tot > 0.0 else 0.0)
+            if a_tot <= 0.0:
+                arm_w, a_tot = {f"upperarm_{side}": 1.0}, 1.0
+            if b_tot <= 0.0:
+                body = f"clavicle_{side}" if p.z > s0.z - 0.05 else "spine_05"
+                body_w, b_tot = {body: 1.0}, 1.0
+            wd.clear()
+            for b, w in arm_w.items():
+                wd[b] = f * w / a_tot
+            for b, w in body_w.items():
+                wd[b] = wd.get(b, 0.0) + (1.0 - f) * w / b_tot
+    smooth_weights(obj, weights, iterations=10, factor=0.5)
 
     for side in ("l", "r"):
         # Fingers: the heat solver only knows the hand bone. Past the base of the palm each vertex

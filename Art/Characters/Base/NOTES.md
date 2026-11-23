@@ -77,12 +77,14 @@ script. Build choices:
 - Mesh: skin modifier over a node graph, subdivided twice (about 18,000 triangles). Rest pose is
   the A-pose above, with a 12 degree elbow bend and a slight knee bend. Each hand has a palm, four
   fingers with a ring at every joint and a crease ring past the knuckle, and a thumb built from a
-  thenar mass inside the palm plus a free thumb from `thumb_02`. Add-on masses (thenar, thumb,
-  armpit, crotch) are separate pieces of the graph, because an extra branch on a busy node makes
-  the skin hull fail; an exact boolean union joins them and the seam is relaxed, so the body is
-  one closed piece (checked: `mesh_islands` 1).
-- Weights: bone heat on the main bones, then corrections (legs, crotch, shoulders, one finger
-  chain per finger vertex with linear blends only near the joints, twist shares, 4 influences).
+  tapered thenar mass buried in the palm plus a free thumb from `thumb_02`. Thenars and thumbs
+  are separate pieces of the graph (an extra branch on a busy node makes the skin hull fail); an
+  exact boolean union joins them, and the union seam plus the folds at the thenars and armpits
+  are relaxed, so the body is one closed piece (checked: `mesh_islands` 1). Glutes are a smooth
+  displacement of the back of the pelvis (two lobes and a soft cleft), not extra geometry.
+- Weights: bone heat on the main bones, then corrections (legs, crotch, a smooth upper-arm ramp
+  across the shoulder joint, one finger chain per finger vertex with linear blends only near the
+  joints, a slow thenar ramp, twist shares, 4 influences).
 - A failed check exits non-zero before anything is saved; the .blend and .fbx are written to
   temporary names and moved into place only when both succeed.
 - The scene is built in metres and converted to a centimetre scene (Unit Scale 0.01, armature
