@@ -382,6 +382,17 @@ void ACSCharacter::OnJumpStarted()
 	{
 		return;
 	}
+	// The engine never jumps a crouched character, so a jump from a crouch clears the crouch toggle
+	// and stands up now (if there is room; with no room it stays crouched and does not jump).
+	if (bCrouchToggled)
+	{
+		bCrouchToggled = false;
+		UpdateGaitFromInput();
+	}
+	if (bIsCrouched)
+	{
+		GetCharacterMovement()->UnCrouch();
+	}
 	Jump();
 }
 

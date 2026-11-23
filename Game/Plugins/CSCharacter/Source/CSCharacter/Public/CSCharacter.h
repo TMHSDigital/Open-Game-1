@@ -60,7 +60,7 @@ enum class ECSGait : uint8
  * SetRagdolled(true) when the body goes fully simulated and SetRagdolled(false) when control returns
  * after recovery. The camera rig reads IsRagdolled every frame and uses third person in between.
  * While ragdolled, move, jump and crouch input is ignored; held sprint and walk keys are tracked and
- * applied when control returns.
+ * applied when control returns. Jump while crouched stands the character up and jumps.
  */
 UCLASS(Config = Game, Blueprintable)
 class CSCHARACTER_API ACSCharacter : public ACharacter

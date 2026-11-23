@@ -341,6 +341,32 @@ bool FCSDevToolsGaitKeysTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Space jumps"), Character->bPressedJump);
 	Rig.Fire(TEXT("Jump"), ETriggerEvent::Completed);
 	TestFalse(TEXT("Space released"), Character->bPressedJump);
+	Sim.Run(FVector::ZeroVector, 1.5f);
+	TestTrue(TEXT("Landed after the jump"), Character->GetCharacterMovement()->IsMovingOnGround());
+
+	// Space while crouched stands the character up and jumps (the engine refuses a crouched jump).
+	Rig.Press(TEXT("Crouch"));
+	Rig.Release(TEXT("Crouch"));
+	Sim.Run(FVector::ZeroVector, 0.2f);
+	TestTrue(TEXT("Crouched before the jump"), Character->bIsCrouched);
+	const float GroundZ = Character->GetActorLocation().Z;
+	Rig.Press(TEXT("Jump"));
+	TestFalse(TEXT("Space while crouched: standing"), Character->bIsCrouched);
+	TestEqual(TEXT("Space while crouched: crouch toggle cleared"), Character->GetGait(), ECSGait::Jog);
+	float ApexZ = GroundZ;
+	for (int32 i = 0; i < 30; ++i)
+	{
+		Sim.Step(FVector::ZeroVector);
+		ApexZ = FMath::Max(ApexZ, Character->GetActorLocation().Z);
+	}
+	Rig.Release(TEXT("Jump"));
+	AddInfo(FString::Printf(TEXT("Jump from a crouch: capsule centre rose %.1f cm (standing up adds %.1f)"), ApexZ - GroundZ,
+		Character->GetDefaultHalfHeight() - Character->GetCharacterMovement()->GetCrouchedHalfHeight()));
+	TestFalse(TEXT("Space while crouched: in the air"), Character->GetCharacterMovement()->IsMovingOnGround());
+	// Standing up alone lifts the centre by the half-height difference; the jump must add to that.
+	TestTrue(TEXT("Space while crouched: jumped"), ApexZ - GroundZ > Character->GetDefaultHalfHeight() - Character->GetCharacterMovement()->GetCrouchedHalfHeight() + 30.f);
+	Sim.Run(FVector::ZeroVector, 1.5f);
+	TestEqual(TEXT("After a jump from a crouch: still jog"), Character->GetGait(), ECSGait::Jog);
 
 	// V switches the camera rig's view and still reaches the extension point; it is not a dev tool.
 	int32 Toggles = 0;
