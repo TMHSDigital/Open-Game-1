@@ -351,3 +351,29 @@ def test_tracked_lfs_pointers_ok_accepts_missing_content_but_scans_the_rest(tmp_
     git(tmp_path, "add", "leak.txt")
     r = og("secrets", "--tracked", "--lfs-pointers-ok", cwd=tmp_path)
     assert r.returncode == 1 and "leak.txt" in r.stdout and "unscannable-lfs" not in r.stdout
+
+
+def test_binary_asset_skips_email_rule_only(tmp_path):
+    noise = bytes([0, 0x93]) + b"j@A.C" + bytes([7]) + ("contact " + "someone@" + "gmail.com").encode()  # og-secrets: allow
+    asset = tmp_path / "SK_Thing.uasset"
+    asset.write_bytes(noise + bytes([0]) + ("token " + GHP).encode())
+    rules = {x.rule for x in scan_paths([asset])}
+    assert "private-email" not in rules
+    assert "github-token" in rules
+
+
+def test_email_rule_still_applies_to_text_and_unknown_binaries(tmp_path):
+    for name in ("notes.txt", "blob.bin"):
+        f = tmp_path / name
+        f.write_bytes(bytes([0]) + b"x " + ("someone@" + "gmail.com").encode())
+        assert "private-email" in {x.rule for x in scan_paths([f])}
+
+
+def test_cli_prints_non_cp1252_excerpt_without_crashing(tmp_path):
+    f = tmp_path / "dirty.txt"
+    f.write_text(chr(0x2603) + " token " + GHP, encoding="utf-8")
+    env = dict(os.environ, PYTHONIOENCODING="cp1252", PYTHONPATH=str(TOOLS))
+    r = subprocess.run([sys.executable, "-m", "og", "secrets", str(f)], cwd=tmp_path,
+                       capture_output=True, text=True, encoding="cp1252", errors="replace", env=env)
+    assert r.returncode == 1
+    assert "Traceback" not in r.stderr

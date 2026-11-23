@@ -11,6 +11,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff"}
+# Binary asset formats (LFS-tracked, see .gitattributes). Their compressed bytes match the loose
+# email pattern by chance, so the private-email rule is skipped for them; every other rule still
+# runs on their decoded bytes.
+BINARY_ASSET_SUFFIXES = {".uasset", ".umap", ".blend", ".fbx", ".glb", ".wav", ".ogg", ".psd",
+                         ".exr", ".tga"}
 # A line containing this marker is never reported (for deliberate fake fixtures).
 PRAGMA = "og-secrets: allow"
 EXCERPT_MAX = 120
@@ -55,11 +60,13 @@ def _mask(secret: str) -> str:
     return secret[:2] + "***" if len(secret) > 4 else "***"
 
 
-def _spans(line: str):
+def _spans(line: str, emails: bool = True):
     """Yield (rule, start, end) for every secret span on a line."""
     for rule, rx in RULES:
         for m in rx.finditer(line):
             yield rule, m.start("s"), m.end("s")
+    if not emails:
+        return
     for m in EMAIL_RE.finditer(line):
         if not any(a.search(m.group("s")) for a in ALLOWED_EMAILS):
             yield "private-email", m.start("s"), m.end("s")
@@ -78,10 +85,10 @@ def _redact(line: str, spans) -> str:
     return text if len(text) <= EXCERPT_MAX else text[:EXCERPT_MAX] + "..."
 
 
-def scan_text(text: str, path: str) -> list[Finding]:
+def scan_text(text: str, path: str, emails: bool = True) -> list[Finding]:
     findings = []
     for lineno, line in enumerate(text.splitlines(), 1):
-        spans = [] if PRAGMA in line else list(_spans(line))
+        spans = [] if PRAGMA in line else list(_spans(line, emails))
         if not spans:
             continue
         excerpt = _redact(line, spans)
@@ -145,7 +152,8 @@ def _decode(data: bytes) -> str:
 def _scan_blob(path: str, data: bytes) -> list[Finding]:
     if Path(path).suffix.lower() in IMAGE_SUFFIXES:
         return _image_metadata_findings(data, path)
-    return scan_text(_decode(data), path)
+    binary_asset = Path(path).suffix.lower() in BINARY_ASSET_SUFFIXES
+    return scan_text(_decode(data), path, emails=not binary_asset)
 
 
 def scan_paths(paths: list[Path]) -> list[Finding]:
@@ -297,6 +305,10 @@ def add_parser(sub) -> None:
 
 
 def run(args) -> int:
+    # Excerpts from binaries can hold characters a cp1252 console cannot print.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="backslashreplace")
     if args.selftest:
         if not selftest():
             return 1
