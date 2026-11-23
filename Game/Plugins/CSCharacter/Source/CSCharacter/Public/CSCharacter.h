@@ -25,6 +25,7 @@ enum class ECSGait : uint8
  *   speed is the same at any frame rate;
  * - a landing cost: horizontal speed is reduced in proportion to the fall speed above a jump's;
  * - slope speed: slower uphill, slightly faster downhill.
+ * - turn grip that loosens toward sprint speed, so a sprint turns wider than a walk.
  *
  * The mesh component faces the actor's +X when the skeletal mesh faces +Y (the UE5 humanoid
  * convention), with its origin at the feet and the capsule fitted to a 180 cm figure.

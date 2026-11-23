@@ -17,6 +17,7 @@ namespace CSBaseCharacterAssetTests
 	const TCHAR* TuningPath = TEXT("/Game/Characters/Base/DA_MovementTuning.DA_MovementTuning");
 	// Must match RAGDOLL in import_base_character.py.
 	constexpr int32 ExpectedBodies = 17;
+	const TCHAR* Regenerate = TEXT(" (missing or stale: run Game/Content/Python/import_base_character.py, see its docstring)");
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSAssetsBaseCharacterTest, "CombatSimulator.CS.Assets.BaseCharacter",
@@ -26,7 +27,7 @@ bool FCSAssetsBaseCharacterTest::RunTest(const FString& Parameters)
 	using namespace CSBaseCharacterAssetTests;
 
 	USkeletalMesh* Mesh = LoadObject<USkeletalMesh>(nullptr, MeshPath);
-	if (!TestNotNull(TEXT("SK_BaseCharacter exists"), Mesh))
+	if (!TestNotNull(FString(TEXT("SK_BaseCharacter exists")) + Regenerate, Mesh))
 	{
 		return false;
 	}
@@ -43,9 +44,9 @@ bool FCSAssetsBaseCharacterTest::RunTest(const FString& Parameters)
 	TestNearlyEqual(TEXT("Mesh height 180 cm"), Box.Max.Z - Box.Min.Z, 180.0, 1.0);
 
 	UPhysicsAsset* Physics = LoadObject<UPhysicsAsset>(nullptr, PhysicsPath);
-	if (TestNotNull(TEXT("PHYS_BaseCharacter exists"), Physics))
+	if (TestNotNull(FString(TEXT("PHYS_BaseCharacter exists")) + Regenerate, Physics))
 	{
-		TestEqual(TEXT("Mesh uses PHYS_BaseCharacter"), Mesh->GetPhysicsAsset(), Physics);
+		TestEqual(FString(TEXT("Mesh uses PHYS_BaseCharacter")) + Regenerate, Mesh->GetPhysicsAsset(), Physics);
 		TestEqual(TEXT("Body count"), Physics->SkeletalBodySetups.Num(), ExpectedBodies);
 		TestEqual(TEXT("One constraint per non-root body"), Physics->ConstraintSetup.Num(), ExpectedBodies - 1);
 		for (const USkeletalBodySetup* Body : Physics->SkeletalBodySetups)
@@ -55,7 +56,7 @@ bool FCSAssetsBaseCharacterTest::RunTest(const FString& Parameters)
 	}
 
 	UCSMovementTuning* Tuning = LoadObject<UCSMovementTuning>(nullptr, TuningPath);
-	if (TestNotNull(TEXT("DA_MovementTuning exists"), Tuning))
+	if (TestNotNull(FString(TEXT("DA_MovementTuning exists")) + Regenerate, Tuning))
 	{
 		FString Reason;
 		const bool bValid = Tuning->IsValid(Reason);

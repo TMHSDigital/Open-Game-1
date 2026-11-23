@@ -47,6 +47,28 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Speeds", meta = (UIMin = "200", UIMax = "6000", Units = "cm/s^2"))
 	float Acceleration = 1200.f;
 
+	// ----- Turning -----
+
+	/**
+	 * Ground grip when changing direction (addition to the spec list; the movement component's
+	 * GroundFriction). The velocity turns toward the input at about this rate per second, so the
+	 * turn radius is roughly speed / grip: about 22 cm at a walk with the default 8. Must be positive.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Turning", meta = (UIMin = "1", UIMax = "20"))
+	float GroundFriction = 8.f;
+
+	/**
+	 * Grip multiplier at full sprint (addition to the spec list). Grip blends from GroundFriction at
+	 * jog speed down to GroundFriction * this at sprint speed, so a sprint turns wider than speed
+	 * alone would make it: about 1.3 m at sprint with the defaults. Inside (0, 1].
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Turning", meta = (UIMin = "0.1", UIMax = "1"))
+	float SprintGripScale = 0.6f;
+
+	/** How fast the body turns to face the move direction, degrees per second (addition to the spec list). Must be positive. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Turning", meta = (UIMin = "90", UIMax = "1440", Units = "deg"))
+	float RotationRateYaw = 540.f;
+
 	// ----- Braking and slopes -----
 
 	/**

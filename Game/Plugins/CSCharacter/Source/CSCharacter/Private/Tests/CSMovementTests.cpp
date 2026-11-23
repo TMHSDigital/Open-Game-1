@@ -6,10 +6,22 @@
 // whatever values the asset holds.
 
 #include "Misc/AutomationTest.h"
+#include "CSLandingProbe.h"
+#include "CSCharacter.h"
+
+void UCSLandingProbe::Listen(ACSCharacter* InCharacter)
+{
+	Character = InCharacter;
+	Character->LandedDelegate.AddDynamic(this, &UCSLandingProbe::HandleLanded);
+}
+
+void UCSLandingProbe::HandleLanded(const FHitResult& Hit)
+{
+	SeenLandingSpeeds.Add(Character ? Character->GetLastLandingSpeed() : -1.f);
+}
 
 #if WITH_DEV_AUTOMATION_TESTS
 
-#include "CSCharacter.h"
 #include "CSMovementTuning.h"
 #include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -139,6 +151,32 @@ namespace CSMovementTests
 			if (Sim.Speed2D() >= Target)
 			{
 				return Elapsed;
+			}
+		}
+		return -1.f;
+	}
+
+	// Moves steadily along +X in Gait, then switches the input to +Y and returns how far the
+	// character keeps travelling along +X before its X speed falls under 5 percent: the turn's
+	// overshoot, which grows with the turn radius. Negative if it never finishes turning.
+	float MeasureTurnOvershoot(FAutomationTestBase& Test, ECSGait Gait)
+	{
+		UCSMovementTuning* Tuning = NewTuning();
+		FMoveSim Sim;
+		if (!Sim.Init(Test, 1.f / 60.f, Tuning))
+		{
+			return -1.f;
+		}
+		Sim.Character->SetGait(Gait);
+		Sim.Run(FVector::ForwardVector, 3.f);
+		const float Speed = Sim.Speed2D();
+		const float StartX = Sim.Character->GetActorLocation().X;
+		for (float T = 0.f; T < 5.f; T += Sim.Dt)
+		{
+			Sim.Step(FVector::RightVector);
+			if (Sim.Character->GetCharacterMovement()->Velocity.X < 0.05f * Speed)
+			{
+				return Sim.Character->GetActorLocation().X - StartX;
 			}
 		}
 		return -1.f;
@@ -338,6 +376,67 @@ bool FCSMovementLandingCostsSpeedTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSMovementTurnRadiusTest, "CombatSimulator.CS.Movement.TurnRadius", TestFlags)
+bool FCSMovementTurnRadiusTest::RunTest(const FString& Parameters)
+{
+	// Spec 5.2: turning at sprint speed has a wider radius than at a walk.
+	const float Walk = MeasureTurnOvershoot(*this, ECSGait::Walk);
+	const float Sprint = MeasureTurnOvershoot(*this, ECSGait::Sprint);
+	AddInfo(FString::Printf(TEXT("90 degree turn overshoot: %.1f cm at a walk, %.1f cm at a sprint"), Walk, Sprint));
+	TestTrue(TEXT("Walk turn finishes"), Walk > 0.f);
+	TestTrue(TEXT("Sprint turn finishes"), Sprint > 0.f);
+	TestTrue(TEXT("Sprint turns wider than walk"), Sprint > Walk);
+	// Wider than speed alone gives (constant grip): the sprint grip is loosened on purpose.
+	const UCSMovementTuning* D = GetDefault<UCSMovementTuning>();
+	TestTrue(TEXT("Sprint turn is wider than speed alone gives"), Walk > 0.f && Sprint / Walk > 1.2f * D->SprintSpeed / D->WalkSpeed);
+
+	// The turning values reach the movement component.
+	UCSMovementTuning* Tuning = NewTuning();
+	Tuning->GroundFriction = 5.f;
+	Tuning->RotationRateYaw = 300.f;
+	FMoveSim Sim;
+	if (Sim.Init(*this, 1.f / 60.f, Tuning))
+	{
+		Sim.Character->SetGait(ECSGait::Walk);
+		Sim.Step(FVector::ZeroVector);
+		TestNearlyEqual(TEXT("Grip at walk is GroundFriction"), Sim.Character->GetCharacterMovement()->GroundFriction, 5.f, 1e-3f);
+		TestNearlyEqual(TEXT("Rotation rate"), float(Sim.Character->GetCharacterMovement()->RotationRate.Yaw), 300.f, 1e-3f);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSMovementLandedListenerTest, "CombatSimulator.CS.Movement.LandedListenerSeesThisLanding", TestFlags)
+bool FCSMovementLandedListenerTest::RunTest(const FString& Parameters)
+{
+	// A LandedDelegate listener (Task 7's ragdoll trigger) must read this landing's speed.
+	UCSMovementTuning* Tuning = NewTuning();
+	FMoveSim Sim;
+	if (!Sim.Init(*this, 1.f / 60.f, Tuning))
+	{
+		return false;
+	}
+	UCSLandingProbe* Probe = NewObject<UCSLandingProbe>();
+	Probe->Listen(Sim.Character);
+
+	const float G = FMath::Abs(Sim.World.GetTestWorld()->GetGravityZ());
+	for (const float Height : {300.f, 50.f})
+	{
+		Sim.Character->SetActorLocation(Sim.Character->GetActorLocation() + FVector(0.f, 0.f, Height), false, nullptr, ETeleportType::TeleportPhysics);
+		Sim.Run(FVector::ZeroVector, 1.5f);
+	}
+	if (!TestEqual(TEXT("Listener heard both landings"), Probe->SeenLandingSpeeds.Num(), 2))
+	{
+		return false;
+	}
+	const float Expected3m = FMath::Sqrt(2.f * G * 300.f);
+	const float Expected05m = FMath::Sqrt(2.f * G * 50.f);
+	AddInfo(FString::Printf(TEXT("Listener read %.0f and %.0f cm/s (expected about %.0f and %.0f)"),
+		Probe->SeenLandingSpeeds[0], Probe->SeenLandingSpeeds[1], Expected3m, Expected05m));
+	TestNearlyEqual(TEXT("First landing speed (3 m)"), Probe->SeenLandingSpeeds[0], Expected3m, 0.05f * Expected3m);
+	TestNearlyEqual(TEXT("Second landing speed (0.5 m), not the previous one"), Probe->SeenLandingSpeeds[1], Expected05m, 0.08f * Expected05m);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSMovementSlopeChangesSpeedTest, "CombatSimulator.CS.Movement.SlopeChangesSpeed", TestFlags)
 bool FCSMovementSlopeChangesSpeedTest::RunTest(const FString& Parameters)
 {
@@ -391,6 +490,10 @@ bool FCSMovementTuningValidationTest::RunTest(const FString& Parameters)
 	ExpectInvalid(TEXT("slope of 90"), [](UCSMovementTuning& T) { T.MaxWalkableSlopeDeg = 90.f; });
 	ExpectInvalid(TEXT("third-person FOV below 60"), [](UCSMovementTuning& T) { T.ThirdPersonFOV = 59.f; });
 	ExpectInvalid(TEXT("first-person FOV above 120"), [](UCSMovementTuning& T) { T.FirstPersonFOV = 121.f; });
+	ExpectInvalid(TEXT("zero ground friction"), [](UCSMovementTuning& T) { T.GroundFriction = 0.f; });
+	ExpectInvalid(TEXT("zero sprint grip scale"), [](UCSMovementTuning& T) { T.SprintGripScale = 0.f; });
+	ExpectInvalid(TEXT("sprint grip scale above 1"), [](UCSMovementTuning& T) { T.SprintGripScale = 1.5f; });
+	ExpectInvalid(TEXT("negative rotation rate"), [](UCSMovementTuning& T) { T.RotationRateYaw = -90.f; });
 	ExpectInvalid(TEXT("NaN jump height"), [](UCSMovementTuning& T) { T.JumpHeightCm = std::numeric_limits<float>::quiet_NaN(); });
 
 	UCSMovementTuning* Edge = NewTuning();

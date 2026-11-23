@@ -34,7 +34,6 @@ ACSCharacter::ACSCharacter(const FObjectInitializer& ObjectInitializer)
 
 	UCharacterMovementComponent* Move = GetCharacterMovement();
 	Move->bOrientRotationToMovement = true;
-	Move->RotationRate = FRotator(0.f, 540.f, 0.f);
 	Move->GetNavAgentPropertiesRef().bCanCrouch = true;
 	Move->SetCrouchedHalfHeight(CrouchedHalfHeight);
 	// Braking friction comes from the tuning asset as a literal value.
@@ -83,6 +82,8 @@ void ACSCharacter::ApplyTuning()
 	UCharacterMovementComponent* Move = GetCharacterMovement();
 
 	Move->MaxAcceleration = T.Acceleration;
+	Move->GroundFriction = T.GroundFriction;
+	Move->RotationRate = FRotator(0.f, T.RotationRateYaw, 0.f);
 	Move->BrakingDecelerationWalking = T.BrakingDeceleration;
 	Move->bUseSeparateBrakingFriction = true;
 	Move->BrakingFrictionFactor = 1.f;
@@ -169,17 +170,26 @@ void ACSCharacter::Tick(float DeltaSeconds)
 			: T.SprintSpeed;
 	}
 	Move->MaxWalkSpeed = Cap * SlopeSpeedFactor;
+
+	// Grip blends from GroundFriction at jog speed to GroundFriction * SprintGripScale at sprint
+	// speed, so the turn radius (about speed / grip) widens faster than speed alone.
+	const float SprintShare = T.SprintSpeed > T.JogSpeed
+		? FMath::Clamp((Cap - T.JogSpeed) / (T.SprintSpeed - T.JogSpeed), 0.f, 1.f)
+		: 0.f;
+	Move->GroundFriction = T.GroundFriction * FMath::Lerp(1.f, T.SprintGripScale, SprintShare);
 	Move->MaxWalkSpeedCrouched = T.CrouchSpeed * SlopeSpeedFactor;
 }
 
 void ACSCharacter::Landed(const FHitResult& Hit)
 {
-	Super::Landed(Hit);
-
 	// Called before the movement component switches to walking, so Velocity still holds the fall.
+	// Recorded before Super::Landed, which fires OnLanded and LandedDelegate: listeners (a ragdoll
+	// trigger) read this landing's speed, not the previous one.
 	UCharacterMovementComponent* Move = GetCharacterMovement();
 	const UCSMovementTuning& T = GetActiveTuning();
 	LastLandingSpeed = FMath::Max(0.f, -Move->Velocity.Z);
+
+	Super::Landed(Hit);
 
 	// A normal jump lands at its take-off speed; only the fall speed above that costs speed.
 	const float FreeSpeed = FMath::Sqrt(2.f * GetGravityMagnitude() * T.JumpHeightCm);
