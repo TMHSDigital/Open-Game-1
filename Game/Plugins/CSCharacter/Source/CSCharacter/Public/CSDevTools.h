@@ -43,15 +43,17 @@ struct FCSFeelSample
 
 DECLARE_MULTICAST_DELEGATE(FCSRagdollRequested);
 DECLARE_MULTICAST_DELEGATE_OneParam(FCSPushRequested, const FVector& /* Direction, unit length */);
+DECLARE_MULTICAST_DELEGATE(FCSMapSwitchRequested);
 
 /**
- * Feel-testing tools for ACSCharacter: the ragdoll and push keys, the feel overlay and tuning reload
- * (the F5 key and the cs.Tuning.Reload command).
+ * Feel-testing tools for ACSCharacter: the ragdoll and push keys, the feel overlay, tuning reload
+ * (the F5 key and the cs.Tuning.Reload command) and the map switch key.
  *
  * Everything here is compiled into every build and gated at run time by bDevTools in the character's
- * applied tuning: with it off, the ragdoll, push, overlay and reload keys and the cs.Tuning.Reload command do
- * nothing. Ragdoll and push are requests: this component only broadcasts OnRagdollRequested and
- * OnPushRequested, and the physics body binds to them.
+ * applied tuning: with it off, the ragdoll, push, overlay, reload and map switch keys and the
+ * cs.Tuning.Reload command do nothing. Ragdoll, push and map switch are requests: this component only
+ * broadcasts OnRagdollRequested, OnPushRequested and OnMapSwitchRequested. The physics body binds the
+ * first two; the game binds the map switch (the plugin knows no maps).
  *
  * The overlay reading is taken in TickComponent, which runs in TG_PostPhysics after the movement
  * component (the character itself ticks before its movement component), so it shows what the
@@ -101,6 +103,13 @@ public:
 	bool RequestPush();
 
 	/**
+	 * F2. Broadcasts OnMapSwitchRequested (the game decides which map to open); does nothing with dev
+	 * tools off. Returns whether it broadcast.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "CS|Dev tools")
+	bool RequestMapSwitch();
+
+	/**
 	 * F5. ReloadTuning on the owner; does nothing with dev tools off. The console (cs.Tuning.Reload)
 	 * is compiled out of Shipping builds, so this key is the reload there. Returns whether it reloaded.
 	 */
@@ -127,6 +136,9 @@ public:
 
 	/** Extension point: the physics body applies its test impulse here, along Direction. */
 	FCSPushRequested OnPushRequested;
+
+	/** Extension point: the game opens its next map here (the plugin has no map list). */
+	FCSMapSwitchRequested OnMapSwitchRequested;
 
 	/** The latest reading (updated every frame while the overlay is shown). */
 	const FCSFeelSample& GetFeelSample() const { return Sample; }

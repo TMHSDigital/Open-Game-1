@@ -208,6 +208,20 @@ bool UCSDevTools::RequestPush()
 	return true;
 }
 
+bool UCSDevTools::RequestMapSwitch()
+{
+	if (!AreEnabled())
+	{
+		return false;
+	}
+	if (!OnMapSwitchRequested.IsBound())
+	{
+		UE_LOG(LogCSCharacter, Log, TEXT("%s: map switch requested, but nothing handles it (the game binds OnMapSwitchRequested)."), *GetNameSafe(GetOwner()));
+	}
+	OnMapSwitchRequested.Broadcast();
+	return true;
+}
+
 void UCSDevTools::BeginPlay()
 {
 	Super::BeginPlay();

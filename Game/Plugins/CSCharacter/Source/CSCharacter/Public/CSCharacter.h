@@ -199,6 +199,10 @@ public:
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CS|Input")
 	TSoftObjectPtr<UInputAction> DebugReloadAction;
 
+	/** Dev tool: switch map (UCSDevTools::RequestMapSwitch; the game picks the map). */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CS|Input")
+	TSoftObjectPtr<UInputAction> DebugMapSwitchAction;
+
 	/** Binds every configured action (an unset one is skipped with a warning). Public so tests can bind a component directly. */
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 	virtual void NotifyControllerChanged() override;
@@ -239,6 +243,7 @@ private:
 	void OnDebugRagdollStarted();
 	void OnDebugPushStarted();
 	void OnDebugReloadStarted();
+	void OnDebugMapSwitchStarted();
 
 	UPROPERTY(VisibleAnywhere, Category = "CS|Dev tools")
 	TObjectPtr<UCSDevTools> DevTools;

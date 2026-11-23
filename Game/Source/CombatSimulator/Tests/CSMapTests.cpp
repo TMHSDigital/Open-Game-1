@@ -1,5 +1,5 @@
-// Map checks: the default map and game mode, the player spawning on L_Plane, and the movement gym's
-// slopes. Run with: pwsh tools/ue/test.ps1 -Filter CombatSimulator.CS.Maps
+// Map checks: the default map and game mode, the player spawning on L_Plane, respawning after a fall,
+// the dev map switch (F2) and the movement gym's slopes. Run with: pwsh tools/ue/test.ps1 -Filter CombatSimulator.CS.Maps
 //
 // The maps are made by Game/Content/Python/create_movement_maps.py. The spawn and slope tests play the
 // real maps in PIE (Play In Editor), so the game mode, PlayerStart, possession and input setup are the
@@ -12,6 +12,7 @@
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "CSCharacter.h"
+#include "CSDevTools.h"
 #include "../CSGameMode.h"
 #include "CSMovementTuning.h"
 #include "Editor.h"
@@ -23,6 +24,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/HUD.h"
 #include "GameFramework/PlayerController.h"
+#include "GameFramework/PlayerStart.h"
 #include "GameMapsSettings.h"
 #include "InputMappingContext.h"
 #include "Misc/PackageName.h"
@@ -158,6 +160,222 @@ bool FCSMapsDefaultMapIsPlaneTest::RunTest(const FString& Parameters)
 		bPlaneCooked |= Map.FilePath == PlaneMap;
 	}
 	TestTrue(TEXT("L_Plane is in MapsToCook"), bPlaneCooked);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSMapsMapSwitchTargetsTest, "CombatSimulator.CS.Maps.MapSwitchTargets", CSMapTests::TestFlags)
+bool FCSMapsMapSwitchTargetsTest::RunTest(const FString& Parameters)
+{
+	using namespace CSMapTests;
+	// F2 switches between the plane and the gym (decision 0013), from the game mode's config.
+	const ACSGameMode* Mode = GetDefault<ACSGameMode>();
+	TestEqual(TEXT("DevSwitchMaps (DefaultGame.ini)"), Mode->DevSwitchMaps, TArray<FString>{PlaneMap, GymMap});
+	TestEqual(TEXT("From L_Plane: the gym"), Mode->GetMapSwitchTarget(PlaneMap), FString(GymMap));
+	TestEqual(TEXT("From L_MovementGym: the plane"), Mode->GetMapSwitchTarget(GymMap), FString(PlaneMap));
+	TestEqual(TEXT("From L_Plane in PIE (prefixed package)"), Mode->GetMapSwitchTarget(TEXT("/Game/Maps/UEDPIE_0_L_Plane")), FString(GymMap));
+	TestEqual(TEXT("From a map not in the list: the first"), Mode->GetMapSwitchTarget(TEXT("/Game/Maps/L_CaptureStage")), FString(PlaneMap));
+
+	// Every map F2 can open must be cooked, or the packaged build cannot open it.
+	for (const FString& Map : Mode->DevSwitchMaps)
+	{
+		bool bCooked = false;
+		for (const FFilePath& Cooked : GetDefault<UProjectPackagingSettings>()->MapsToCook)
+		{
+			bCooked |= Cooked.FilePath == Map;
+		}
+		TestTrue(FString::Printf(TEXT("%s is in MapsToCook"), *Map), bCooked);
+		TestTrue(FString::Printf(TEXT("%s exists%s"), *Map, Regenerate), FPackageName::DoesPackageExist(Map));
+	}
+	return true;
+}
+
+namespace CSMapTests
+{
+	/** State of the respawn test, kept across frames. */
+	struct FRespawnRun
+	{
+		int32 Stage = 0;
+		double StageStart = 0.0;
+		TWeakObjectPtr<APawn> OldPawn;
+		FVector StartSpot = FVector::ZeroVector;
+	};
+
+	/** The player's new character once it differs from the old pawn; null before. Checks where it stands. */
+	ACSCharacter* RespawnedCharacter(FAutomationTestBase& Test, UWorld* World, const FRespawnRun& Run, const TCHAR* Case)
+	{
+		ACSCharacter* Character = PlayerCharacter(World);
+		if (!Character || Character == Run.OldPawn.Get())
+		{
+			return nullptr;
+		}
+		const float Dist = FVector::Dist2D(Character->GetActorLocation(), Run.StartSpot);
+		Test.TestTrue(FString::Printf(TEXT("%s: respawned at the PlayerStart (%.0f cm from it)"), Case, Dist), Dist < 100.f);
+		Test.TestTrue(FString::Printf(TEXT("%s: respawned character is player controlled"), Case), Character->IsPlayerControlled());
+		Test.TestFalse(FString::Printf(TEXT("%s: old pawn is gone"), Case), Run.OldPawn.IsValid() && !Run.OldPawn->IsActorBeingDestroyed());
+		return Character;
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSMapsRespawnTest, "CombatSimulator.CS.Maps.Respawn", CSMapTests::TestFlags)
+bool FCSMapsRespawnTest::RunTest(const FString& Parameters)
+{
+	using namespace CSMapTests;
+	StartPlay(this, PlaneMap, 1.f);
+	TSharedRef<FRespawnRun> Run = MakeShared<FRespawnRun>();
+
+	// 0: destroy the player's character; 1: wait for the respawn; 2: put it past the edge of the
+	// plane; 3: wait for it to fall below the kill height and respawn.
+	ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([this, Run]()
+	{
+		UWorld* World = PlayWorld();
+		ACSGameMode* Mode = World ? Cast<ACSGameMode>(World->GetAuthGameMode()) : nullptr;
+		if (!World || !Mode)
+		{
+			AddError(TEXT("No play world or ACSGameMode"));
+			return true;
+		}
+		const double Now = World->GetTimeSeconds();
+		switch (Run->Stage)
+		{
+		case 0:
+		{
+			TActorIterator<APlayerStart> Start(World);
+			if (!TestTrue(TEXT("L_Plane has a PlayerStart"), bool(Start)))
+			{
+				return true;
+			}
+			Run->StartSpot = Start->GetActorLocation();
+			ACSCharacter* Character = PlayerCharacter(World);
+			if (!TestNotNull(TEXT("Player character before the destroy"), Character))
+			{
+				return true;
+			}
+			Run->OldPawn = Character;
+			Character->Destroy();
+			Run->Stage = 1;
+			Run->StageStart = Now;
+			return false;
+		}
+		case 1:
+		case 3:
+		{
+			const TCHAR* Case = Run->Stage == 1 ? TEXT("Destroyed") : TEXT("Fell off the plane");
+			if (ACSCharacter* Character = RespawnedCharacter(*this, World, *Run, Case))
+			{
+				AddInfo(FString::Printf(TEXT("%s: respawned as %s at %s after %.2f s"), Case, *Character->GetName(), *Character->GetActorLocation().ToString(), Now - Run->StageStart));
+				if (Run->Stage == 3)
+				{
+					return true;
+				}
+				Run->Stage = 2;
+				Run->StageStart = Now;
+				return false;
+			}
+			// Falling 50 m takes about 3.3 s.
+			if (Now - Run->StageStart > 10.0)
+			{
+				const APawn* Pawn = World->GetFirstPlayerController() ? World->GetFirstPlayerController()->GetPawn() : nullptr;
+				AddError(FString::Printf(TEXT("%s: no respawn after %.0f s (pawn %s at %s)"), Case, Now - Run->StageStart,
+					*GetNameSafe(Pawn), Pawn ? *Pawn->GetActorLocation().ToString() : TEXT("-")));
+				return true;
+			}
+			return false;
+		}
+		case 2:
+		{
+			// Past the plane's edge (it ends 500 m out), falling.
+			ACSCharacter* Character = PlayerCharacter(World);
+			if (!TestNotNull(TEXT("Player character before the fall"), Character))
+			{
+				return true;
+			}
+			Run->OldPawn = Character;
+			TestTrue(TEXT("Kill height is below the plane"), Mode->RespawnKillZ < -1000.f);
+			Character->SetActorLocation(FVector(55000.f, 0.f, 200.f), false, nullptr, ETeleportType::TeleportPhysics);
+			Character->GetCharacterMovement()->Velocity = FVector::ZeroVector;
+			Character->GetCharacterMovement()->SetMovementMode(MOVE_Falling);
+			Run->Stage = 3;
+			Run->StageStart = Now;
+			return false;
+		}
+		default:
+			return true;
+		}
+	}));
+
+	EndPlay();
+	return true;
+}
+
+namespace CSMapTests
+{
+	/** State of the map switch test, kept across frames. */
+	struct FSwitchRun
+	{
+		int32 Index = 0;
+		bool bRequested = false;
+		double RequestTime = 0.0;
+	};
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSMapsMapSwitchKeyTest, "CombatSimulator.CS.Maps.MapSwitchKey", CSMapTests::TestFlags)
+bool FCSMapsMapSwitchKeyTest::RunTest(const FString& Parameters)
+{
+	using namespace CSMapTests;
+	StartPlay(this, PlaneMap, 0.5f);
+	TSharedRef<FSwitchRun> Run = MakeShared<FSwitchRun>();
+	Run->RequestTime = FPlatformTime::Seconds();
+
+	// The dev tools' map switch request (what F2 sends) opens the gym from the plane, then the plane
+	// from the gym, each time in a new world with a new player character.
+	ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([this, Run]()
+	{
+		const TCHAR* From[] = {TEXT("L_Plane"), TEXT("L_MovementGym")};
+		const TCHAR* To[] = {GymMap, PlaneMap};
+		UWorld* World = PlayWorld();
+		ACSCharacter* Character = PlayerCharacter(World);
+		const double Waited = FPlatformTime::Seconds() - Run->RequestTime;
+		if (!Run->bRequested)
+		{
+			if (!World || !Character || !World->GetMapName().EndsWith(From[Run->Index]))
+			{
+				if (Waited > StartTimeoutSeconds)
+				{
+					AddError(FString::Printf(TEXT("Map switch %d: not playing %s (playing %s)"), Run->Index, From[Run->Index], World ? *World->GetMapName() : TEXT("nothing")));
+					return true;
+				}
+				return false;
+			}
+			ACSGameMode* Mode = Cast<ACSGameMode>(World->GetAuthGameMode());
+			if (!TestNotNull(TEXT("ACSGameMode"), Mode))
+			{
+				return true;
+			}
+			TestTrue(TEXT("Dev tools on (DA_MovementTuning)"), Character->GetDevTools()->AreEnabled());
+			TestTrue(FString::Printf(TEXT("F2 request accepted in %s"), From[Run->Index]), Character->GetDevTools()->RequestMapSwitch());
+			TestEqual(FString::Printf(TEXT("F2 from %s targets"), From[Run->Index]), Mode->GetLastMapSwitchTarget(), FString(To[Run->Index]));
+			Run->bRequested = true;
+			Run->RequestTime = FPlatformTime::Seconds();
+			return false;
+		}
+		// Wait for the other map to load with a player character in it.
+		const FString Arrive = FPackageName::GetShortName(To[Run->Index]);
+		if (World && Character && World->GetMapName().EndsWith(Arrive))
+		{
+			AddInfo(FString::Printf(TEXT("Map switch %d: arrived in %s after %.2f s"), Run->Index, *World->GetMapName(), Waited));
+			Run->bRequested = false;
+			Run->RequestTime = FPlatformTime::Seconds();
+			return ++Run->Index >= 2;
+		}
+		if (Waited > StartTimeoutSeconds)
+		{
+			AddError(FString::Printf(TEXT("Map switch %d: %s did not open (playing %s)"), Run->Index, *Arrive, World ? *World->GetMapName() : TEXT("nothing")));
+			return true;
+		}
+		return false;
+	}));
+
+	EndPlay();
 	return true;
 }
 

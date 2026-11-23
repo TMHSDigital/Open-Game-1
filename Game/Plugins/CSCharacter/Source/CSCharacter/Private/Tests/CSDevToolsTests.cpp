@@ -54,6 +54,7 @@ namespace CSDevToolsTests
 			Make(TEXT("DebugRagdoll"), EInputActionValueType::Boolean, Character.DebugRagdollAction);
 			Make(TEXT("DebugPush"), EInputActionValueType::Boolean, Character.DebugPushAction);
 			Make(TEXT("DebugReload"), EInputActionValueType::Boolean, Character.DebugReloadAction);
+			Make(TEXT("DebugMapSwitch"), EInputActionValueType::Boolean, Character.DebugMapSwitchAction);
 			Input.Reset(NewObject<UEnhancedInputComponent>(&Character));
 			Character.SetupPlayerInputComponent(Input.Get());
 		}
@@ -85,12 +86,14 @@ namespace CSDevToolsTests
 	{
 		int32 Ragdolls = 0;
 		int32 Pushes = 0;
+		int32 MapSwitches = 0;
 		FVector LastPushDirection = FVector::ZeroVector;
 
 		void Listen(UCSDevTools& DevTools)
 		{
 			DevTools.OnRagdollRequested.AddLambda([this]() { ++Ragdolls; });
 			DevTools.OnPushRequested.AddLambda([this](const FVector& Direction) { ++Pushes; LastPushDirection = Direction; });
+			DevTools.OnMapSwitchRequested.AddLambda([this]() { ++MapSwitches; });
 		}
 	};
 }
@@ -230,11 +233,13 @@ bool FCSDevToolsOffDisablesKeysTest::RunTest(const FString& Parameters)
 		TestEqual(Label + TEXT(": R (ragdoll) is bound"), Rig.Fire(TEXT("DebugRagdoll"), ETriggerEvent::Started), 1);
 		TestEqual(Label + TEXT(": P (push) is bound"), Rig.Fire(TEXT("DebugPush"), ETriggerEvent::Started), 1);
 		TestEqual(Label + TEXT(": F1 (overlay) is bound"), Rig.Fire(TEXT("DebugOverlay"), ETriggerEvent::Started), 1);
+		TestEqual(Label + TEXT(": F2 (map switch) is bound"), Rig.Fire(TEXT("DebugMapSwitch"), ETriggerEvent::Started), 1);
 		Sim.Run(FVector::ForwardVector, 0.5f);
 
 		const int32 Expected = bDevTools ? 1 : 0;
 		TestEqual(Label + TEXT(": ragdoll requests"), Probe.Ragdolls, Expected);
 		TestEqual(Label + TEXT(": push requests"), Probe.Pushes, Expected);
+		TestEqual(Label + TEXT(": map switch requests"), Probe.MapSwitches, Expected);
 		TestEqual(Label + TEXT(": overlay visible"), DevTools->IsOverlayVisible(), bDevTools);
 
 		// The reload key (F5) is a dev tool: with it off the tuning is unchanged and nothing is shown.

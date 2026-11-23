@@ -354,6 +354,10 @@ void ACSCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 	{
 		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnDebugReloadStarted);
 	}
+	if (UInputAction* A = Load(DebugMapSwitchAction, TEXT("DebugMapSwitchAction")))
+	{
+		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnDebugMapSwitchStarted);
+	}
 }
 
 void ACSCharacter::OnMove(const FInputActionValue& Value)
@@ -509,6 +513,11 @@ void ACSCharacter::OnDebugPushStarted()
 void ACSCharacter::OnDebugReloadStarted()
 {
 	DevTools->RequestReload();
+}
+
+void ACSCharacter::OnDebugMapSwitchStarted()
+{
+	DevTools->RequestMapSwitch();
 }
 
 float ACSCharacter::ComputeSlopeSpeedFactor(const UCSMovementTuning& T) const
