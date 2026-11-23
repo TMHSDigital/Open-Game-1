@@ -50,6 +50,16 @@ bool CSCapture::ParseJob(const FString& JsonText, FCSCaptureJob& OutJob, FString
 			OutError = FString::Printf(TEXT("shot '%s': resolution %dx%d is outside %d..%d"), *Shot.Name, Shot.Width, Shot.Height, MinSize, MaxSize);
 			return false;
 		}
+		if (!Shot.View.IsEmpty() && !Shot.IsPlayerView() && !Shot.View.Equals(TEXT("camera"), ESearchCase::IgnoreCase))
+		{
+			OutError = FString::Printf(TEXT("shot '%s': view '%s' is not \"camera\" or \"player\""), *Shot.Name, *Shot.View);
+			return false;
+		}
+		if (Shot.SettleSeconds < 0.f || Shot.SettleSeconds > 60.f)
+		{
+			OutError = FString::Printf(TEXT("shot '%s': settleSeconds %.2f is outside 0..60"), *Shot.Name, Shot.SettleSeconds);
+			return false;
+		}
 		if (Shot.Fov <= 0.f || Shot.Fov >= 180.f)
 		{
 			OutError = FString::Printf(TEXT("shot '%s': fov %.1f is outside 0..180"), *Shot.Name, Shot.Fov);

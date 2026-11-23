@@ -5,6 +5,18 @@
 # -benchmark -fps=30 gives a fixed timestep, so the settle time before each image is the same in game
 # time however slowly frames render.
 #
+# Optional camera fields:
+#   hidePlayer     false to show the player's pawn (default true: the pawn is hidden so it does not
+#                  block a map view). Character cameras set false.
+#   view           "camera" (default): a fixed camera at location/rotation/fov. "player": the
+#                  player's own view through its pawn's camera, so owner-only visibility applies (the
+#                  first-person body with its head hidden); rotation becomes the aim, location and
+#                  fov are not used.
+#   commands       console commands run when the shot starts, e.g. "ke * SetView FirstPerson"
+#                  (KE calls a function by name on every object in the world that has it).
+#   settleSeconds  game seconds to wait at this shot before the image (default 1, or the profile's
+#                  SettleSeconds for a map's first shot).
+#
 # A camera whose map does not exist (Game/Content/<path>.umap) is skipped and recorded under
 # "skipped" in capture.json; it does not fail the run.
 #
@@ -56,6 +68,13 @@ function Assert-Camera($Cam) {
     if ($Cam.name -notmatch '^[a-z0-9][a-z0-9-]*$') { throw "Camera name '$($Cam.name)' must be lowercase kebab-case." }
     if (@($Cam.location).Count -ne 3 -or @($Cam.rotation).Count -ne 3 -or @($Cam.resolution).Count -ne 2) {
         throw "Camera '$($Cam.name)': location and rotation need 3 numbers, resolution needs 2."
+    }
+    if ($Cam.PSObject.Properties['view'] -and $Cam.view -notin @('camera', 'player')) {
+        throw "Camera '$($Cam.name)': view must be 'camera' or 'player', not '$($Cam.view)'."
+    }
+    if ($Cam.PSObject.Properties['view'] -and $Cam.view -eq 'player' -and
+        $Cam.PSObject.Properties['hidePlayer'] -and $Cam.hidePlayer) {
+        throw "Camera '$($Cam.name)': a player view cannot hide the player."
     }
 }
 
@@ -149,7 +168,7 @@ try {
         $runDir = Join-Path $runsDir $mapName
         $shots = foreach ($cam in $group.Group) {
             $loc = @($cam.location); $rot = @($cam.rotation); $res = @($cam.resolution)
-            @{
+            $shot = @{
                 name     = $cam.name
                 location = @{ x = [double]$loc[0]; y = [double]$loc[1]; z = [double]$loc[2] }
                 rotation = @{ pitch = [double]$rot[0]; yaw = [double]$rot[1]; roll = [double]$rot[2] }
@@ -157,6 +176,12 @@ try {
                 width    = [int]$res[0]
                 height   = [int]$res[1]
             }
+            # Optional fields (see the header): only passed when the camera sets them.
+            if ($cam.PSObject.Properties['hidePlayer']) { $shot.bHidePlayer = [bool]$cam.hidePlayer }
+            if ($cam.PSObject.Properties['view']) { $shot.view = [string]$cam.view }
+            if ($cam.PSObject.Properties['commands']) { $shot.commands = @($cam.commands | ForEach-Object { [string]$_ }) }
+            if ($cam.PSObject.Properties['settleSeconds']) { $shot.settleSeconds = [double]$cam.settleSeconds }
+            $shot
         }
         $job = @{
             outputDir     = $runDir.Replace('\', '/')

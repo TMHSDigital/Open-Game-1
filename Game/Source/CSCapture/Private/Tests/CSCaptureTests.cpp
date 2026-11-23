@@ -22,7 +22,8 @@ bool FCSCaptureJobParsesTest::RunTest(const FString& Parameters)
 		"shots": [
 			{ "name": "stage-overview", "location": { "x": 100, "y": 200, "z": 300 },
 			  "rotation": { "pitch": -20, "yaw": 45, "roll": 0 }, "fov": 60, "width": 1280, "height": 720 },
-			{ "name": "stage-closeup", "bHidePlayer": false }
+			{ "name": "stage-closeup", "bHidePlayer": false },
+			{ "name": "fp-owner", "view": "player", "commands": ["ke * SetView FirstPerson"], "settleSeconds": 0.7 }
 		]
 	})json");
 
@@ -33,7 +34,7 @@ bool FCSCaptureJobParsesTest::RunTest(const FString& Parameters)
 		AddError(Error);
 		return false;
 	}
-	TestEqual(TEXT("Two shots"), Job.Shots.Num(), 2);
+	TestEqual(TEXT("Three shots"), Job.Shots.Num(), 3);
 	TestEqual(TEXT("Location Y"), Job.Shots[0].Location.Y, 200.0);
 	TestEqual(TEXT("Rotation yaw"), Job.Shots[0].Rotation.Yaw, 45.0);
 	TestEqual(TEXT("Fov"), Job.Shots[0].Fov, 60.f);
@@ -42,6 +43,12 @@ bool FCSCaptureJobParsesTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Default bHidePlayer is true"), Job.Shots[0].bHidePlayer);
 	TestFalse(TEXT("bHidePlayer read from JSON"), Job.Shots[1].bHidePlayer);
 	TestEqual(TEXT("Default settle"), Job.SettleSeconds, 3.f);
+	TestTrue(TEXT("Default view is a fixed camera"), Job.Shots[0].View.IsEmpty() && !Job.Shots[0].IsPlayerView());
+	TestEqual(TEXT("Default shot settle (0: the job's)"), Job.Shots[0].SettleSeconds, 0.f);
+	TestEqual(TEXT("No shot commands by default"), Job.Shots[0].Commands.Num(), 0);
+	TestTrue(TEXT("Player view read from JSON"), Job.Shots[2].IsPlayerView());
+	TestEqual(TEXT("Shot command read from JSON"), Job.Shots[2].Commands.Num() == 1 ? Job.Shots[2].Commands[0] : FString(), FString(TEXT("ke * SetView FirstPerson")));
+	TestEqual(TEXT("Shot settle read from JSON"), Job.Shots[2].SettleSeconds, 0.7f);
 	TestEqual(TEXT("One command"), Job.Commands.Num(), 1);
 	return true;
 }
@@ -57,6 +64,8 @@ bool FCSCaptureJobRejectsBadTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("Unnamed shot"), CSCapture::ParseJob(TEXT(R"({ "outputDir": "C:/x", "shots": [ {} ] })"), Job, Error));
 	TestFalse(TEXT("Tiny resolution"), CSCapture::ParseJob(TEXT(R"({ "outputDir": "C:/x", "shots": [ { "name": "a", "width": 10 } ] })"), Job, Error));
 	TestFalse(TEXT("Huge resolution"), CSCapture::ParseJob(TEXT(R"({ "outputDir": "C:/x", "shots": [ { "name": "a", "width": 9000 } ] })"), Job, Error));
+	TestFalse(TEXT("Unknown view"), CSCapture::ParseJob(TEXT(R"({ "outputDir": "C:/x", "shots": [ { "name": "a", "view": "sideways" } ] })"), Job, Error));
+	TestFalse(TEXT("Negative shot settle"), CSCapture::ParseJob(TEXT(R"({ "outputDir": "C:/x", "shots": [ { "name": "a", "settleSeconds": -1 } ] })"), Job, Error));
 	TestFalse(TEXT("Bad fov"), CSCapture::ParseJob(TEXT(R"({ "outputDir": "C:/x", "shots": [ { "name": "a", "fov": 0 } ] })"), Job, Error));
 	return true;
 }

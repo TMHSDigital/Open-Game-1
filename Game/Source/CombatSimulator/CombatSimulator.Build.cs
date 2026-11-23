@@ -16,5 +16,16 @@ public class CombatSimulator : ModuleRules
 			"EnhancedInput",  // input asset tests (CSInputAssetTests.cpp)
 			"CSCharacter"  // Game/Plugins/CSCharacter: ACSCharacter, UCSMovementTuning
 		});
+
+		// The map tests play the real maps in PIE and read the packaging settings (CSMapTests.cpp).
+		// Editor builds only: a packaged game never links these.
+		if (Target.bBuildEditor)
+		{
+			PrivateDependencyModuleNames.AddRange(new string[] {
+				"UnrealEd",
+				"DeveloperToolSettings",
+				"EngineSettings"
+			});
+		}
 	}
 }

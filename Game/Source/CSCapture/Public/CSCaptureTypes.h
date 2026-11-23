@@ -36,9 +36,28 @@ struct CSCAPTURE_API FCSCaptureShot
 	UPROPERTY()
 	int32 Height = 1080;
 
-	/** Hide the player's pawn so it does not block the view. */
+	/** Hide the player's pawn so it does not block the view. Ignored for a player view. */
 	UPROPERTY()
 	bool bHidePlayer = true;
+
+	/**
+	 * "camera" (or empty): a fixed camera at Location and Rotation with Fov.
+	 * "player": the player's own view through its pawn's camera, so owner-only visibility applies
+	 * (for example a first-person body with the head hidden). The control rotation is set to
+	 * Rotation; Location and Fov are not used (the pawn's camera decides them).
+	 */
+	UPROPERTY()
+	FString View;
+
+	/** Console commands run when the shot starts, before it settles, e.g. "ke * SetView FirstPerson". */
+	UPROPERTY()
+	TArray<FString> Commands;
+
+	/** Game seconds to wait at this shot before the image. 0: the default (the job's settle time for the first shot, 1 s after). */
+	UPROPERTY()
+	float SettleSeconds = 0.f;
+
+	bool IsPlayerView() const { return View.Equals(TEXT("player"), ESearchCase::IgnoreCase); }
 };
 
 /** Everything one UE process captures. One map per process (the map is on the command line). */

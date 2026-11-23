@@ -38,6 +38,8 @@ private:
 
 	void BeginShot(const FCSCaptureShot& Shot);
 	void HidePlayer(bool bHide) const;
+	/** Points the player's view at the capture camera, or at its own pawn for a "player" shot (and sets the aim when bSetRotation). */
+	void ApplyView(const FCSCaptureShot& Shot, bool bSetRotation);
 	void RequestImage(const FCSCaptureShot& Shot);
 	void WriteResult(bool bSuccess, const FString& Message) const;
 

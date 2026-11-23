@@ -152,12 +152,17 @@ bool UCSCaptureSubsystem::Tick(float DeltaTime)
 			}
 			break;
 		}
-		const float Wait = ShotIndex == 0 ? Job.SettleSeconds : ShotSettleSeconds;
+		const FCSCaptureShot& Shot = Job.Shots[ShotIndex];
+		float Wait = ShotIndex == 0 ? Job.SettleSeconds : ShotSettleSeconds;
+		if (Shot.SettleSeconds > 0.f)
+		{
+			Wait = ShotIndex == 0 ? FMath::Max(Wait, Shot.SettleSeconds) : Shot.SettleSeconds;
+		}
 		if (PhaseTime >= Wait && !IsStillCompilingAssets())
 		{
-			const FCSCaptureShot& Shot = Job.Shots[ShotIndex];
-			// The pawn may have spawned after BeginShot; apply the hide flag again right before the image.
-			HidePlayer(Shot.bHidePlayer);
+			// The pawn may have spawned after BeginShot; apply the view and hide flag again right before the image.
+			ApplyView(Shot, /*bSetRotation=*/false);
+			HidePlayer(Shot.bHidePlayer && !Shot.IsPlayerView());
 			RequestImage(Shot);
 			ShotCooldownFrames = 2;
 		}
@@ -180,13 +185,59 @@ bool UCSCaptureSubsystem::Tick(float DeltaTime)
 
 void UCSCaptureSubsystem::BeginShot(const FCSCaptureShot& Shot)
 {
-	HidePlayer(Shot.bHidePlayer);
+	UWorld* World = GetGameInstance() ? GetGameInstance()->GetWorld() : nullptr;
+	for (const FString& Command : Shot.Commands)
+	{
+		UE_LOG(LogCSCapture, Display, TEXT("Shot %s: command '%s'"), *Shot.Name, *Command);
+		GEngine->Exec(World, *Command);
+	}
+	HidePlayer(Shot.bHidePlayer && !Shot.IsPlayerView());
 	if (Camera)
 	{
 		Camera->SetActorLocationAndRotation(Shot.Location, Shot.Rotation);
 		Camera->GetCameraComponent()->SetFieldOfView(Shot.Fov);
 	}
-	UE_LOG(LogCSCapture, Display, TEXT("Shot %s: %s %s fov %.0f, %dx%d"), *Shot.Name, *Shot.Location.ToString(), *Shot.Rotation.ToString(), Shot.Fov, Shot.Width, Shot.Height);
+	ApplyView(Shot, /*bSetRotation=*/true);
+	if (Shot.IsPlayerView())
+	{
+		UE_LOG(LogCSCapture, Display, TEXT("Shot %s: player view, control rotation %s, %dx%d"), *Shot.Name, *Shot.Rotation.ToString(), Shot.Width, Shot.Height);
+	}
+	else
+	{
+		UE_LOG(LogCSCapture, Display, TEXT("Shot %s: %s %s fov %.0f, %dx%d"), *Shot.Name, *Shot.Location.ToString(), *Shot.Rotation.ToString(), Shot.Fov, Shot.Width, Shot.Height);
+	}
+}
+
+void UCSCaptureSubsystem::ApplyView(const FCSCaptureShot& Shot, bool bSetRotation)
+{
+	UWorld* World = GetGameInstance() ? GetGameInstance()->GetWorld() : nullptr;
+	APlayerController* PC = World ? World->GetFirstPlayerController() : nullptr;
+	if (!PC)
+	{
+		return;
+	}
+	if (!Shot.IsPlayerView())
+	{
+		if (Camera && PC->GetViewTarget() != Camera)
+		{
+			PC->SetViewTarget(Camera);
+		}
+		return;
+	}
+	APawn* Pawn = PC->GetPawn();
+	if (!Pawn)
+	{
+		UE_LOG(LogCSCapture, Warning, TEXT("Shot %s: player view, but the player has no pawn"), *Shot.Name);
+		return;
+	}
+	if (PC->GetViewTarget() != Pawn)
+	{
+		PC->SetViewTarget(Pawn);
+	}
+	if (bSetRotation)
+	{
+		PC->SetControlRotation(Shot.Rotation);
+	}
 }
 
 void UCSCaptureSubsystem::HidePlayer(bool bHide) const

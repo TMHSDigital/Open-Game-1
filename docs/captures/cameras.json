@@ -24,7 +24,8 @@
     "rotation": [0, 0, 0],
     "fov": 45,
     "resolution": [1920, 1080],
-    "since": "2026-11-23"
+    "since": "2026-11-23",
+    "hidePlayer": false
   },
   {
     "name": "char-side",
@@ -33,7 +34,8 @@
     "rotation": [0, 90, 0],
     "fov": 45,
     "resolution": [1920, 1080],
-    "since": "2026-11-23"
+    "since": "2026-11-23",
+    "hidePlayer": false
   },
   {
     "name": "char-three-quarter",
@@ -42,7 +44,8 @@
     "rotation": [-4, -45, 0],
     "fov": 45,
     "resolution": [1920, 1080],
-    "since": "2026-11-23"
+    "since": "2026-11-23",
+    "hidePlayer": false
   },
   {
     "name": "fp-look-down",
@@ -51,6 +54,154 @@
     "rotation": [-89, 180, 0],
     "fov": 85,
     "resolution": [1920, 1080],
-    "since": "2026-11-23"
+    "since": "2026-11-23",
+    "hidePlayer": false
+  },
+  {
+    "name": "fp-owner-look-down",
+    "map": "/Game/Maps/L_CaptureStage",
+    "location": [300, 300, 0],
+    "rotation": [-89, 180, 0],
+    "fov": 85,
+    "resolution": [1920, 1080],
+    "since": "2026-11-23",
+    "hidePlayer": false,
+    "view": "player",
+    "commands": ["ke * SetView FirstPerson"],
+    "settleSeconds": 1.5
+  },
+  {
+    "name": "fp-owner-pitch-60",
+    "map": "/Game/Maps/L_CaptureStage",
+    "location": [300, 300, 0],
+    "rotation": [-60, 180, 0],
+    "fov": 85,
+    "resolution": [1920, 1080],
+    "since": "2026-11-23",
+    "hidePlayer": false,
+    "view": "player",
+    "commands": ["ke * SetView FirstPerson"],
+    "settleSeconds": 1.5
+  },
+  {
+    "name": "plane-overview",
+    "map": "/Game/Maps/L_Plane",
+    "location": [-600, -600, 300],
+    "rotation": [-16, 45, 0],
+    "fov": 70,
+    "resolution": [1920, 1080],
+    "since": "2026-11-23",
+    "hidePlayer": false
+  },
+  {
+    "name": "tp-owner-shoulder",
+    "map": "/Game/Maps/L_Plane",
+    "location": [0, 0, 0],
+    "rotation": [-10, 0, 0],
+    "fov": 75,
+    "resolution": [1920, 1080],
+    "since": "2026-11-23",
+    "hidePlayer": false,
+    "view": "player",
+    "commands": ["ke * SetView ThirdPerson"],
+    "settleSeconds": 1.5
+  },
+  {
+    "name": "tp-owner-front",
+    "map": "/Game/Maps/L_Plane",
+    "location": [0, 0, 0],
+    "rotation": [-10, 160, 0],
+    "fov": 75,
+    "resolution": [1920, 1080],
+    "since": "2026-11-23",
+    "hidePlayer": false,
+    "view": "player",
+    "commands": ["ke * SetView ThirdPerson"],
+    "settleSeconds": 1.5
+  },
+  {
+    "name": "fp-owner-ahead",
+    "map": "/Game/Maps/L_Plane",
+    "location": [0, 0, 0],
+    "rotation": [-10, 0, 0],
+    "fov": 85,
+    "resolution": [1920, 1080],
+    "since": "2026-11-23",
+    "hidePlayer": false,
+    "view": "player",
+    "commands": ["ke * SetView FirstPerson"],
+    "settleSeconds": 1.5
+  },
+  {
+    "name": "gym-overview",
+    "map": "/Game/Maps/L_MovementGym",
+    "location": [-2200, -2000, 2000],
+    "rotation": [-16, 62, 0],
+    "fov": 75,
+    "resolution": [1920, 1080],
+    "since": "2026-11-23",
+    "hidePlayer": false
+  },
+  {
+    "name": "gym-lane",
+    "map": "/Game/Maps/L_MovementGym",
+    "location": [-800, 0, 250],
+    "rotation": [-8, 0, 0],
+    "fov": 60,
+    "resolution": [1920, 1080],
+    "since": "2026-11-23",
+    "hidePlayer": false
+  },
+  {
+    "name": "gym-ramps",
+    "map": "/Game/Maps/L_MovementGym",
+    "location": [-1000, 300, 600],
+    "rotation": [-16, 41, 0],
+    "fov": 70,
+    "resolution": [1920, 1080],
+    "since": "2026-11-23",
+    "hidePlayer": false
+  },
+  {
+    "name": "gym-stairs-gaps",
+    "map": "/Game/Maps/L_MovementGym",
+    "location": [-1000, 2600, 600],
+    "rotation": [-14, 41, 0],
+    "fov": 75,
+    "resolution": [1920, 1080],
+    "since": "2026-11-23",
+    "hidePlayer": false
+  },
+  {
+    "name": "gym-ledges",
+    "map": "/Game/Maps/L_MovementGym",
+    "location": [-1600, 4600, 1200],
+    "rotation": [-17, 42, 0],
+    "fov": 75,
+    "resolution": [1920, 1080],
+    "since": "2026-11-23",
+    "hidePlayer": false
+  },
+  {
+    "name": "gym-physics-boxes",
+    "map": "/Game/Maps/L_MovementGym",
+    "location": [300, -1300, 300],
+    "rotation": [-16, 52, 0],
+    "fov": 60,
+    "resolution": [1920, 1080],
+    "since": "2026-11-23",
+    "hidePlayer": false
+  },
+  {
+    "name": "gym-ragdoll",
+    "map": "/Game/Maps/L_MovementGym",
+    "location": [-300, -500, 220],
+    "rotation": [-20, 90, 0],
+    "fov": 60,
+    "resolution": [1920, 1080],
+    "since": "2026-11-23",
+    "hidePlayer": false,
+    "commands": ["ke * EnterRagdoll"],
+    "settleSeconds": 0.9
   }
 ]

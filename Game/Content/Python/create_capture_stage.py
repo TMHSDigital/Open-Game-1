@@ -1,9 +1,11 @@
 """Creates (or rebuilds) /Game/Maps/L_CaptureStage: the neutral stage used for captures.
 
 Contents: a 100 m floor plane, sky (atmosphere, sky light, height fog), a directional sun,
-a 1 m reference cube, and a 10 m scale ruler with a label every metre.
+a 1 m reference cube, a 10 m scale ruler with a label every metre, and a PlayerStart where the
+character cameras in docs/captures/cameras.json expect the character: feet at (300, 300, 0),
+facing -X (yaw 180). The game mode (ACSGameMode) spawns the player's ACSCharacter there.
 
-Safe to rerun: the map is recreated from scratch each time.
+Safe to rerun: the map is emptied of every actor and rebuilt each time.
 
 Run headless (editor closed):
     UnrealEditor-Cmd.exe <repo>/Game/CombatSimulator.uproject -run=pythonscript
@@ -59,10 +61,16 @@ def build():
     assets = unreal.EditorAssetLibrary
 
     if assets.does_asset_exist(MAP_PATH):
-        # Rebuild from scratch so reruns never stack duplicate actors.
-        if not assets.delete_asset(MAP_PATH):
-            raise RuntimeError("Could not delete existing " + MAP_PATH)
-    if not levels.new_level(MAP_PATH):
+        # Rebuild from scratch so reruns never stack duplicate actors. Deleting the map in the
+        # commandlet leaves it registered and new_level then refuses the path, so the existing map
+        # is loaded and emptied of every actor instead: the same result as a new level.
+        if not levels.load_level(MAP_PATH):
+            raise RuntimeError("Could not load " + MAP_PATH)
+        actors = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
+        doomed = [a for a in actors.get_all_level_actors() if not isinstance(a, unreal.WorldSettings)]
+        if doomed and not actors.destroy_actors(doomed):
+            raise RuntimeError("Could not empty " + MAP_PATH)
+    elif not levels.new_level(MAP_PATH):
         raise RuntimeError("Could not create " + MAP_PATH)
 
     # Floor: the plane mesh is 1 m square, so the scale is the size in metres.
@@ -92,6 +100,10 @@ def build():
         spawn_mesh(CUBE, "Ruler_Bar_%02d" % i, unreal.Vector(centre_x, ruler_y, 1.0), unreal.Vector(0.95, 0.10, 0.02))
     for i in range(RULER_LENGTH_M + 1):
         spawn_text("Ruler_Label_%02d" % i, "%d m" % i, unreal.Vector(i * 100.0, ruler_y - 30.0, 5.0))
+
+    # Character placement for the char-* and fp-* cameras. The PlayerStart capsule is 92 cm half
+    # height, so at z 92 its bottom (and the spawned character's feet) is on the floor.
+    spawn(unreal.PlayerStart, "PlayerStart", unreal.Vector(300, 300, 92), unreal.Rotator(roll=0, pitch=0, yaw=180))
 
     if not levels.save_current_level():
         raise RuntimeError("Could not save " + MAP_PATH)

@@ -35,6 +35,7 @@ uv run --project tools python -c "from og.devlog import to_webp; print(to_webp('
 
 1. In PIE (or `-game`), move the camera to the spot and type `cs.Capture.DumpView <name>` in the console (~). The log prints a ready `cameras.json` entry.
 2. Paste it into `docs/captures/cameras.json`. Fields: `name` (lowercase kebab-case, unique), `map` (`/Game/...`), `location` `[x,y,z]` cm, `rotation` `[pitch,yaw,roll]` degrees, `fov` (horizontal degrees), `resolution` `[w,h]`, `since` (date added).
+   Optional fields (see the header of `tools/ue/capture.ps1`): `hidePlayer` (default true; character cameras set false), `view` (`camera`, or `player` for the player's own view with owner-only visibility, where `rotation` is the aim and `location`/`fov` are unused), `commands` (console commands at the start of the shot, e.g. `ke * SetView FirstPerson`, `ke * EnterRagdoll`), `settleSeconds`. The game mode spawns the character at each map's PlayerStart (L_CaptureStage: feet at (300, 300, 0), yaw 180).
 3. Run `pwsh tools/ue/capture.ps1 -Cameras <name> -OutDir _scratch/captures/<id>` and look at the image.
 
 Never rename or delete a camera that has published images; add a new one instead, so images stay comparable across dates.
