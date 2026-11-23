@@ -16,16 +16,17 @@ How it is built:
    never from an Epic asset. Bone names, parents and roll notes come from skeleton_reference.json.
 2. The body is a skin modifier over a graph of nodes that follows the joints (extra nodes just
    above and below shoulders, elbows, hips and knees give separate edge loops there), subdivided
-   twice and applied. Palms are flat through elliptical skin radii. Each thenar and thumb is a
-   separate piece of the graph; overlapping shells are joined with an exact boolean union so the
-   body is one piece, and the folds at the thenars and armpits are relaxed. Glutes are a smooth
-   displacement of the back of the pelvis; soles are flattened.
+   twice and applied. Palms are flat through elliptical skin radii. Each thumb is a separate
+   piece of the graph; overlapping shells are joined with an exact boolean union so the body is
+   one piece. The shoulders are subdivided once more, so they bend on a finer mesh; the ball of
+   each thumb is a smooth bulge of the palm, and the folds at the thumbs and armpits are relaxed.
+   Glutes are a smooth displacement of the back of the pelvis; soles are flattened.
 3. Rest pose: A-pose, upper arm 55 degrees below horizontal, small elbow and knee bends so IK
    solvers know the bend direction. Faces Blender -Y, left side on +X (export skill convention).
 4. Weights: Blender's automatic (bone heat) weights on the main deform bones, then corrections:
    no weight from the opposite leg, the crotch follows the pelvis, the upper arm's share ramps
-   smoothly across the shoulder joint, a Laplacian weight smoothing, each finger vertex goes to
-   one finger chain, twist bones get a share of their limb, at most
+   smoothly across the shoulder joint (tilted, see SH_TILT_BACK), a Laplacian weight smoothing,
+   each finger vertex goes to one finger chain, twist bones get a share of their limb, at most
    4 influences per vertex, renormalized, no vertex left unweighted. ik_*, interaction and
    center_of_mass are built (so retargeting and IK tools find them) but carry no weights.
 5. One neutral matte material, smart UV unwrap. The scene is built in metres, then converted to
@@ -381,9 +382,10 @@ def build_graph(j):
 def skin_mesh(g):
     """Skin modifier over the graph, subdivided twice, then made one closed piece.
 
-    The separate graph pieces (thenars, thumbs) and any shell left by a failed hull are joined by
+    The separate graph pieces (thumbs) and any shell left by a failed hull are joined by
     merge_islands after the subdivision (a union on the low-resolution cage breaks bone heat).
-    The folds at the thenars and under the armpits are then relaxed. Returns a new mesh.
+    The shoulders are then subdivided once more, the balls of the thumbs raised, and the folds at
+    the thumbs and under the armpits relaxed. Returns a new mesh.
     """
     me = bpy.data.meshes.new("skin_graph")
     me.from_pydata([tuple(p) for p in g.pos], g.edges, [])
@@ -404,6 +406,7 @@ def skin_mesh(g):
     bpy.data.objects.remove(obj, do_unlink=True)
     bpy.data.meshes.remove(me)
     result = merge_islands(result)
+    refine_region(result, [Vector((sx * SHOULDER_X, 0.012, SHOULDER_Z)) for sx in (1.0, -1.0)], 0.20)
     for a, b, n in g.thenars:
         thenar_bulge(result, a, b, n)
         # relax the seam where the thumb leaves the palm
@@ -416,6 +419,22 @@ def skin_mesh(g):
         fill_creases(result, Vector((sx * SHOULDER_X, 0.010, SHOULDER_Z - 0.04)),
                      0.12, 60)
     return result
+
+
+def refine_region(me, centres, radius):
+    """Subdivide the skin once (smoothly) within radius of the shoulder joints. The torso is
+    coarse (2 to 5 cm edges), too coarse for a shoulder raised to 90 degrees to fold smoothly;
+    this halves the edges there for about 4,000 more triangles."""
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(me)
+        edges = [e for e in bm.edges
+                 if all(min((v.co - c).length for c in centres) < radius for v in e.verts)]
+        bmesh.ops.subdivide_edges(bm, edges=edges, cuts=1, smooth=1.0, use_grid_fill=True,
+                                  quad_corner_type="INNER_VERT", use_smooth_even=True)
+        bm.to_mesh(me)
+    finally:
+        bm.free()
 
 
 def fill_creases(me, centre, radius, iterations):
@@ -468,12 +487,8 @@ def thenar_bulge(me, a, b, n):
     me.update()
 
 
-def relax_region(me, centre, radius, iterations, taubin=False):
-    """Laplacian smoothing with a smooth falloff inside a sphere; fills folds and seams there.
-
-    With taubin=True every smoothing step is followed by a slightly larger inflating step, so
-    the region keeps its volume instead of shrinking.
-    """
+def relax_region(me, centre, radius, iterations):
+    """Laplacian smoothing with a smooth falloff inside a sphere; fills folds and seams there."""
     bm = bmesh.new()
     try:
         bm.from_mesh(me)
@@ -485,13 +500,11 @@ def relax_region(me, centre, radius, iterations, taubin=False):
             t = 1.0 - (co[i] - centre).length / radius
             wts[i] = t * t * (3.0 - 2.0 * t)  # smoothstep falloff, no step at the border
         nbrs = {i: [e.other_vert(bm.verts[i]).index for e in bm.verts[i].link_edges] for i in active}
-        steps = (0.5, -0.53) if taubin else (0.5,)
         for _ in range(iterations):
-            for lam in steps:
-                new = {i: co[i] + (sum((co[n] for n in nbrs[i]), Vector()) / len(nbrs[i]) - co[i])
-                       * lam * wts[i] for i in active}
-                for i, q in new.items():
-                    co[i] = q
+            new = {i: co[i] + (sum((co[n] for n in nbrs[i]), Vector()) / len(nbrs[i]) - co[i])
+                   * 0.5 * wts[i] for i in active}
+            for i, q in new.items():
+                co[i] = q
         for i in active:
             bm.verts[i].co = co[i]
         bm.to_mesh(me)
@@ -773,11 +786,21 @@ def _chain_share(bones, pl, i, t, hand):
 
 # Shoulder weights (see correct_weights): the upper arm's share ramps from SH_IN to SH_OUT along
 # the arm axis, for skin within SH_RAD of it (blended over SH_RAD_BLEND) and SH_REACH of the
-# joint. Below the armpit (SH_PIT_DZ under the joint) only skin outside the rib-cage wall
-# (SH_WALL from the midline) counts as arm.
+# joint. The ramp is tilted: skin behind, in front of, above and below the joint counts as further
+# out along the arm by SH_TILT_BACK, SH_TILT_FRONT, SH_TILT_UP and SH_TILT_DOWN metres per metre
+# (at 1.5 for SH_TILT_UP the top of the shoulder tears in forward flexion; 0.8 leaves a margin).
+# Below the armpit (from SH_PIT_DZ under the joint, blended over SH_PIT_BLEND) only skin outside
+# the rib-cage wall (SH_WALL from the midline, blended over SH_WALL_BLEND) counts as arm.
 SH_IN, SH_OUT = -0.06, 0.10
 SH_RAD, SH_RAD_BLEND, SH_REACH = 0.13, 0.06, 0.18
-SH_WALL, SH_PIT_DZ = 0.150, 0.04
+SH_TILT_BACK, SH_TILT_FRONT, SH_TILT_UP, SH_TILT_DOWN = 1.0, 0.5, 0.8, 0.25
+SH_WALL, SH_WALL_BLEND = 0.150, 0.07
+SH_PIT_DZ, SH_PIT_BLEND = 0.04, 0.10
+
+
+def _smoothstep(t):
+    t = max(0.0, min(1.0, t))
+    return t * t * (3.0 - 2.0 * t)
 
 
 def correct_weights(obj, joints):
@@ -815,19 +838,29 @@ def correct_weights(obj, joints):
                 continue
             depth = d.dot(du)
             radial = (d - du * depth).length
+            # Tilted ramp. In forward flexion skin behind the joint is stretched over the back of
+            # the shoulder; when it stays on the torso the arm's root shows as a rounded cap with a
+            # slot under it, so it follows the arm further in. The front follows a little further
+            # in too (it otherwise pinches into a triangular fold at the front of the armpit; more
+            # wrinkles the chest), the top of the deltoid also (otherwise it folds into a V on top
+            # of the shoulder), and the armpit a little, so it opens smoothly.
+            depth += SH_TILT_BACK * d.y if d.y > 0.0 else -SH_TILT_FRONT * d.y
+            depth += SH_TILT_UP * d.z if d.z > 0.0 else -SH_TILT_DOWN * d.z
             arm_w = {b: w for b, w in wd.items() if b in arm_bones}
             body_w = {b: w for b, w in wd.items() if b not in arm_bones}
             a_tot, b_tot = sum(arm_w.values()), sum(body_w.values())
             t = max(0.0, min(1.0, (depth - SH_IN) / (SH_OUT - SH_IN)))
             f = t * t * (3.0 - 2.0 * t)  # smoothstep
             # Only on the arm tube and the shoulder cap round the joint; the ribs and back further
-            # from the arm axis keep their heat split, blended over 3 cm.
+            # from the arm axis keep their heat split, blended over SH_RAD_BLEND (6 cm).
             g = max(0.0, min(1.0, (SH_RAD - radial) / SH_RAD_BLEND))
             # The arm hangs down and out, so the rib-cage flank under the armpit also lies along
             # the arm axis; it is torso, not arm. Below the armpit only skin outside the torso
-            # wall counts as arm.
-            if p.z < s0.z - SH_PIT_DZ:
-                g *= max(0.0, min(1.0, (p.x * sx - SH_WALL) / 0.03))
+            # wall counts as arm. Both limits are smooth blends: a hard step there showed as a
+            # notch under the arm in abduction and a kink in the flank.
+            below = _smoothstep((s0.z - SH_PIT_DZ - p.z) / SH_PIT_BLEND)
+            wall = _smoothstep((p.x * sx - SH_WALL) / SH_WALL_BLEND)
+            g *= 1.0 - below * (1.0 - wall)
             f = g * f + (1.0 - g) * (a_tot / (a_tot + b_tot) if a_tot + b_tot > 0.0 else 0.0)
             if a_tot <= 0.0:
                 arm_w, a_tot = {f"upperarm_{side}": 1.0}, 1.0
