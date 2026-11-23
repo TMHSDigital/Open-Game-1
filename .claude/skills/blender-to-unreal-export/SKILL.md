@@ -29,7 +29,7 @@ The Blender-Developer-Tools `engine-export-presets` skill uses `-Z`/`Y` with `gl
 | Kind | Scene | Why |
 |---|---|---|
 | `static`, `anim` | Metric, Unit Scale 1.0 (metres) | Unreal bakes the metre-to-centimetre conversion into the mesh vertices; verified with the reference box |
-| `skeletal` | Metric, Unit Scale 0.01 (centimetres), armature scaled 100 and applied | From a metre scene UE 5.8 folds the conversion of the top `Armature` node into the root bone, which imports at scale 100 whatever Apply Scalings is set to. From a centimetre scene the root imports at scale 1 (verified 2026-11-22 with `SK_BaseCharacter`, see `Art/Characters/Base/NOTES.md`) |
+| `skeletal` | Metric, Unit Scale 0.01 (centimetres), armature scaled 100 and applied | From a metre scene UE 5.8 folds the conversion of the top `Armature` node into the root bone, which imports at scale 100 whatever Apply Scalings is set to. From a centimetre scene the root imports at scale 1 (verified 2026-11-22 with `SK_BaseCharacter`, see `Art/Characters/Base/NOTES.md` and decision `docs/decisions/0012-skeletal-meshes-export-from-a-centimetre-scene.md`) |
 
 The script enforces this per `--kind`. Build or model a character in metres if that is easier, then
 convert just before saving the export .blend: set Unit Scale to 0.01, scale the armature object by
