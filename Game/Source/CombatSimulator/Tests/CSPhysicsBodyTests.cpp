@@ -153,6 +153,28 @@ namespace CSPhysicsBodyTests
 			return false;
 		}
 
+		// A 50 cm thick ramp rising toward +X at PitchDeg, its top surface starting at Foot and Length
+		// long. Returns the top surface's normal.
+		FVector AddRamp(const FVector& Foot, float PitchDeg, float Length)
+		{
+			const float P = FMath::DegreesToRadians(PitchDeg);
+			const FVector Along(FMath::Cos(P), 0.f, FMath::Sin(P));
+			const FVector Normal(-FMath::Sin(P), 0.f, FMath::Cos(P));
+			AddBox(Foot + Along * (0.5f * Length) - Normal * 50.f, FVector(0.5f * Length, 500.f, 50.f), FRotator(PitchDeg, 0.f, 0.f));
+			return Normal;
+		}
+
+		// Keeps the ragdoll down while a test arranges it (no automatic recovery for 6 s).
+		void HoldRagdollDown()
+		{
+			Tuning->RagdollSettleSeconds = 6.f;
+			Tuning->RagdollMaxSeconds = 8.f;
+			FString Message;
+			UCSDevTools::ReloadTuning(*Character, Message);
+		}
+
+		FVector PelvisBody() const { return Mesh()->GetBodyInstance(TEXT("pelvis"))->GetUnrealWorldTransform().GetLocation(); }
+
 		USkeletalMeshComponent* Mesh() const { return Character->GetMesh(); }
 		UCapsuleComponent* Capsule() const { return Character->GetCapsuleComponent(); }
 		ECSBodyState State() const { return PhysicsBody->GetState(); }
@@ -262,8 +284,21 @@ namespace CSPhysicsBodyTests
 			Character.SetupPlayerInputComponent(Input.Get());
 		}
 
-		// Executes every binding of the action for this trigger event (with a zero value). Returns how many ran.
-		int32 Fire(FName Name, ETriggerEvent Event)
+		// An action instance carrying a value, as the Enhanced Input subsystem builds one for a key
+		// press (the value and trigger event are protected members of FInputActionInstance).
+		struct FValuedInstance : FInputActionInstance
+		{
+			FValuedInstance(const UInputAction* InAction, ETriggerEvent Event, const FInputActionValue& InValue)
+				: FInputActionInstance(InAction)
+			{
+				TriggerEvent = Event;
+				Value = InValue;
+			}
+		};
+
+		// Executes every binding of the action for this trigger event with Value (zero by default).
+		// Returns how many ran.
+		int32 Fire(FName Name, ETriggerEvent Event, const FInputActionValue& Value = FInputActionValue())
 		{
 			const TStrongObjectPtr<UInputAction>* Found = Actions.Find(Name);
 			const UInputAction* Action = Found ? Found->Get() : nullptr;
@@ -272,7 +307,7 @@ namespace CSPhysicsBodyTests
 			{
 				if (Binding->GetAction() == Action && Binding->GetTriggerEvent() == Event)
 				{
-					Binding->Execute(FInputActionInstance(Action));
+					Binding->Execute(FValuedInstance(Action, Event, Value));
 					++Ran;
 				}
 			}
@@ -563,9 +598,11 @@ bool FCSBodyRecoveryNeverBelowFloorTest::RunTest(const FString& Parameters)
 		{
 			return false;
 		}
+		Sim.HoldRagdollDown();
 		Sim.PhysicsBody->EnterRagdoll();
 		Sim.Run(2.f);
-		// Push the settled body half into the floor: the pelvis ends below the floor's surface.
+		TestEqual(TEXT("Sunk into the floor: still in Ragdoll before the test moves it"), Sim.State(), ECSBodyState::Ragdoll);
+		// Push the lying body half into the floor: the pelvis ends below the floor's surface.
 		Sim.MoveBodies(FQuat::Identity, FVector::ZeroVector, FVector(0.f, 0.f, -Sim.Mesh()->GetBoneLocation(TEXT("pelvis")).Z - 10.f));
 		AddInfo(FString::Printf(TEXT("Sunk: pelvis body at z %.1f"), Sim.Mesh()->GetBodyInstance(TEXT("pelvis"))->GetUnrealWorldTransform().GetLocation().Z));
 		Sim.PhysicsBody->Recover();
@@ -582,8 +619,10 @@ bool FCSBodyRecoveryNeverBelowFloorTest::RunTest(const FString& Parameters)
 		}
 		// A 60 cm block just ahead; the ragdoll is thrown (over it) and then pushed into it, pelvis 10 cm inside.
 		Sim.AddBox(FVector(120.f, 0.f, 30.f), FVector(50.f, 200.f, 30.f));
+		Sim.HoldRagdollDown();
 		Sim.PhysicsBody->ApplyImpulseAtBone(TEXT("spine_05"), Sim.ImpulseFor(2.f * Sim.Tuning->RagdollImpulseThreshold, FVector::ForwardVector));
 		Sim.Run(1.5f);
+		TestEqual(TEXT("Inside a block: still in Ragdoll before the test moves it"), Sim.State(), ECSBodyState::Ragdoll);
 		Sim.MoveBodies(FQuat::Identity, FVector::ZeroVector, FVector(70.f + 10.f - Sim.Mesh()->GetBoneLocation(TEXT("pelvis")).X, 0.f, 0.f));
 		AddInfo(FString::Printf(TEXT("Into the block: pelvis body at %s"), *Sim.Mesh()->GetBodyInstance(TEXT("pelvis"))->GetUnrealWorldTransform().GetLocation().ToString()));
 		Sim.PhysicsBody->Recover();
@@ -599,7 +638,10 @@ bool FCSBodyRecoveryNeverBelowFloorTest::RunTest(const FString& Parameters)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSBodyInputIgnoredWhileRagdolledTest, "CombatSimulator.CS.Body.InputIgnoredWhileRagdolled", CSPhysicsBodyTests::TestFlags)
 bool FCSBodyInputIgnoredWhileRagdolledTest::RunTest(const FString& Parameters)
 {
-	// Move, jump and crouch do nothing from the ragdoll until control returns; held gait keys apply then.
+	// Move, jump and crouch pressed while ragdolled or recovering reach the character's real bindings
+	// with real values and do nothing: no movement input is queued, no jump is pressed, no crouch.
+	// Jump stays held across the moment control returns and must not start a jump. Held gait keys
+	// apply when control returns.
 	FBodySim Sim;
 	if (!Sim.Init(*this))
 	{
@@ -607,42 +649,165 @@ bool FCSBodyInputIgnoredWhileRagdolledTest::RunTest(const FString& Parameters)
 	}
 	FInputRig Rig;
 	Rig.Bind(*Sim.Character);
-	UCharacterMovementComponent* Move = Sim.Character->GetCharacterMovement();
+	ACSCharacter* C = Sim.Character;
+	UCharacterMovementComponent* Move = C->GetCharacterMovement();
+	const FInputActionValue Forward(FVector2D(0.0, 1.0));
+
+	// The binding works: before the ragdoll, a forward Move queues movement input.
+	TestEqual(TEXT("Move is bound"), Rig.Fire(TEXT("Move"), ETriggerEvent::Triggered, Forward), 1);
+	TestFalse(TEXT("Before the ragdoll, Move queues movement input"), C->GetPendingMovementInputVector().IsNearlyZero());
+	Sim.Step();
 
 	TestTrue(TEXT("R ragdolls (dev tools on)"), Rig.Press(TEXT("DebugRagdoll")) == 1 && Sim.State() == ECSBodyState::Ragdoll);
-	bool bMoved = false, bCrouched = false;
+	int32 Frames = 0, RecoveringFrames = 0, MoveQueued = 0, JumpPressed = 0, Crouched = 0;
 	while (Sim.State() == ECSBodyState::Ragdoll || Sim.State() == ECSBodyState::Recovering)
 	{
-		Rig.Fire(TEXT("Move"), ETriggerEvent::Triggered);
-		Sim.Character->AddMovementInput(FVector::ForwardVector, 1.f);
+		++Frames;
+		RecoveringFrames += Sim.State() == ECSBodyState::Recovering ? 1 : 0;
+		Rig.Fire(TEXT("Move"), ETriggerEvent::Triggered, Forward);
+		MoveQueued += C->GetPendingMovementInputVector().IsNearlyZero() ? 0 : 1;
+		// Jump goes down (Started) during the ragdoll and is never released before control returns.
 		Rig.Press(TEXT("Jump"));
-		Rig.Press(TEXT("Crouch"));
-		Rig.Press(TEXT("Crouch"));
-		Rig.Press(TEXT("Crouch"));
+		JumpPressed += C->bPressedJump ? 1 : 0;
+		// Crouch is a toggle: one press while down must not leave the character crouched afterwards.
+		if (Frames == 1)
+		{
+			Rig.Press(TEXT("Crouch"));
+		}
+		Crouched += (C->bIsCrouched || Move->bWantsToCrouch) ? 1 : 0;
 		Sim.Step();
-		bMoved |= Move->MovementMode != MOVE_None && Move->Velocity.Size2D() > 1.f;
-		bCrouched |= Sim.Character->bIsCrouched || Move->bWantsToCrouch;
 		if (Sim.Time > 30.f)
 		{
 			AddError(TEXT("Never recovered"));
 			return false;
 		}
 	}
-	TestFalse(TEXT("No movement from input while ragdolled or recovering"), bMoved);
-	TestFalse(TEXT("Crouch presses while ragdolled do nothing"), bCrouched);
+	AddInfo(FString::Printf(TEXT("%d frames ragdolled (%d recovering): Move queued input on %d, jump pressed on %d, crouched on %d"),
+		Frames, RecoveringFrames, MoveQueued, JumpPressed, Crouched));
+	TestTrue(TEXT("Both Ragdoll and Recovering were covered"), RecoveringFrames > 0 && Frames > RecoveringFrames);
+	TestEqual(TEXT("Move through the binding queues no movement input while ragdolled or recovering"), MoveQueued, 0);
+	TestEqual(TEXT("Jump through the binding presses no jump while ragdolled or recovering"), JumpPressed, 0);
+	TestEqual(TEXT("Crouch through the binding does nothing while ragdolled or recovering"), Crouched, 0);
+
+	// Control is back with Jump still held: no jump starts from the press made during the ragdoll.
+	bool bJumped = false;
+	for (int32 i = 0; i < 20; ++i)
+	{
+		Sim.Step();
+		bJumped |= C->bPressedJump || !Move->IsMovingOnGround() || Move->Velocity.Z > 1.f;
+	}
+	TestFalse(TEXT("Jump held across the return starts no jump"), bJumped);
 	Rig.Fire(TEXT("Jump"), ETriggerEvent::Completed);
-	Sim.Run(0.3f);
-	TestTrue(TEXT("No jump queued from the ragdoll: still on the ground after recovery"), Move->IsMovingOnGround() && FMath::Abs(Move->Velocity.Z) < 1.f);
-	TestEqual(TEXT("Gait is still Jog"), Sim.Character->GetGait(), ECSGait::Jog);
+	TestEqual(TEXT("Gait is still Jog (the crouch press while down did not toggle crouch)"), C->GetGait(), ECSGait::Jog);
+	TestFalse(TEXT("Not crouched after control returns"), C->bIsCrouched || Move->bWantsToCrouch);
+	TestEqual(TEXT("Move works again once control returns"), Rig.Fire(TEXT("Move"), ETriggerEvent::Triggered, Forward), 1);
+	TestFalse(TEXT("Move queues input again once control returns"), C->GetPendingMovementInputVector().IsNearlyZero());
 
 	// Held sprint during the ragdoll applies when control returns.
 	Rig.Press(TEXT("DebugRagdoll"));
 	Rig.Press(TEXT("Sprint"));
-	TestEqual(TEXT("Sprint pressed while ragdolled does not change gait yet"), Sim.Character->GetGait(), ECSGait::Jog);
+	TestEqual(TEXT("Sprint pressed while ragdolled does not change gait yet"), C->GetGait(), ECSGait::Jog);
 	Rig.Press(TEXT("DebugRagdoll"));
 	TestEqual(TEXT("R from the ragdoll starts the recovery"), Sim.State(), ECSBodyState::Recovering);
 	Sim.RunUntil(2.f, [&]() { return Sim.State() == ECSBodyState::Normal; });
-	TestEqual(TEXT("Held sprint applies once control returns"), Sim.Character->GetGait(), ECSGait::Sprint);
+	TestEqual(TEXT("Held sprint applies once control returns"), C->GetGait(), ECSGait::Sprint);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSBodyRecoveryOffSteepSlopeTest, "CombatSimulator.CS.Body.RecoveryOffSteepSlope", CSPhysicsBodyTests::TestFlags)
+bool FCSBodyRecoveryOffSteepSlopeTest::RunTest(const FString& Parameters)
+{
+	// Review Focus 1: a ragdoll that ends on a slope too steep to stand on (50 deg) still recovers
+	// upright on walkable ground within a few seconds, without help.
+	FBodySim Sim;
+	if (!Sim.Init(*this))
+	{
+		return false;
+	}
+	const FVector RampFoot(200.f, 0.f, 0.f);
+	const FVector Up = Sim.AddRamp(RampFoot, 50.f, 1200.f);
+	const FVector Along(FMath::Cos(FMath::DegreesToRadians(50.f)), 0.f, FMath::Sin(FMath::DegreesToRadians(50.f)));
+	Sim.PhysicsBody->EnterRagdoll();
+	// Lay the ragdoll on the ramp, pelvis 150 cm up it.
+	const FVector Pelvis = Sim.PelvisBody();
+	Sim.MoveBodies(FQuat::Identity, FVector::ZeroVector, RampFoot + Along * 150.f + Up * 20.f - Pelvis);
+	AddInfo(FString::Printf(TEXT("On the ramp: pelvis body at %s"), *Sim.PelvisBody().ToString()));
+	const float Start = Sim.Time;
+	const bool bBack = Sim.RunUntil(6.f, [&]() { return Sim.State() == ECSBodyState::Normal; });
+	AddInfo(FString::Printf(TEXT("50 deg ramp: back to Normal after %.2f s"), Sim.Time - Start));
+	TestTrue(TEXT("50 deg ramp: recovered within 6 s"), bBack);
+	CheckStanding(*this, Sim, TEXT("50 deg ramp"));
+	Sim.Run(1.f);
+	CheckStanding(*this, Sim, TEXT("50 deg ramp, 1 s later"));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSBodyRecoveryWithNoSpotNearPelvisTest, "CombatSimulator.CS.Body.RecoveryWithNoSpotNearPelvis", CSPhysicsBodyTests::TestFlags)
+bool FCSBodyRecoveryWithNoSpotNearPelvisTest::RunTest(const FString& Parameters)
+{
+	// Nothing standable within RecoverySearchRadius of the pelvis (high on a long 50 deg ramp): the
+	// recovery uses the last clear spot of this ragdoll (here where it started) instead of putting
+	// the capsule in the air over the slope.
+	FBodySim Sim;
+	if (!Sim.Init(*this))
+	{
+		return false;
+	}
+	const FVector StartSpot = Sim.Character->GetActorLocation();
+	const FVector RampFoot(200.f, 0.f, 0.f);
+	const FVector Up = Sim.AddRamp(RampFoot, 50.f, 3000.f);
+	const FVector Along(FMath::Cos(FMath::DegreesToRadians(50.f)), 0.f, FMath::Sin(FMath::DegreesToRadians(50.f)));
+	Sim.PhysicsBody->EnterRagdoll();
+	Sim.MoveBodies(FQuat::Identity, FVector::ZeroVector, RampFoot + Along * 1000.f + Up * 20.f - Sim.PelvisBody());
+	AddInfo(FString::Printf(TEXT("High on the ramp: pelvis body at %s"), *Sim.PelvisBody().ToString()));
+	Sim.PhysicsBody->Recover();
+	TestEqual(TEXT("The recovery starts"), Sim.State(), ECSBodyState::Recovering);
+	const bool bBack = Sim.RunUntil(Sim.Tuning->RagdollRecoverSeconds + 1.f, [&]() { return Sim.State() == ECSBodyState::Normal; });
+	TestTrue(TEXT("No spot near the pelvis: recovered"), bBack);
+	CheckStanding(*this, Sim, TEXT("No spot near the pelvis"));
+	AddInfo(FString::Printf(TEXT("Stood up at %s; the ragdoll started at %s"), *Sim.Character->GetActorLocation().ToString(), *StartSpot.ToString()));
+	TestTrue(TEXT("No spot near the pelvis: stands at the last clear spot (where the ragdoll started)"),
+		FVector::Dist2D(Sim.Character->GetActorLocation(), StartSpot) < 50.f);
+	Sim.Run(1.f);
+	CheckStanding(*this, Sim, TEXT("No spot near the pelvis, 1 s later"));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSBodyRagdollSlideIsBoundedTest, "CombatSimulator.CS.Body.RagdollSlideIsBounded", CSPhysicsBodyTests::TestFlags)
+bool FCSBodyRagdollSlideIsBoundedTest::RunTest(const FString& Parameters)
+{
+	// A 750 cm/s shove on flat ground settles 1.5 to 3 m away (ragdoll damping and friction from the
+	// tuning), and the damping is applied on entry, follows a reload while ragdolled and is undone
+	// after the recovery.
+	FBodySim Sim;
+	if (!Sim.Init(*this))
+	{
+		return false;
+	}
+	UCSMovementTuning& T = *Sim.Tuning;
+	USkeletalMeshComponent* Mesh = Sim.Mesh();
+	const float BaseLinear = Mesh->GetBodyInstance(TEXT("spine_03"))->LinearDamping;
+	const FVector Start = Sim.PelvisBody();
+	Sim.PhysicsBody->ApplyImpulseAtBone(TEXT("spine_03"), Sim.ImpulseFor(750.f, FVector::ForwardVector));
+	TestEqual(TEXT("A 750 cm/s shove ragdolls"), Sim.State(), ECSBodyState::Ragdoll);
+	TestNearlyEqual(TEXT("Ragdoll linear damping applied on entry"), Mesh->GetBodyInstance(TEXT("spine_03"))->LinearDamping, T.RagdollLinearDamping, 0.001f);
+	TestNearlyEqual(TEXT("Ragdoll angular damping applied on entry"), Mesh->GetBodyInstance(TEXT("hand_l"))->AngularDamping, T.RagdollAngularDamping, 0.001f);
+	const bool bRecovering = Sim.RunUntil(T.RagdollMaxSeconds + 1.f, [&]() { return Sim.State() == ECSBodyState::Recovering; });
+	const float Slide = FVector::Dist2D(Start, Sim.PelvisBody());
+	AddInfo(FString::Printf(TEXT("750 cm/s shove (linear damping %.2f, angular %.2f, friction %.2f): settled %.0f cm away"),
+		T.RagdollLinearDamping, T.RagdollAngularDamping, T.RagdollFriction, Slide));
+	TestTrue(TEXT("Settled"), bRecovering);
+	TestTrue(TEXT("A 750 cm/s shove settles 1.5 to 3 m away"), Slide >= 150.f && Slide <= 300.f);
+	Sim.RunUntil(2.f, [&]() { return Sim.State() == ECSBodyState::Normal; });
+	TestNearlyEqual(TEXT("The body's own damping is back after the recovery"), Mesh->GetBodyInstance(TEXT("spine_03"))->LinearDamping, BaseLinear, 0.001f);
+
+	// A reload while ragdolled changes the damping at once.
+	Sim.PhysicsBody->EnterRagdoll();
+	T.RagdollLinearDamping = 4.f;
+	FString Message;
+	TestTrue(TEXT("Reload with new ragdoll damping"), UCSDevTools::ReloadTuning(*Sim.Character, Message));
+	Sim.Step();
+	TestNearlyEqual(TEXT("A reload while ragdolled applies the new damping"), Mesh->GetBodyInstance(TEXT("spine_03"))->LinearDamping, 4.f, 0.001f);
 	return true;
 }
 
@@ -880,3 +1045,4 @@ bool FCSBodyFirstPersonCopyFollowsPhysicsTest::RunTest(const FString& Parameters
 }
 
 #endif // WITH_DEV_AUTOMATION_TESTS
+

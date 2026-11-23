@@ -13,6 +13,7 @@
 #include "PhysicsEngine/BodySetup.h"
 #include "PhysicsEngine/PhysicalAnimationComponent.h"
 #include "PhysicsEngine/PhysicsAsset.h"
+#include "PhysicalMaterials/PhysicalMaterial.h"
 
 namespace
 {
@@ -148,6 +149,12 @@ void UCSPhysicsBodyComponent::BeginPlay()
 	// in the capsule's upright frame.
 	Body->PhysicsTransformUpdateMode = EPhysicsTransformUpdateMode::ComponentTransformIsKinematic;
 	MeshRelativeTransform = Body->GetRelativeTransform();
+	BaseDamping.SetNum(Body->Bodies.Num());
+	for (int32 i = 0; i < Body->Bodies.Num(); ++i)
+	{
+		const FBodyInstance* B = Body->Bodies[i];
+		BaseDamping[i] = B ? FVector2f(B->LinearDamping, B->AngularDamping) : FVector2f::ZeroVector;
+	}
 	EnterNormal();
 }
 
@@ -366,6 +373,9 @@ void UCSPhysicsBodyComponent::EnterRagdoll()
 		// From Recovering these were saved by the ragdoll before and the mesh is back in place.
 		MeshRelativeTransform = Body->GetRelativeTransform();
 		CapsuleCollision = Capsule ? Capsule->GetCollisionEnabled() : ECollisionEnabled::QueryAndPhysics;
+		// Where the character stood is the first fallback spot for the recovery.
+		bHasClearStand = Move && Move->IsMovingOnGround() && Move->CurrentFloor.IsWalkableFloor();
+		LastClearStand = Character ? Character->GetActorLocation() : FVector::ZeroVector;
 	}
 
 	HitAges.Reset();
@@ -377,6 +387,7 @@ void UCSPhysicsBodyComponent::EnterRagdoll()
 	{
 		PhysicalAnimation->SetStrengthMultiplyer(0.f);
 	}
+	ApplyRagdollPhysics();
 	Body->WakeAllRigidBodies();
 	// The body carries on with the character's motion (a run, a fall).
 	Body->SetAllPhysicsLinearVelocity(Velocity, false);
@@ -400,6 +411,45 @@ void UCSPhysicsBodyComponent::EnterRagdoll()
 	{
 		Character->SetRagdolled(true);
 	}
+}
+
+void UCSPhysicsBodyComponent::ApplyRagdollPhysics()
+{
+	const UCSMovementTuning& T = GetTuning();
+	RagdollTuning = &T;
+	// A physics material's values are copied into the physics engine when it is first used, so a new
+	// friction gets a new material.
+	if (!RagdollMaterial || RagdollMaterial->Friction != T.RagdollFriction)
+	{
+		RagdollMaterial = NewObject<UPhysicalMaterial>(this, NAME_None, RF_Transient);
+		RagdollMaterial->Friction = T.RagdollFriction;
+		RagdollMaterial->StaticFriction = T.RagdollFriction;
+	}
+	for (FBodyInstance* B : Body->Bodies)
+	{
+		if (B && B->IsValidBodyInstance())
+		{
+			B->LinearDamping = T.RagdollLinearDamping;
+			B->AngularDamping = T.RagdollAngularDamping;
+			B->UpdateDampingProperties();
+		}
+	}
+	Body->SetPhysMaterialOverride(RagdollMaterial);
+}
+
+void UCSPhysicsBodyComponent::RestoreBodyPhysics()
+{
+	RagdollTuning = nullptr;
+	for (int32 i = 0; i < Body->Bodies.Num() && i < BaseDamping.Num(); ++i)
+	{
+		if (FBodyInstance* B = Body->Bodies[i]; B && B->IsValidBodyInstance())
+		{
+			B->LinearDamping = BaseDamping[i].X;
+			B->AngularDamping = BaseDamping[i].Y;
+			B->UpdateDampingProperties();
+		}
+	}
+	Body->SetPhysMaterialOverride(nullptr);
 }
 
 void UCSPhysicsBodyComponent::Recover()
@@ -500,17 +550,32 @@ void UCSPhysicsBodyComponent::FollowPelvis()
 	}
 	// No teleport: the simulated bodies are in world space and stay where physics put them.
 	Character->SetActorLocation(Target, false, nullptr, ETeleportType::None);
+
+	// Remember the last spot passed where the capsule could stand (the recovery's fallback).
+	FVector Clear;
+	if (TryStandAt(At, At.Z, Clear))
+	{
+		LastClearStand = Clear;
+		bHasClearStand = true;
+	}
 }
 
 void UCSPhysicsBodyComponent::TickRagdoll(float DeltaTime)
 {
 	const UCSMovementTuning& T = GetTuning();
+	if (RagdollTuning.Get() != &T)
+	{
+		// A reload while ragdolled: new damping and friction at once.
+		ApplyRagdollPhysics();
+	}
 	FollowPelvis();
 	const float Speed = Body->GetPhysicsLinearVelocity(PelvisBone).Size();
 	SettledSeconds = Speed < T.RagdollSettleSpeed ? SettledSeconds + DeltaTime : 0.f;
-	if (SettledSeconds >= T.RagdollSettleSeconds || StateSeconds >= T.RagdollMaxSeconds)
+	if ((SettledSeconds >= T.RagdollSettleSeconds || StateSeconds >= T.RagdollMaxSeconds) && !BeginRecovery())
 	{
-		BeginRecovery();
+		// Nowhere to put the capsule yet: stay down and try again after another settle time.
+		SettledSeconds = 0.f;
+		StateSeconds = FMath::Min(StateSeconds, T.RagdollMaxSeconds - T.RagdollSettleSeconds);
 	}
 }
 
@@ -549,18 +614,9 @@ bool UCSPhysicsBodyComponent::FindStandLocation(const FVector& Around, FVector& 
 	{
 		return false;
 	}
-	const UCharacterMovementComponent* Move = Character->GetCharacterMovement();
-	const float WalkableZ = Move ? Move->GetWalkableFloorZ() : 0.71f;
 	const float Radius = Capsule->GetScaledCapsuleRadius();
-	const float HalfHeight = Capsule->GetScaledCapsuleHalfHeight();
-	const FCollisionShape Shape = FCollisionShape::MakeCapsule(Radius, HalfHeight);
-	const ECollisionChannel Channel = Capsule->GetCollisionObjectType();
-	FCollisionQueryParams Params(SCENE_QUERY_STAT(CSRagdollRecovery), false, Character);
-	const FCollisionResponseParams Responses(Capsule->GetCollisionResponseToChannels());
-	UWorld* World = GetWorld();
-
-	// Rings outward from the pelvis, one capsule radius apart; on each candidate a capsule is swept
-	// down from above the pelvis. The first spot on walkable ground where the capsule fits wins.
+	// Rings outward from the pelvis, one capsule radius apart; the first candidate where the capsule
+	// stands on walkable ground and fits wins.
 	const int32 Rings = FMath::Max(0, FMath::CeilToInt(RecoverySearchRadius / Radius));
 	for (int32 Ring = 0; Ring <= Rings; ++Ring)
 	{
@@ -569,25 +625,48 @@ bool UCSPhysicsBodyComponent::FindStandLocation(const FVector& Around, FVector& 
 		for (int32 Spoke = 0; Spoke < Spokes; ++Spoke)
 		{
 			const float Angle = 2.f * PI * Spoke / Spokes;
-			const FVector XY = Around + FVector(FMath::Cos(Angle), FMath::Sin(Angle), 0.f) * Distance;
-			const FVector Top(XY.X, XY.Y, Around.Z + HalfHeight + StandSweepAbove);
-			const FVector Bottom(XY.X, XY.Y, Around.Z - HalfHeight - StandSweepBelow);
-			FHitResult Hit;
-			if (!World->SweepSingleByChannel(Hit, Top, Bottom, FQuat::Identity, Channel, Shape, Params, Responses)
-				|| Hit.bStartPenetrating || Hit.ImpactNormal.Z < WalkableZ)
+			if (TryStandAt(Around + FVector(FMath::Cos(Angle), FMath::Sin(Angle), 0.f) * Distance, Around.Z, OutLocation))
 			{
-				continue;
+				return true;
 			}
-			const FVector Candidate = Hit.Location + FVector(0.f, 0.f, StandFloorGap);
-			if (World->OverlapBlockingTestByChannel(Candidate, FQuat::Identity, Channel, Shape, Params, Responses))
-			{
-				continue;
-			}
-			OutLocation = Candidate;
-			return true;
 		}
 	}
 	return false;
+}
+
+bool UCSPhysicsBodyComponent::TryStandAt(const FVector& XY, float AroundZ, FVector& OutLocation) const
+{
+	const ACSCharacter* Character = GetCharacter();
+	const UCapsuleComponent* Capsule = Character ? Character->GetCapsuleComponent() : nullptr;
+	if (!Capsule)
+	{
+		return false;
+	}
+	const UCharacterMovementComponent* Move = Character->GetCharacterMovement();
+	const float WalkableZ = Move ? Move->GetWalkableFloorZ() : 0.71f;
+	const float HalfHeight = Capsule->GetScaledCapsuleHalfHeight();
+	const FCollisionShape Shape = FCollisionShape::MakeCapsule(Capsule->GetScaledCapsuleRadius(), HalfHeight);
+	const ECollisionChannel Channel = Capsule->GetCollisionObjectType();
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(CSRagdollRecovery), false, Character);
+	const FCollisionResponseParams Responses(Capsule->GetCollisionResponseToChannels());
+	UWorld* World = GetWorld();
+	// A capsule swept down from above; it must not start inside anything, must land on walkable
+	// ground and must fit where it lands.
+	const FVector Top(XY.X, XY.Y, AroundZ + HalfHeight + StandSweepAbove);
+	const FVector Bottom(XY.X, XY.Y, AroundZ - HalfHeight - StandSweepBelow);
+	FHitResult Hit;
+	if (!World->SweepSingleByChannel(Hit, Top, Bottom, FQuat::Identity, Channel, Shape, Params, Responses)
+		|| Hit.bStartPenetrating || Hit.ImpactNormal.Z < WalkableZ)
+	{
+		return false;
+	}
+	const FVector Candidate = Hit.Location + FVector(0.f, 0.f, StandFloorGap);
+	if (World->OverlapBlockingTestByChannel(Candidate, FQuat::Identity, Channel, Shape, Params, Responses))
+	{
+		return false;
+	}
+	OutLocation = Candidate;
+	return true;
 }
 
 void UCSPhysicsBodyComponent::HoldSnapshot()
@@ -604,13 +683,40 @@ void UCSPhysicsBodyComponent::HoldSnapshot()
 	}
 }
 
-void UCSPhysicsBodyComponent::BeginRecovery()
+bool UCSPhysicsBodyComponent::BeginRecovery()
 {
 	ACSCharacter* Character = GetCharacter();
 	if (!Character)
 	{
-		return;
+		return false;
 	}
+	// Where to stand, first: near the pelvis on walkable ground; else the last standable spot the
+	// ragdoll passed (a steep slope); else clear of geometry above the pelvis, to fall from there.
+	const FVector PelvisAt = Body->GetBodyInstance(PelvisBone)->GetUnrealWorldTransform().GetLocation();
+	const float Yaw = GetUpYaw();
+	FVector Stand;
+	FVector Retry;
+	bStandFound = FindStandLocation(PelvisAt, Stand);
+	if (!bStandFound && bHasClearStand && TryStandAt(LastClearStand, LastClearStand.Z, Retry))
+	{
+		Stand = Retry;
+		bStandFound = true;
+		UE_LOG(LogCSCharacter, Log, TEXT("%s: no walkable ground within %.0f cm of the ragdoll; standing up at the last clear spot %s."),
+			*Character->GetName(), RecoverySearchRadius, *Stand.ToString());
+	}
+	if (!bStandFound)
+	{
+		Stand = PelvisAt + FVector(0.f, 0.f, Character->GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
+		FRotator Rotation(0.f, Yaw, 0.f);
+		if (!GetWorld()->FindTeleportSpot(Character, Stand, Rotation))
+		{
+			UE_LOG(LogCSCharacter, Warning, TEXT("%s: nowhere clear to stand up near %s; staying down and trying again."),
+				*Character->GetName(), *PelvisAt.ToString());
+			return false;
+		}
+		UE_LOG(LogCSCharacter, Log, TEXT("%s: no standable spot found; recovering in the air at %s."), *Character->GetName(), *Stand.ToString());
+	}
+
 	// Snapshot the ragdoll pose: the bodies stay there (no gravity, no velocity) while the blend runs.
 	Snapshot.SetNum(Body->Bodies.Num());
 	for (int32 i = 0; i < Body->Bodies.Num(); ++i)
@@ -621,22 +727,8 @@ void UCSPhysicsBodyComponent::BeginRecovery()
 	Body->SetEnableGravity(false);
 	HoldSnapshot();
 
-	// Stand the capsule up on walkable ground by the pelvis, facing the way the body gets up. The
-	// mesh goes back to its place on the capsule; the held bodies do not move (no teleport).
-	const FVector Pelvis = Body->GetBodyInstance(PelvisBone)->GetUnrealWorldTransform().GetLocation();
-	const float Yaw = GetUpYaw();
-	FVector Stand;
-	bStandFound = FindStandLocation(Pelvis, Stand);
-	if (!bStandFound)
-	{
-		// Nowhere to stand nearby (a steep slope, a pit): start above the pelvis and let the movement
-		// component fall from there; FindTeleportSpot moves the capsule out of anything it overlaps.
-		Stand = Pelvis + FVector(0.f, 0.f, Character->GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
-		FRotator Rotation(0.f, Yaw, 0.f);
-		GetWorld()->FindTeleportSpot(Character, Stand, Rotation);
-		UE_LOG(LogCSCharacter, Log, TEXT("%s: no walkable ground within %.0f cm of the ragdoll; recovering in the air at %s."),
-			*Character->GetName(), RecoverySearchRadius, *Stand.ToString());
-	}
+	// Stand the capsule up, facing the way the body gets up. The mesh goes back to its place on the
+	// capsule; the held bodies do not move (no teleport).
 	Character->SetActorLocationAndRotation(Stand, FRotator(0.f, Yaw, 0.f), false, nullptr, ETeleportType::None);
 	if (!Body->GetRelativeTransform().Equals(MeshRelativeTransform, 0.01f))
 	{
@@ -647,6 +739,7 @@ void UCSPhysicsBodyComponent::BeginRecovery()
 	}
 	Body->SetAllBodiesPhysicsBlendWeight(1.f);
 	SetState(ECSBodyState::Recovering);
+	return true;
 }
 
 void UCSPhysicsBodyComponent::TickRecovering(float DeltaTime)
@@ -672,6 +765,7 @@ void UCSPhysicsBodyComponent::FinishRecovery()
 	Body->SetAllBodiesPhysicsBlendWeight(0.f);
 	Body->SetAllBodiesSimulatePhysics(false);
 	Body->SetEnableGravity(true);
+	RestoreBodyPhysics();
 	Body->SetRelativeTransform(MeshRelativeTransform);
 	Body->UpdateKinematicBonesToAnim(Body->GetComponentSpaceTransforms(), ETeleportType::TeleportPhysics, false, EAllowKinematicDeferral::DisallowDeferral);
 	Body->SetAllPhysicsLinearVelocity(FVector::ZeroVector, false);

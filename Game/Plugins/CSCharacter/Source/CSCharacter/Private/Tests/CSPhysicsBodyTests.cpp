@@ -37,6 +37,9 @@ bool FCSBodyTuningRejectsBadBodyValuesTest::RunTest(const FString& Parameters)
 		{TEXT("RagdollSettleSpeed"), [](UCSMovementTuning& X) { X.RagdollSettleSpeed = 0.f; }},
 		{TEXT("RagdollSettleSeconds"), [](UCSMovementTuning& X) { X.RagdollSettleSeconds = 9.f; }},
 		{TEXT("DevPushSpeed"), [](UCSMovementTuning& X) { X.DevPushSpeed = -5.f; }},
+		{TEXT("RagdollLinearDamping"), [](UCSMovementTuning& X) { X.RagdollLinearDamping = -0.1f; }},
+		{TEXT("RagdollAngularDamping"), [](UCSMovementTuning& X) { X.RagdollAngularDamping = 50.f; }},
+		{TEXT("RagdollFriction"), [](UCSMovementTuning& X) { X.RagdollFriction = NAN; }},
 	};
 	for (const FCase& Case : Cases)
 	{

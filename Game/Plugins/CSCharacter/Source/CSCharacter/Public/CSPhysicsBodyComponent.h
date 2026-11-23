@@ -6,6 +6,7 @@
 
 class ACSCharacter;
 class UPhysicalAnimationComponent;
+class UPhysicalMaterial;
 class USkeletalMeshComponent;
 class UCSMovementTuning;
 struct FBodyInstance;
@@ -49,10 +50,15 @@ DECLARE_MULTICAST_DELEGATE_TwoParams(FCSBodyStateChanged, ECSBodyState /* Old */
  * stops colliding and follows the pelvis (on the floor below it when there is one). Calls
  * ACSCharacter::SetRagdolled(true), so the camera rig uses third person and input is ignored.
  *
+ * Ragdoll damping and friction (RagdollLinearDamping, RagdollAngularDamping, RagdollFriction) apply
+ * while ragdolled, also after a reload, and are undone at the end of the recovery.
+ *
  * Recovering: when the pelvis has stayed slower than RagdollSettleSpeed for RagdollSettleSeconds
  * (or after RagdollMaxSeconds, or on R), the world transforms of the bodies are snapshotted and
  * held there (no gravity, no velocity); the capsule is stood upright on walkable ground near the
- * pelvis (never inside geometry or below the floor), facing the way the body would get up; and the
+ * pelvis (never inside geometry or below the floor; if there is none, at the last standable spot
+ * the ragdoll passed; failing that, clear of geometry above the pelvis to fall; failing that the
+ * ragdoll waits and tries again), facing the way the body would get up; and the
  * physics blend weight runs from 1 (the held ragdoll pose) to 0 (the animated pose) over
  * RagdollRecoverSeconds. Then the bodies return to Normal, SetRagdolled(false) is called and
  * OnRecovered is broadcast.
@@ -175,17 +181,29 @@ private:
 
 	/** Moves the capsule to the pelvis (on the floor below it when there is one) without touching the bodies. */
 	void FollowPelvis();
-	/** Starts Recovering: snapshot, stand the capsule up, start the blend. */
-	void BeginRecovery();
+	/**
+	 * Starts Recovering: picks where to stand, snapshots, stands the capsule up, starts the blend.
+	 * False (and still Ragdoll) when there is nowhere clear to put the capsule at all.
+	 */
+	bool BeginRecovery();
+	/** Ragdoll damping and friction from the tuning onto every body. */
+	void ApplyRagdollPhysics();
+	/** The bodies' own damping and material back (out of Ragdoll). */
+	void RestoreBodyPhysics();
 	/** Holds every body at its snapshot transform with no velocity. */
 	void HoldSnapshot();
 	void FinishRecovery();
 
 	/**
 	 * A capsule centre standing on walkable ground near Around, not overlapping anything, searched
-	 * outward up to RecoverySearchRadius. False if there is none (the caller lets the character fall).
+	 * outward up to RecoverySearchRadius. False if there is none.
 	 */
 	bool FindStandLocation(const FVector& Around, FVector& OutLocation) const;
+	/**
+	 * One candidate of FindStandLocation: a capsule swept down at XY from above AroundZ lands on
+	 * walkable ground and fits there. OutLocation is its centre.
+	 */
+	bool TryStandAt(const FVector& XY, float AroundZ, FVector& OutLocation) const;
 	/** Yaw the character faces after getting up, from the pelvis and spine. */
 	float GetUpYaw() const;
 
@@ -215,5 +233,19 @@ private:
 	ECollisionEnabled::Type CapsuleCollision = ECollisionEnabled::QueryAndPhysics;
 	/** The recovery found walkable ground to stand on (otherwise the character falls from where it stood up). */
 	bool bStandFound = true;
+	/**
+	 * The last place the capsule could stand during this ragdoll (where it started, if on walkable
+	 * ground, then wherever the pelvis passed over walkable ground): the recovery's fallback when
+	 * nothing near the pelvis is standable (a steep slope).
+	 */
+	FVector LastClearStand = FVector::ZeroVector;
+	bool bHasClearStand = false;
+	/** Each body's own damping, restored after the ragdoll (Body->Bodies order). */
+	TArray<FVector2f> BaseDamping;
+	/** Friction override for the ragdoll bodies (RagdollFriction), made on first use. */
+	UPROPERTY(Transient)
+	TObjectPtr<UPhysicalMaterial> RagdollMaterial;
+	/** The tuning object the ragdoll damping was last written from. */
+	TWeakObjectPtr<const UCSMovementTuning> RagdollTuning;
 	bool bWarnedNoBody = false;
 };
