@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
+#include "PhysicsEngine/PhysicalAnimationComponent.h"
 #include "CSMovementTuning.generated.h"
 
 /**
@@ -18,6 +19,8 @@ class CSCHARACTER_API UCSMovementTuning : public UPrimaryDataAsset
 	GENERATED_BODY()
 
 public:
+	UCSMovementTuning();
+
 	// ----- Speeds -----
 
 	/** Walk speed (held walk key), cm/s. Must be positive and not above JogSpeed. */
@@ -203,6 +206,73 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ragdoll", meta = (UIMin = "300", UIMax = "5000", Units = "cm/s"))
 	float RagdollLandingSpeedThreshold = 1000.f;
 
+	/**
+	 * The ragdoll counts as settled once the pelvis moves slower than this, cm/s, for
+	 * RagdollSettleSeconds (no spec value; default 25). Must be positive.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ragdoll", meta = (UIMin = "5", UIMax = "200", Units = "cm/s"))
+	float RagdollSettleSpeed = 25.f;
+
+	/** Seconds the pelvis must stay below RagdollSettleSpeed before recovery starts (default 0.5). Must be positive. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ragdoll", meta = (UIMin = "0.1", UIMax = "3", Units = "s"))
+	float RagdollSettleSeconds = 0.5f;
+
+	/**
+	 * Recovery starts after this long in ragdoll even if the body never settles (sliding down a
+	 * slope, rocking on an edge), seconds (default 8). Must be above RagdollSettleSeconds.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ragdoll", meta = (UIMin = "1", UIMax = "30", Units = "s"))
+	float RagdollMaxSeconds = 8.f;
+
+	// ----- Body (physical animation) -----
+
+	/**
+	 * Normal: how strongly the simulated upper body (spine, arms, head) follows the animated pose.
+	 * Physical animation motor strengths (UPhysicalAnimationComponent), world space by default so
+	 * the body keeps up with the capsule. Every strength and force must be finite and not negative;
+	 * a max force of 0 means no limit.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Body")
+	FPhysicalAnimationData NormalProfile;
+
+	/**
+	 * Arms and head follow the pose at this share of NormalProfile, so they sway with starts,
+	 * stops and turns (default 0.35). Within [0, 1].
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Body", meta = (UIMin = "0", UIMax = "1"))
+	float NormalLimbStrengthScale = 0.35f;
+
+	/**
+	 * Hit: the strengths a hit limb chain drops to (an arm, the head, or the whole upper body for a
+	 * hit on the torso or legs), held for HitHoldSeconds and then ramped back to Normal over
+	 * HitRecoverSeconds. Same rules as NormalProfile.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Body")
+	FPhysicalAnimationData HitProfile;
+
+	/** Seconds a hit chain stays at HitProfile before ramping back (default 0.15). Not negative. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Body", meta = (UIMin = "0", UIMax = "1", Units = "s"))
+	float HitHoldSeconds = 0.15f;
+
+	/** Seconds to ramp a hit chain from HitProfile back to Normal (default 0.6). Must be positive. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Body", meta = (UIMin = "0.05", UIMax = "3", Units = "s"))
+	float HitRecoverSeconds = 0.6f;
+
+	/**
+	 * Share of a stagger's velocity change given to the whole character along the ground, so a
+	 * shove moves the feet a little as well as the upper body (default 0.3; the vertical part is
+	 * dropped, so a stagger never lifts the character). Within [0, 1].
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Body", meta = (UIMin = "0", UIMax = "1"))
+	float HitCapsuleVelocityShare = 0.3f;
+
+	/**
+	 * Dev tool push (P): the velocity change it gives the character, cm/s (default 300: a stagger;
+	 * set above RagdollImpulseThreshold to test a ragdoll by impulse). Must be positive.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Body", meta = (UIMin = "50", UIMax = "3000", Units = "cm/s"))
+	float DevPushSpeed = 300.f;
+
 	// ----- Dev tools -----
 
 	/** Ragdoll and push keys, debug overlay and the tuning reload command are active. On until launch. */
@@ -213,7 +283,8 @@ public:
 	 * True if every value is usable. Otherwise false, with OutReason naming the first bad value.
 	 * Rejects non-finite values, non-positive speeds, walk above jog or jog above sprint, ramp and
 	 * blend times of 0 or less, a slope outside (0, 90), a field of view outside [60, 120] and camera
-	 * arm, lag and smoothing values outside their documented ranges.
+	 * arm, lag and smoothing values outside their documented ranges, negative or non-finite body
+	 * strengths and ragdoll and hit times outside their ranges.
 	 */
 	bool IsValid(FString& OutReason) const;
 };

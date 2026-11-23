@@ -61,6 +61,22 @@ namespace
 			return true;
 		}
 
+		bool Profile(const TCHAR* Name, const FPhysicalAnimationData& Data)
+		{
+			const float Values[] = {Data.OrientationStrength, Data.AngularVelocityStrength, Data.PositionStrength,
+				Data.VelocityStrength, Data.MaxLinearForce, Data.MaxAngularForce};
+			const TCHAR* Fields[] = {TEXT("OrientationStrength"), TEXT("AngularVelocityStrength"), TEXT("PositionStrength"),
+				TEXT("VelocityStrength"), TEXT("MaxLinearForce"), TEXT("MaxAngularForce")};
+			for (int32 i = 0; i < UE_ARRAY_COUNT(Values); ++i)
+			{
+				if (!NotNegative(*FString::Printf(TEXT("%s.%s"), Name, Fields[i]), Values[i]))
+				{
+					return false;
+				}
+			}
+			return true;
+		}
+
 		bool Order(const TCHAR* LowName, float Low, const TCHAR* HighName, float High)
 		{
 			if (Low > High)
@@ -71,6 +87,31 @@ namespace
 			return true;
 		}
 	};
+}
+
+namespace
+{
+	FPhysicalAnimationData MakeDrive(bool bLocal, float Orientation, float AngularVelocity, float Position, float Velocity)
+	{
+		FPhysicalAnimationData Data;
+		Data.bIsLocalSimulation = bLocal;
+		Data.OrientationStrength = Orientation;
+		Data.AngularVelocityStrength = AngularVelocity;
+		Data.PositionStrength = Position;
+		Data.VelocityStrength = Velocity;
+		// 0: no force limit.
+		Data.MaxLinearForce = 0.f;
+		Data.MaxAngularForce = 0.f;
+		return Data;
+	}
+}
+
+UCSMovementTuning::UCSMovementTuning()
+{
+	// Starting values (no spec numbers). World-space motors: Normal holds the pose closely, Hit lets
+	// the limb go loose enough to swing visibly before the ramp back.
+	NormalProfile = MakeDrive(false, 1000.f, 100.f, 1000.f, 100.f);
+	HitProfile = MakeDrive(false, 60.f, 10.f, 60.f, 10.f);
 }
 
 bool UCSMovementTuning::IsValid(FString& OutReason) const
@@ -115,5 +156,16 @@ bool UCSMovementTuning::IsValid(FString& OutReason) const
 		&& C.Closed(TEXT("FirstPersonHeightSmoothSeconds"), FirstPersonHeightSmoothSeconds, 0.f, 2.f)
 		&& C.Positive(TEXT("RagdollRecoverSeconds"), RagdollRecoverSeconds)
 		&& C.Positive(TEXT("RagdollImpulseThreshold"), RagdollImpulseThreshold)
-		&& C.Positive(TEXT("RagdollLandingSpeedThreshold"), RagdollLandingSpeedThreshold);
+		&& C.Positive(TEXT("RagdollLandingSpeedThreshold"), RagdollLandingSpeedThreshold)
+		&& C.Positive(TEXT("RagdollSettleSpeed"), RagdollSettleSpeed)
+		&& C.Positive(TEXT("RagdollSettleSeconds"), RagdollSettleSeconds)
+		&& C.Positive(TEXT("RagdollMaxSeconds"), RagdollMaxSeconds)
+		&& C.Order(TEXT("RagdollSettleSeconds"), RagdollSettleSeconds, TEXT("RagdollMaxSeconds"), RagdollMaxSeconds)
+		&& C.Profile(TEXT("NormalProfile"), NormalProfile)
+		&& C.Closed(TEXT("NormalLimbStrengthScale"), NormalLimbStrengthScale, 0.f, 1.f)
+		&& C.Profile(TEXT("HitProfile"), HitProfile)
+		&& C.NotNegative(TEXT("HitHoldSeconds"), HitHoldSeconds)
+		&& C.Positive(TEXT("HitRecoverSeconds"), HitRecoverSeconds)
+		&& C.Closed(TEXT("HitCapsuleVelocityShare"), HitCapsuleVelocityShare, 0.f, 1.f)
+		&& C.Positive(TEXT("DevPushSpeed"), DevPushSpeed);
 }

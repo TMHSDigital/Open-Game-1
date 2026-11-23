@@ -10,6 +10,7 @@
 #include "CSCharacterLog.h"
 #include "CSDevTools.h"
 #include "CSMovementTuning.h"
+#include "CSPhysicsBodyComponent.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/SkeletalMesh.h"
 #include "Engine/World.h"
@@ -20,6 +21,7 @@
 #include "InputAction.h"
 #include "InputActionValue.h"
 #include "InputMappingContext.h"
+#include "PhysicsEngine/PhysicalAnimationComponent.h"
 
 namespace
 {
@@ -95,6 +97,9 @@ ACSCharacter::ACSCharacter(const FObjectInitializer& ObjectInitializer)
 	FirstPersonBody->PrimaryComponentTick.bCanEverTick = false;
 
 	CameraRig = CreateDefaultSubobject<UCSCameraRig>(TEXT("CameraRig"));
+
+	PhysicalAnimation = CreateDefaultSubobject<UPhysicalAnimationComponent>(TEXT("PhysicalAnimation"));
+	PhysicsBody = CreateDefaultSubobject<UCSPhysicsBodyComponent>(TEXT("PhysicsBody"));
 }
 
 const UCSMovementTuning& ACSCharacter::GetActiveTuning() const
@@ -232,6 +237,7 @@ void ACSCharacter::PostInitializeComponents()
 	ApplyCharacterVisuals();
 	Super::PostInitializeComponents();
 	CameraRig->Setup(GetMesh(), CameraArm, Camera, FirstPersonBody);
+	PhysicsBody->Setup(GetMesh(), PhysicalAnimation);
 }
 
 void ACSCharacter::BeginPlay()
@@ -351,6 +357,10 @@ void ACSCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 
 void ACSCharacter::OnMove(const FInputActionValue& Value)
 {
+	if (bRagdolled)
+	{
+		return;
+	}
 	const FVector2D Axis = Value.Get<FVector2D>();
 	// Along the view's yaw only, so looking up or down does not slow the character.
 	const FRotationMatrix Basis(FRotator(0.f, GetControlRotation().Yaw, 0.f));
@@ -367,6 +377,10 @@ void ACSCharacter::OnLook(const FInputActionValue& Value)
 
 void ACSCharacter::OnJumpStarted()
 {
+	if (bRagdolled)
+	{
+		return;
+	}
 	Jump();
 }
 
@@ -403,12 +417,21 @@ void ACSCharacter::OnWalkCompleted()
 
 void ACSCharacter::OnCrouchStarted()
 {
+	if (bRagdolled)
+	{
+		return;
+	}
 	bCrouchToggled = !bCrouchToggled;
 	UpdateGaitFromInput();
 }
 
 void ACSCharacter::UpdateGaitFromInput()
 {
+	// Held keys are tracked while ragdolled; SetRagdolled(false) applies them.
+	if (bRagdolled)
+	{
+		return;
+	}
 	const ECSGait NewGait = ResolveGait(bCrouchToggled, bSprintHeld, bWalkHeld);
 	if (NewGait != Gait)
 	{
@@ -444,6 +467,10 @@ void ACSCharacter::SetRagdolled(bool bInRagdolled)
 		return;
 	}
 	bRagdolled = bInRagdolled;
+	if (!bRagdolled)
+	{
+		UpdateGaitFromInput();
+	}
 	OnRagdollStateChanged.Broadcast(bRagdolled);
 }
 

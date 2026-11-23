@@ -217,7 +217,7 @@ FCSRagdollBuildResult UCSRagdollBuilder::BuildRagdollPhysicsAsset(USkeletalMesh*
 			FrameZ = CS[Bone].GetRotation().GetAxisY();
 		}
 		float Swing1 = J.SwingLimitDeg;
-		float Swing2 = J.SwingLimitDeg;
+		float Swing2 = J.Swing2LimitDeg >= 0.f ? J.Swing2LimitDeg : J.SwingLimitDeg;
 		float CenterDeg = 0.f;
 		float RestBendDeg = 0.f;
 		if (J.bHinge)
@@ -235,9 +235,37 @@ FCSRagdollBuildResult UCSRagdollBuilder::BuildRagdollPhysicsAsset(USkeletalMesh*
 			Swing1 = 0.5f * (J.HingeFlexDeg + J.HingeExtendDeg);
 			CenterDeg = 0.5f * (J.HingeFlexDeg - J.HingeExtendDeg) - RestBendDeg;
 		}
-		const FQuat FrameRot = FRotationMatrix::MakeFromXZ(BoneDir, FrameZ).ToQuat();
+		FQuat FrameRot = FRotationMatrix::MakeFromXZ(BoneDir, FrameZ).ToQuat();
+		FQuat ParentFrameRot = FrameRot * FQuat(FVector::ZAxisVector, FMath::DegreesToRadians(CenterDeg));
+		FVector ConeDir = BoneDir;
+		if (!J.bHinge && (!J.ConeDirection.IsNearlyZero() || !J.Swing1Axis.IsNearlyZero()))
+		{
+			// The parent frame looks along the cone centre with Z on the Swing1 axis; the child frame
+			// is that frame turned the shortest way onto the rest direction, so the rest pose has no twist.
+			ConeDir = J.ConeDirection.IsNearlyZero() ? BoneDir : J.ConeDirection.GetSafeNormal();
+			const FVector Axis = J.Swing1Axis.IsNearlyZero() ? FrameZ : J.Swing1Axis.GetSafeNormal();
+			if (FMath::Abs(FVector::DotProduct(Axis, ConeDir)) > 0.95f)
+			{
+				return Fail(FString::Printf(TEXT("'%s': Swing1Axis is (nearly) along ConeDirection."), *J.Bone.ToString()));
+			}
+			ParentFrameRot = FRotationMatrix::MakeFromXZ(ConeDir, Axis).ToQuat();
+			FrameRot = FQuat::FindBetweenNormals(ConeDir, BoneDir) * ParentFrameRot;
+			// The rest pose must be inside the cone, or the ragdoll snaps on its first step.
+			const FQuat Rel = ParentFrameRot.Inverse() * FrameRot;
+			FQuat SwingPart, TwistPart;
+			Rel.ToSwingTwist(FVector::XAxisVector, SwingPart, TwistPart);
+			FVector SwingAxis;
+			float SwingAngle;
+			SwingPart.ToAxisAndAngle(SwingAxis, SwingAngle);
+			const float S1 = FMath::RadiansToDegrees(SwingAngle) * SwingAxis.Z;
+			const float S2 = FMath::RadiansToDegrees(SwingAngle) * SwingAxis.Y;
+			if (FMath::Square(S1 / FMath::Max(Swing1, 0.01f)) + FMath::Square(S2 / FMath::Max(Swing2, 0.01f)) > 1.f)
+			{
+				return Fail(FString::Printf(TEXT("'%s': the rest pose (swing %.0f, %.0f) is outside its cone (%.0f, %.0f)."), *J.Bone.ToString(), S1, S2, Swing1, Swing2));
+			}
+		}
 		const FTransform FrameCS(FrameRot, JointPos);
-		const FTransform FrameCSCentred(FrameRot * FQuat(FVector::ZAxisVector, FMath::DegreesToRadians(CenterDeg)), JointPos);
+		const FTransform FrameCSCentred(ParentFrameRot, JointPos);
 
 		const int32 ConstraintIndex = FPhysicsAssetUtils::CreateNewConstraint(PA, J.Bone);
 		UPhysicsConstraintTemplate* Template = PA->ConstraintSetup[ConstraintIndex];
@@ -256,8 +284,9 @@ FCSRagdollBuildResult UCSRagdollBuilder::BuildRagdollPhysicsAsset(USkeletalMesh*
 		Report += J.bHinge
 			? FString::Printf(TEXT("%s -> %s: hinge, rest bend %.1f, bend %.0f to %.0f from straight, off-plane %.0f, twist %.0f\n"),
 				*J.Bone.ToString(), *CI.ConstraintBone2.ToString(), RestBendDeg, -J.HingeExtendDeg, J.HingeFlexDeg, Swing2, J.TwistLimitDeg)
-			: FString::Printf(TEXT("%s -> %s: ball, swing %.0f, twist %.0f\n"),
-				*J.Bone.ToString(), *CI.ConstraintBone2.ToString(), Swing1, J.TwistLimitDeg);
+			: FString::Printf(TEXT("%s -> %s: ball, swing %.0f x %.0f, twist %.0f, cone centre %.0f deg off the rest direction\n"),
+				*J.Bone.ToString(), *CI.ConstraintBone2.ToString(), Swing1, Swing2, J.TwistLimitDeg,
+				FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(FVector::DotProduct(ConeDir, BoneDir), -1.f, 1.f))));
 	}
 
 	PA->UpdateBodySetupIndexMap();

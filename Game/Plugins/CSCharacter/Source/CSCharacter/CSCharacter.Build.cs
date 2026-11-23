@@ -1,6 +1,6 @@
 using UnrealBuildTool;
 
-// Runtime module of the CSCharacter plugin: ACSCharacter, UCSMovementTuning, UCSDevTools and UCSCameraRig.
+// Runtime module of the CSCharacter plugin: ACSCharacter, UCSMovementTuning, UCSDevTools, UCSCameraRig and UCSPhysicsBodyComponent.
 // Self-contained: no game module, content path or project setting is assumed.
 public class CSCharacter : ModuleRules
 {
@@ -14,6 +14,7 @@ public class CSCharacter : ModuleRules
 			"Engine",
 			"EnhancedInput",
 			"InputCore",
+			"PhysicsCore",  // FBodyInstanceCore (physics body states)
 		});
 	}
 }

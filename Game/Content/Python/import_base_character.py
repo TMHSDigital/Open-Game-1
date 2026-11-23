@@ -43,28 +43,68 @@ EYE_BONE = "head"
 EYES_CM = (0.0, 9.5, 168.0)
 
 # (bone, swing deg, twist deg, hinge, flex deg, extend deg). Ball joints swing up to `swing` in any
-# direction from the rest (A-pose) direction; hinges bend from -extend to +flex measured from
-# straight, with `swing` off the hinge plane. Ranges are a healthy adult's, trimmed a little so a
-# ragdoll does not look broken. The parent of each body is its nearest ancestor in this list.
+# direction from the rest (A-pose) direction, unless CONES below moves and shapes the cone; hinges
+# bend from -extend to +flex measured from straight, with `swing` off the hinge plane. Ranges are a
+# healthy adult's, trimmed a little so a ragdoll does not look broken. The parent of each body is
+# its nearest ancestor in this list. Elbow and knee bend directions were checked in a simulated
+# ragdoll (CombatSimulator.CS.Body.HingesBendTheRightWay).
 RAGDOLL = [
     ("pelvis", 0, 0, False, 0, 0),  # root body, no joint
     ("spine_01", 20, 15, False, 0, 0),
     ("spine_03", 20, 15, False, 0, 0),
     ("spine_05", 15, 15, False, 0, 0),
     ("head", 40, 50, False, 0, 0),  # head and neck together on spine_05
-    ("upperarm_l", 75, 45, False, 0, 0),
-    ("upperarm_r", 75, 45, False, 0, 0),
+    ("upperarm_l", 105, 45, False, 0, 0),  # cone from CONES
+    ("upperarm_r", 105, 45, False, 0, 0),
     ("lowerarm_l", 5, 40, True, 145, 5),  # elbow; twist is forearm turn
     ("lowerarm_r", 5, 40, True, 145, 5),
     ("hand_l", 50, 10, False, 0, 0),
     ("hand_r", 50, 10, False, 0, 0),
-    ("thigh_l", 60, 30, False, 0, 0),
-    ("thigh_r", 60, 30, False, 0, 0),
+    ("thigh_l", 75, 30, False, 0, 0),  # cone from CONES
+    ("thigh_r", 75, 30, False, 0, 0),
     ("calf_l", 3, 5, True, 140, 2),  # knee
     ("calf_r", 3, 5, True, 140, 2),
     ("foot_l", 30, 10, False, 0, 0),
     ("foot_r", 30, 10, False, 0, 0),
 ]
+
+# Hips and shoulders: a cone centred on the rest A-pose would be symmetric about it (the hip bending
+# as far back as forward, the arm unable to rise above the shoulder). These cones are centred where
+# a person's range is centred and are elliptical: bone (without side), cone centre and Swing1 axis
+# as (forward, outward, up) in the mesh's space, the swing about that axis (`swing` in RAGDOLL) and
+# the swing at right angles to it (swing2, degrees).
+#   Hip: centre 50 deg forward of hanging and 10 deg out; 75 deg either way front to back gives
+#   about 125 deg of flexion and 25 of extension, 45 sideways about 55 of abduction and 35 of
+#   adduction (less with the leg straight).
+#   Shoulder: a round 105 deg cone centred 10 deg below horizontal and 25 deg forward of straight out
+#   to the side: overhead, hanging, a running swing back of 50 deg and across the chest are inside,
+#   straight back at shoulder height and reaching behind the back are not. (An elliptical cone
+#   separated these cases no better.)
+CONES = {
+    "thigh": ((0.766, 0.176, -0.643), (0.0, 1.0, 0.0), 45),
+    "upperarm": ((0.416, 0.893, -0.174), None, 105),
+}
+
+
+def mesh_vector(side_sign, forward, outward, up):
+    """Mesh space: +Y forward, +Z up, the character's left at +X."""
+    return unreal.Vector(outward * side_sign, forward, up)
+
+
+def cone_settings(bone):
+    """(cone direction, Swing1 axis, swing2 deg) for a CONES bone, else None."""
+    name, _, side = bone.rpartition("_")
+    if name not in CONES or side not in ("l", "r"):
+        return None
+    sign = 1.0 if side == "l" else -1.0
+    centre, axis, swing2 = CONES[name]
+    direction = mesh_vector(sign, *centre)
+    if axis is None:
+        # Swing1 lifts the bone up and down: about the horizontal axis at right angles to the centre.
+        axis_vec = unreal.Vector(direction.y, -direction.x, 0.0)
+    else:
+        axis_vec = mesh_vector(sign, *axis)
+    return direction, axis_vec, swing2
 
 
 def log(msg):
@@ -133,9 +173,15 @@ def add_eye_socket(mesh):
 def build_physics(mesh):
     joints = []
     for bone, swing, twist, hinge, flex, extend in RAGDOLL:
-        joints.append(unreal.CSRagdollJoint(
+        joint = unreal.CSRagdollJoint(
             bone=bone, swing_limit_deg=swing, twist_limit_deg=twist,
-            hinge=hinge, hinge_flex_deg=flex, hinge_extend_deg=extend))
+            hinge=hinge, hinge_flex_deg=flex, hinge_extend_deg=extend)
+        cone = cone_settings(bone)
+        if cone is not None:
+            joint.set_editor_property("cone_direction", cone[0])
+            joint.set_editor_property("swing1_axis", cone[1])
+            joint.set_editor_property("swing2_limit_deg", cone[2])
+        joints.append(joint)
     result = unreal.CSRagdollBuilder.build_ragdoll_physics_asset(mesh, PHYS_PATH, joints)
     if not result.success:
         raise RuntimeError("Physics asset build failed: " + result.message)

@@ -7,6 +7,8 @@
 class UCameraComponent;
 class UCSCameraRig;
 class UCSDevTools;
+class UCSPhysicsBodyComponent;
+class UPhysicalAnimationComponent;
 class UCSSpringArmComponent;
 class UCSMovementTuning;
 class UInputAction;
@@ -54,9 +56,11 @@ enum class ECSGait : uint8
  * the camera rig (CameraRig: first and third person on one camera) and broadcasts
  * OnToggleCameraRequested.
  *
- * Ragdoll contract: whatever drives the ragdoll (the physics body) calls SetRagdolled(true) when the
- * body goes fully simulated and SetRagdolled(false) when control returns after recovery. The camera
- * rig reads IsRagdolled every frame and uses third person in between.
+ * Ragdoll contract: whatever drives the ragdoll (the physics body, UCSPhysicsBodyComponent) calls
+ * SetRagdolled(true) when the body goes fully simulated and SetRagdolled(false) when control returns
+ * after recovery. The camera rig reads IsRagdolled every frame and uses third person in between.
+ * While ragdolled, move, jump and crouch input is ignored; held sprint and walk keys are tracked and
+ * applied when control returns.
  */
 UCLASS(Config = Game, Blueprintable)
 class CSCHARACTER_API ACSCharacter : public ACharacter
@@ -98,6 +102,9 @@ public:
 	 */
 	static ECSGait ResolveGait(bool bCrouchToggled, bool bSprintHeld, bool bWalkHeld);
 
+	/** The physics-driven body: sway, stagger, ragdoll and recovery (spec 5.4). */
+	UCSPhysicsBodyComponent* GetPhysicsBody() const { return PhysicsBody; }
+
 	/** Dev tools (ragdoll and push keys, feel overlay, tuning reload). */
 	UCSDevTools* GetDevTools() const { return DevTools; }
 
@@ -126,7 +133,7 @@ public:
 
 	/**
 	 * Called by the ragdoll owner on entering ragdoll (true) and when control returns (false).
-	 * Broadcasts OnRagdollStateChanged on a change.
+	 * Broadcasts OnRagdollStateChanged on a change; on return, the held gait keys apply.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "CS|Body")
 	void SetRagdolled(bool bInRagdolled);
@@ -238,6 +245,13 @@ private:
 
 	UPROPERTY(VisibleAnywhere, Category = "CS|Camera")
 	TObjectPtr<UCSCameraRig> CameraRig;
+
+	UPROPERTY(VisibleAnywhere, Category = "CS|Body")
+	TObjectPtr<UCSPhysicsBodyComponent> PhysicsBody;
+
+	/** Drives the simulated bodies toward the animated pose; set up and run by PhysicsBody. */
+	UPROPERTY(VisibleAnywhere, Category = "CS|Body")
+	TObjectPtr<UPhysicalAnimationComponent> PhysicalAnimation;
 
 	/** Third-person spring arm (right shoulder), run by CameraRig. */
 	UPROPERTY(VisibleAnywhere, Category = "CS|Camera")

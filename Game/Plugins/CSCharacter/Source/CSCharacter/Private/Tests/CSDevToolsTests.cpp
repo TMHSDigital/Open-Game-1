@@ -254,6 +254,15 @@ bool FCSDevToolsOffDisablesKeysTest::RunTest(const FString& Parameters)
 		{
 			TestTrue(TEXT("Push goes along the view direction"), Probe.LastPushDirection.IsNormalized());
 
+			// With a physics body (UCSPhysicsBodyComponent binds the request) R ragdolled the
+			// character; R again starts the recovery, so the overlay checks below see it standing.
+			if (Character->IsRagdolled())
+			{
+				Rig.Fire(TEXT("DebugRagdoll"), ETriggerEvent::Started);
+				Sim.Run(FVector::ZeroVector, Tuning->RagdollRecoverSeconds + 0.2f);
+				TestFalse(TEXT("R again: control returns after the recovery"), Character->IsRagdolled());
+			}
+
 			// The overlay shows the feel values, read after the movement component has moved.
 			Sim.Run(FVector::ForwardVector, 1.f);
 			const FCSFeelSample& Sample = DevTools->GetFeelSample();
