@@ -42,6 +42,7 @@ namespace CSInputAssetTests
 			{TEXT("IA_DebugOverlay"), T::Boolean, {EKeys::F1}, EKeys::Gamepad_Special_Left, &ACSCharacter::DebugOverlayAction},
 			{TEXT("IA_DebugRagdoll"), T::Boolean, {EKeys::R}, EKeys::Gamepad_DPad_Down, &ACSCharacter::DebugRagdollAction},
 			{TEXT("IA_DebugPush"), T::Boolean, {EKeys::P}, EKeys::Gamepad_DPad_Up, &ACSCharacter::DebugPushAction},
+			{TEXT("IA_DebugReload"), T::Boolean, {EKeys::F5}, EKeys::Gamepad_DPad_Left, &ACSCharacter::DebugReloadAction},
 		};
 	}
 }

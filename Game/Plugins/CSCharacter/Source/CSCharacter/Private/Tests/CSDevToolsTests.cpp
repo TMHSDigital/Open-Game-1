@@ -53,6 +53,7 @@ namespace CSDevToolsTests
 			Make(TEXT("DebugOverlay"), EInputActionValueType::Boolean, Character.DebugOverlayAction);
 			Make(TEXT("DebugRagdoll"), EInputActionValueType::Boolean, Character.DebugRagdollAction);
 			Make(TEXT("DebugPush"), EInputActionValueType::Boolean, Character.DebugPushAction);
+			Make(TEXT("DebugReload"), EInputActionValueType::Boolean, Character.DebugReloadAction);
 			Input.Reset(NewObject<UEnhancedInputComponent>(&Character));
 			Character.SetupPlayerInputComponent(Input.Get());
 		}
@@ -101,8 +102,8 @@ bool FCSDevToolsReloadRejectsBadValuesTest::RunTest(const FString& Parameters)
 {
 	// Review Focus 3: bad tuning values reloaded are rejected with a message naming the field, and
 	// the character keeps moving on the last good values.
-	// Every rejection is logged as a warning: six reloads below plus one console command.
-	AddExpectedMessagePlain(TEXT("rejected, "), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, 7);
+	// Every rejection is logged as a warning: six reloads below, one console command and one F5 press.
+	AddExpectedMessagePlain(TEXT("rejected, "), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, 8);
 	UCSMovementTuning* Tuning = NewTuning();
 	FMoveSim Sim;
 	if (!Sim.Init(*this, 1.f / 60.f, Tuning))
@@ -119,6 +120,12 @@ bool FCSDevToolsReloadRejectsBadValuesTest::RunTest(const FString& Parameters)
 	FString Message;
 	TestTrue(TEXT("A good tuning reloads"), UCSDevTools::ReloadTuning(*Character, Message));
 	AddInfo(FString::Printf(TEXT("Good reload: %s"), *Message));
+	// The result is shown on screen (HUD hook, so also in Shipping) whether or not the overlay is up.
+	UCSDevTools* DevTools = Character->GetDevTools();
+	TestFalse(TEXT("The overlay is off"), DevTools->IsOverlayVisible());
+	TestEqual(TEXT("Last reload message on accept"), DevTools->GetLastReloadMessage(), Message);
+	TestTrue(TEXT("Last reload accepted"), DevTools->WasLastReloadAccepted());
+	TestTrue(TEXT("Accepted reload is on screen"), DevTools->IsReloadMessageVisible());
 	Sim.Run(FVector::ForwardVector, 1.5f);
 	TestNearlyEqual(TEXT("Reloaded jog speed is in use"), Sim.Speed2D(), 350.f, 2.f);
 
@@ -148,6 +155,9 @@ bool FCSDevToolsReloadRejectsBadValuesTest::RunTest(const FString& Parameters)
 		AddInfo(FString::Printf(TEXT("%s: %s"), Case.What, *Reason));
 		TestFalse(FString::Printf(TEXT("Rejected: %s"), Case.What), bReloaded);
 		TestTrue(FString::Printf(TEXT("Message for %s names %s (was: %s)"), Case.What, Case.Field, *Reason), Reason.Contains(Case.Field));
+		TestEqual(FString::Printf(TEXT("Last reload message on reject: %s"), Case.What), DevTools->GetLastReloadMessage(), Reason);
+		TestFalse(FString::Printf(TEXT("Last reload rejected: %s"), Case.What), DevTools->WasLastReloadAccepted());
+		TestTrue(FString::Printf(TEXT("Rejection is on screen: %s"), Case.What), DevTools->IsReloadMessageVisible());
 		TestNearlyEqual(FString::Printf(TEXT("Speed cap unchanged after %s"), Case.What), Move->MaxWalkSpeed, CapBefore, 0.01f);
 		const UCSMovementTuning& Active = Character->GetActiveTuning();
 		TestNearlyEqual(FString::Printf(TEXT("Walk speed kept after %s"), Case.What), Active.WalkSpeed, 180.f, 0.01f);
@@ -176,6 +186,19 @@ bool FCSDevToolsReloadRejectsBadValuesTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("cs.Tuning.Reload reloads nothing when the values are bad"), Reloaded, 0);
 	TestTrue(TEXT("cs.Tuning.Reload reports the character"), Messages.Num() == 1 && Messages[0].Contains(TEXT("SprintSpeed")));
 	TestNearlyEqual(TEXT("Sprint speed kept after the console command"), Character->GetActiveTuning().SprintSpeed, 620.f, 0.01f);
+	TestTrue(TEXT("Console rejection is on screen"), DevTools->IsReloadMessageVisible() && DevTools->GetLastReloadMessage().Contains(TEXT("SprintSpeed")));
+
+	// F5, the reload key (the console is compiled out of Shipping), rejects the same way.
+	FInputRig Rig;
+	Rig.Bind(*Character);
+	TestEqual(TEXT("F5 (reload) is bound"), Rig.Press(TEXT("DebugReload")), 1);
+	TestFalse(TEXT("F5 rejection"), DevTools->WasLastReloadAccepted());
+	TestTrue(TEXT("F5 rejection names the field"), DevTools->GetLastReloadMessage().Contains(TEXT("SprintSpeed")));
+	TestNearlyEqual(TEXT("Sprint speed kept after F5"), Character->GetActiveTuning().SprintSpeed, 620.f, 0.01f);
+
+	// The result leaves the screen after ReloadMessageSeconds.
+	Sim.Run(FVector::ZeroVector, UCSDevTools::ReloadMessageSeconds + 0.5f);
+	TestFalse(TEXT("Reload result times out"), DevTools->IsReloadMessageVisible());
 	return true;
 }
 
@@ -213,6 +236,13 @@ bool FCSDevToolsOffDisablesKeysTest::RunTest(const FString& Parameters)
 		TestEqual(Label + TEXT(": ragdoll requests"), Probe.Ragdolls, Expected);
 		TestEqual(Label + TEXT(": push requests"), Probe.Pushes, Expected);
 		TestEqual(Label + TEXT(": overlay visible"), DevTools->IsOverlayVisible(), bDevTools);
+
+		// The reload key (F5) is a dev tool: with it off the tuning is unchanged and nothing is shown.
+		Tuning->JogSpeed = 390.f;
+		TestEqual(Label + TEXT(": F5 (reload) is bound"), Rig.Fire(TEXT("DebugReload"), ETriggerEvent::Started), 1);
+		TestNearlyEqual(Label + TEXT(": F5 applies"), Character->GetActiveTuning().JogSpeed, bDevTools ? 390.f : 380.f, 0.01f);
+		TestEqual(Label + TEXT(": F5 result on screen"), DevTools->IsReloadMessageVisible(), bDevTools);
+		TestEqual(Label + TEXT(": F5 result accepted"), DevTools->WasLastReloadAccepted(), bDevTools);
 
 		// The reload command is a dev tool too.
 		Tuning->JogSpeed = 400.f;

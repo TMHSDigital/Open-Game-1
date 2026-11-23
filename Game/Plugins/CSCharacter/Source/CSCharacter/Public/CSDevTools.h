@@ -45,10 +45,11 @@ DECLARE_MULTICAST_DELEGATE(FCSRagdollRequested);
 DECLARE_MULTICAST_DELEGATE_OneParam(FCSPushRequested, const FVector& /* Direction, unit length */);
 
 /**
- * Feel-testing tools for ACSCharacter: the ragdoll and push keys, the feel overlay and tuning reload.
+ * Feel-testing tools for ACSCharacter: the ragdoll and push keys, the feel overlay and tuning reload
+ * (the F5 key and the cs.Tuning.Reload command).
  *
  * Everything here is compiled into every build and gated at run time by bDevTools in the character's
- * applied tuning: with it off, the ragdoll, push and overlay keys and the cs.Tuning.Reload command do
+ * applied tuning: with it off, the ragdoll, push, overlay and reload keys and the cs.Tuning.Reload command do
  * nothing. Ragdoll and push are requests: this component only broadcasts OnRagdollRequested and
  * OnPushRequested, and the physics body binds to them.
  *
@@ -99,6 +100,28 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "CS|Dev tools")
 	bool RequestPush();
 
+	/**
+	 * F5. ReloadTuning on the owner; does nothing with dev tools off. The console (cs.Tuning.Reload)
+	 * is compiled out of Shipping builds, so this key is the reload there. Returns whether it reloaded.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "CS|Dev tools")
+	bool RequestReload();
+
+	/** The result of the last reload of the owner (accepted, or the rejection naming the field); empty before any. */
+	const FString& GetLastReloadMessage() const { return LastReloadMessage; }
+
+	/** Whether the last reload was accepted. */
+	bool WasLastReloadAccepted() const { return bLastReloadAccepted; }
+
+	/**
+	 * True while the last reload result is on screen: ReloadMessageSeconds after the reload, whether
+	 * or not the overlay is shown. Drawn through the same HUD hook, so it shows in Shipping builds.
+	 */
+	bool IsReloadMessageVisible() const;
+
+	/** Seconds a reload result stays on screen. */
+	static constexpr float ReloadMessageSeconds = 4.f;
+
 	/** Extension point: the physics body toggles ragdoll here. */
 	FCSRagdollRequested OnRagdollRequested;
 
@@ -118,6 +141,8 @@ public:
 private:
 	ACSCharacter* GetCharacter() const;
 	void SetOverlayVisible(bool bVisible);
+	void SetReloadResult(bool bAccepted, const FString& Message);
+	void UpdateHUDHook();
 	void TakeSample(float DeltaTime);
 	void DrawOverlay(AHUD* HUD, UCanvas* Canvas);
 
@@ -126,4 +151,7 @@ private:
 	bool bHasPreviousVelocity = false;
 	bool bOverlayVisible = false;
 	FDelegateHandle HUDHandle;
+	FString LastReloadMessage;
+	bool bLastReloadAccepted = false;
+	double LastReloadTime = -1.0;
 };

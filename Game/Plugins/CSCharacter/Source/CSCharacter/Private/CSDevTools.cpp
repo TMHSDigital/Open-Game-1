@@ -70,12 +70,62 @@ bool UCSDevTools::ReloadTuning(ACSCharacter& Character, FString& OutMessage)
 	{
 		OutMessage = FString::Printf(TEXT("%s: tuning %s rejected, %s. Keeping the last good values."), *Character.GetName(), *AssetName, *Reason);
 		UE_LOG(LogCSCharacter, Warning, TEXT("%s"), *OutMessage);
+		if (UCSDevTools* DevTools = Character.GetDevTools())
+		{
+			DevTools->SetReloadResult(false, OutMessage);
+		}
 		return false;
 	}
 	Character.ApplyTuning();
 	OutMessage = FString::Printf(TEXT("%s: tuning %s reloaded."), *Character.GetName(), *AssetName);
 	UE_LOG(LogCSCharacter, Log, TEXT("%s"), *OutMessage);
+	if (UCSDevTools* DevTools = Character.GetDevTools())
+	{
+		DevTools->SetReloadResult(true, OutMessage);
+	}
 	return true;
+}
+
+bool UCSDevTools::RequestReload()
+{
+	ACSCharacter* Character = GetCharacter();
+	if (!Character || !AreEnabled())
+	{
+		return false;
+	}
+	FString Message;
+	return ReloadTuning(*Character, Message);
+}
+
+void UCSDevTools::SetReloadResult(bool bAccepted, const FString& Message)
+{
+	bLastReloadAccepted = bAccepted;
+	LastReloadMessage = Message;
+	const UWorld* World = GetWorld();
+	LastReloadTime = World ? World->GetTimeSeconds() : 0.0;
+	UpdateHUDHook();
+}
+
+bool UCSDevTools::IsReloadMessageVisible() const
+{
+	const UWorld* World = GetWorld();
+	return !LastReloadMessage.IsEmpty() && LastReloadTime >= 0.0 && World
+		&& World->GetTimeSeconds() - LastReloadTime <= ReloadMessageSeconds;
+}
+
+void UCSDevTools::UpdateHUDHook()
+{
+	// One hook draws both the overlay and the reload result; it is removed when neither is shown.
+	const bool bWanted = IsOverlayVisible() || IsReloadMessageVisible();
+	if (bWanted && !HUDHandle.IsValid())
+	{
+		HUDHandle = AHUD::OnHUDPostRender.AddUObject(this, &UCSDevTools::DrawOverlay);
+	}
+	else if (!bWanted && HUDHandle.IsValid())
+	{
+		AHUD::OnHUDPostRender.Remove(HUDHandle);
+		HUDHandle.Reset();
+	}
 }
 
 int32 UCSDevTools::ReloadTuningInWorld(UWorld* World, TArray<FString>& OutMessages)
@@ -132,15 +182,7 @@ void UCSDevTools::SetOverlayVisible(bool bVisible)
 	bOverlayVisible = bVisible;
 	bHasPreviousVelocity = false;
 	SetComponentTickEnabled(bVisible);
-	if (bVisible && !HUDHandle.IsValid())
-	{
-		HUDHandle = AHUD::OnHUDPostRender.AddUObject(this, &UCSDevTools::DrawOverlay);
-	}
-	else if (!bVisible && HUDHandle.IsValid())
-	{
-		AHUD::OnHUDPostRender.Remove(HUDHandle);
-		HUDHandle.Reset();
-	}
+	UpdateHUDHook();
 }
 
 bool UCSDevTools::RequestRagdoll()
@@ -183,6 +225,7 @@ void UCSDevTools::BeginPlay()
 
 void UCSDevTools::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	LastReloadMessage.Reset();
 	SetOverlayVisible(false);
 	Super::EndPlay(EndPlayReason);
 }
@@ -249,24 +292,44 @@ FString UCSDevTools::GetOverlayText() const
 void UCSDevTools::DrawOverlay(AHUD* HUD, UCanvas* Canvas)
 {
 	const ACSCharacter* Character = GetCharacter();
-	if (!HUD || !Canvas || !Character || HUD->GetOwningPawn() != Character || !IsOverlayVisible() || !GEngine)
+	const bool bOverlay = IsOverlayVisible();
+	const bool bReload = IsReloadMessageVisible();
+	if (!bOverlay && !bReload)
+	{
+		// The reload result has timed out with the overlay off. Removing a binding during a
+		// broadcast is safe for multicast delegates.
+		UpdateHUDHook();
+		return;
+	}
+	if (!HUD || !Canvas || !Character || HUD->GetOwningPawn() != Character || !GEngine)
 	{
 		return;
 	}
 	UFont* Font = GEngine->GetSmallFont();
-	float X = 24.f;
-	float Y = 96.f;
-	Canvas->SetDrawColor(FColor::Black);
-	TArray<FString> Lines;
-	GetOverlayText().ParseIntoArrayLines(Lines);
 	const float LineHeight = Font ? Font->GetMaxCharHeight() + 2.f : 14.f;
-	for (const FString& Line : Lines)
+	const float X = 24.f;
+	float Y = 72.f;
+	auto DrawLine = [&](const FString& Line, const FColor& Color)
 	{
 		// A one-pixel shadow keeps the text readable on any background.
 		Canvas->SetDrawColor(FColor::Black);
 		Canvas->DrawText(Font, Line, X + 1.f, Y + 1.f);
-		Canvas->SetDrawColor(FColor::White);
+		Canvas->SetDrawColor(Color);
 		Canvas->DrawText(Font, Line, X, Y);
 		Y += LineHeight;
+	};
+	if (bReload)
+	{
+		DrawLine(LastReloadMessage, bLastReloadAccepted ? FColor::Green : FColor(255, 96, 96));
+	}
+	Y = 96.f;
+	if (bOverlay)
+	{
+		TArray<FString> Lines;
+		GetOverlayText().ParseIntoArrayLines(Lines);
+		for (const FString& Line : Lines)
+		{
+			DrawLine(Line, FColor::White);
+		}
 	}
 }

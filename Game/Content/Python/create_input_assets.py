@@ -3,7 +3,7 @@
 Makes or refreshes:
   IA_Move, IA_Look                Axis2D actions
   IA_Jump, IA_Sprint, IA_Crouch, IA_Walk, IA_ToggleCamera,
-  IA_DebugOverlay, IA_DebugRagdoll, IA_DebugPush
+  IA_DebugOverlay, IA_DebugRagdoll, IA_DebugPush, IA_DebugReload
                                   Boolean actions (no triggers: pressed is Started, released is
                                   Completed; ACSCharacter treats Sprint and Walk as held and Crouch
                                   as a toggle)
@@ -49,6 +49,7 @@ ACTIONS = {
     "IA_DebugOverlay": BOOLEAN,
     "IA_DebugRagdoll": BOOLEAN,
     "IA_DebugPush": BOOLEAN,
+    "IA_DebugReload": BOOLEAN,
 }
 
 # (action, key, modifiers). Modifiers are names handled by make_modifiers. Keyboard and mouse keys
@@ -77,6 +78,9 @@ KEYS = [
     ("IA_DebugRagdoll", "Gamepad_DPad_Down", []),
     ("IA_DebugPush", "P", []),
     ("IA_DebugPush", "Gamepad_DPad_Up", []),
+    # Tuning reload: the console (cs.Tuning.Reload) is compiled out of Shipping builds.
+    ("IA_DebugReload", "F5", []),
+    ("IA_DebugReload", "Gamepad_DPad_Left", []),
 ]
 
 
