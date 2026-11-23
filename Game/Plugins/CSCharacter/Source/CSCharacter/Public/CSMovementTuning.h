@@ -225,22 +225,22 @@ public:
 	float RagdollMaxSeconds = 8.f;
 
 	/**
-	 * Linear damping of every ragdoll body, 1/s (no spec value; default 2.5). Slows a thrown or
-	 * sliding body: a 750 cm/s shove on flat ground settles about 2.5 m away (about 4.7 m at 0.5,
-	 * 2.8 m at 2). Most of that distance is flight, so damping, not friction, is what shortens it.
-	 * The cost: it also caps a free-falling ragdoll at about 980 / this cm/s (about 4 m/s at 2.5).
+	 * Linear damping of the ragdoll bodies while the ragdoll is on the ground (pelvis within 35 cm of
+	 * the floor), 1/s (no spec value; default 0.5). In the air the bodies keep their own near-zero
+	 * damping, so a fall is a real fall. With the default friction, a 750 cm/s shove flies about
+	 * 2.9 m and then travels about 2 m on the ground (1.9 m at 1, 1.3 m at 2, 0.7 m at 5).
 	 * Within [0, 10].
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ragdoll", meta = (UIMin = "0", UIMax = "5"))
-	float RagdollLinearDamping = 2.5f;
+	float RagdollLinearDamping = 0.5f;
 
 	/** Angular damping of every ragdoll body, 1/s (default 1): less spinning and rolling. Within [0, 20]. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ragdoll", meta = (UIMin = "0", UIMax = "10"))
 	float RagdollAngularDamping = 1.f;
 
 	/**
-	 * Friction of the ragdoll bodies (a physical material override, combined with the ground's own
-	 * friction; default 1). Higher stops a slide on the ground sooner. Within [0, 4].
+	 * Friction of the ragdoll bodies (a physical material override; the larger of this and the
+	 * ground's friction is used; default 1). Higher stops a slide on the ground sooner. Within [0, 4].
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ragdoll", meta = (UIMin = "0", UIMax = "2"))
 	float RagdollFriction = 1.f;

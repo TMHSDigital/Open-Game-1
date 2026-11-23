@@ -29,6 +29,7 @@
 #include "PhysicsEngine/ConstraintInstance.h"
 #include "PhysicsEngine/PhysicsAsset.h"
 #include "PhysicsEngine/PhysicsConstraintTemplate.h"
+#include "PhysicalMaterials/PhysicalMaterial.h"
 #include "Tests/AutomationCommon.h"
 #include "UObject/StrongObjectPtr.h"
 
@@ -776,9 +777,10 @@ bool FCSBodyRecoveryWithNoSpotNearPelvisTest::RunTest(const FString& Parameters)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSBodyRagdollSlideIsBoundedTest, "CombatSimulator.CS.Body.RagdollSlideIsBounded", CSPhysicsBodyTests::TestFlags)
 bool FCSBodyRagdollSlideIsBoundedTest::RunTest(const FString& Parameters)
 {
-	// A 750 cm/s shove on flat ground settles 1.5 to 3 m away (ragdoll damping and friction from the
-	// tuning), and the damping is applied on entry, follows a reload while ragdolled and is undone
-	// after the recovery.
+	// A 750 cm/s shove on flat ground: after the body first touches down it travels 1.5 to 3 m on
+	// the ground before it settles (the flight before touchdown is not damped). Ground damping and
+	// friction come from the tuning: the damping is on only on the ground, the friction material is
+	// on the bodies while ragdolled, both follow a reload and both are undone after the recovery.
 	FBodySim Sim;
 	if (!Sim.Init(*this))
 	{
@@ -786,28 +788,135 @@ bool FCSBodyRagdollSlideIsBoundedTest::RunTest(const FString& Parameters)
 	}
 	UCSMovementTuning& T = *Sim.Tuning;
 	USkeletalMeshComponent* Mesh = Sim.Mesh();
-	const float BaseLinear = Mesh->GetBodyInstance(TEXT("spine_03"))->LinearDamping;
+	FBodyInstance* Spine = Mesh->GetBodyInstance(TEXT("spine_03"));
+	const float BaseLinear = Spine->LinearDamping;
+	const UPhysicalMaterial* BaseMaterial = Spine->GetSimplePhysicalMaterial();
 	const FVector Start = Sim.PelvisBody();
 	Sim.PhysicsBody->ApplyImpulseAtBone(TEXT("spine_03"), Sim.ImpulseFor(750.f, FVector::ForwardVector));
 	TestEqual(TEXT("A 750 cm/s shove ragdolls"), Sim.State(), ECSBodyState::Ragdoll);
-	TestNearlyEqual(TEXT("Ragdoll linear damping applied on entry"), Mesh->GetBodyInstance(TEXT("spine_03"))->LinearDamping, T.RagdollLinearDamping, 0.001f);
+	TestNearlyEqual(TEXT("In the air: the bodies keep their own linear damping"), Spine->LinearDamping, BaseLinear, 0.001f);
 	TestNearlyEqual(TEXT("Ragdoll angular damping applied on entry"), Mesh->GetBodyInstance(TEXT("hand_l"))->AngularDamping, T.RagdollAngularDamping, 0.001f);
-	const bool bRecovering = Sim.RunUntil(T.RagdollMaxSeconds + 1.f, [&]() { return Sim.State() == ECSBodyState::Recovering; });
-	const float Slide = FVector::Dist2D(Start, Sim.PelvisBody());
-	AddInfo(FString::Printf(TEXT("750 cm/s shove (linear damping %.2f, angular %.2f, friction %.2f): settled %.0f cm away"),
-		T.RagdollLinearDamping, T.RagdollAngularDamping, T.RagdollFriction, Slide));
-	TestTrue(TEXT("Settled"), bRecovering);
-	TestTrue(TEXT("A 750 cm/s shove settles 1.5 to 3 m away"), Slide >= 150.f && Slide <= 300.f);
-	Sim.RunUntil(2.f, [&]() { return Sim.State() == ECSBodyState::Normal; });
-	TestNearlyEqual(TEXT("The body's own damping is back after the recovery"), Mesh->GetBodyInstance(TEXT("spine_03"))->LinearDamping, BaseLinear, 0.001f);
+	const UPhysicalMaterial* Material = Spine->GetSimplePhysicalMaterial();
+	TestTrue(TEXT("Ragdoll friction material applied (friction RagdollFriction, combined by Max)"), Material && Material != BaseMaterial
+		&& FMath::IsNearlyEqual(Material->Friction, T.RagdollFriction) && Material->bOverrideFrictionCombineMode
+		&& Material->FrictionCombineMode == EFrictionCombineMode::Max);
 
-	// A reload while ragdolled changes the damping at once.
+	FVector Touchdown = FVector::ZeroVector;
+	bool bTouched = false;
+	bool bGroundDampingOnGround = true;
+	const bool bRecovering = Sim.RunUntil(T.RagdollMaxSeconds + 1.f, [&]()
+	{
+		if (!bTouched && Sim.PhysicsBody->IsRagdollOnGround())
+		{
+			bTouched = true;
+			Touchdown = Sim.PelvisBody();
+		}
+		if (Sim.PhysicsBody->IsRagdollOnGround())
+		{
+			bGroundDampingOnGround &= FMath::IsNearlyEqual(Spine->LinearDamping, T.RagdollLinearDamping);
+		}
+		return Sim.State() == ECSBodyState::Recovering;
+	});
+	const float Flight = FVector::Dist2D(Start, Touchdown);
+	const float Ground = FVector::Dist2D(Touchdown, Sim.PelvisBody());
+	AddInfo(FString::Printf(TEXT("750 cm/s shove (ground linear damping %.2f, angular %.2f, friction %.2f): %.0f cm before touchdown, %.0f cm on the ground"),
+		T.RagdollLinearDamping, T.RagdollAngularDamping, T.RagdollFriction, Flight, Ground));
+	TestTrue(TEXT("Settled"), bRecovering);
+	TestTrue(TEXT("Touched down"), bTouched);
+	TestTrue(TEXT("On the ground the ragdoll linear damping is on"), bGroundDampingOnGround);
+	TestTrue(TEXT("After touchdown the body travels 1.5 to 3 m on the ground"), Ground >= 150.f && Ground <= 300.f);
+	Sim.RunUntil(2.f, [&]() { return Sim.State() == ECSBodyState::Normal; });
+	TestNearlyEqual(TEXT("The body's own damping is back after the recovery"), Spine->LinearDamping, BaseLinear, 0.001f);
+	TestTrue(TEXT("The body's own material is back after the recovery"), Spine->GetSimplePhysicalMaterial() == BaseMaterial);
+
+	// A reload while ragdolled on the ground changes the damping and the friction at once.
 	Sim.PhysicsBody->EnterRagdoll();
+	Sim.RunUntil(3.f, [&]() { return Sim.PhysicsBody->IsRagdollOnGround(); });
+	TestTrue(TEXT("Lying on the ground"), Sim.PhysicsBody->IsRagdollOnGround());
 	T.RagdollLinearDamping = 4.f;
+	T.RagdollFriction = 1.7f;
 	FString Message;
-	TestTrue(TEXT("Reload with new ragdoll damping"), UCSDevTools::ReloadTuning(*Sim.Character, Message));
+	TestTrue(TEXT("Reload with new ragdoll damping and friction"), UCSDevTools::ReloadTuning(*Sim.Character, Message));
 	Sim.Step();
-	TestNearlyEqual(TEXT("A reload while ragdolled applies the new damping"), Mesh->GetBodyInstance(TEXT("spine_03"))->LinearDamping, 4.f, 0.001f);
+	TestNearlyEqual(TEXT("A reload while ragdolled applies the new damping"), Spine->LinearDamping, 4.f, 0.001f);
+	TestTrue(TEXT("A reload while ragdolled applies the new friction"), FMath::IsNearlyEqual(Spine->GetSimplePhysicalMaterial()->Friction, 1.7f));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSBodyRagdollFallsFreelyTest, "CombatSimulator.CS.Body.RagdollFallsFreely", CSPhysicsBodyTests::TestFlags)
+bool FCSBodyRagdollFallsFreelyTest::RunTest(const FString& Parameters)
+{
+	// A ragdoll dropped from about 5 m falls like a body: before it hits the floor it reaches at
+	// least 90 percent of sqrt(2 g h) for the height it fell (ground damping does not apply in the air).
+	FBodySim Sim;
+	if (!Sim.Init(*this, 0.f, FVector(0.f, 0.f, 90.f + 500.f), false))
+	{
+		return false;
+	}
+	Sim.PhysicsBody->EnterRagdoll();
+	const float StartZ = Sim.PelvisBody().Z;
+	const float G = FMath::Abs(Sim.World.GetTestWorld()->GetGravityZ());
+	float MaxSpeed = 0.f, DropAtMax = 0.f;
+	for (int32 i = 0; i < 120; ++i)
+	{
+		Sim.Step();
+		const float Down = -Sim.Mesh()->GetPhysicsLinearVelocity(TEXT("pelvis")).Z;
+		if (Down > MaxSpeed)
+		{
+			MaxSpeed = Down;
+			DropAtMax = StartZ - Sim.PelvisBody().Z;
+		}
+	}
+	const float Free = FMath::Sqrt(2.f * G * DropAtMax);
+	AddInfo(FString::Printf(TEXT("Fastest fall %.0f cm/s after %.0f cm; free fall from that height %.0f cm/s (%.0f percent)"),
+		MaxSpeed, DropAtMax, Free, Free > 0.f ? 100.f * MaxSpeed / Free : 0.f));
+	TestTrue(TEXT("Fell at least 3 m before the impact"), DropAtMax >= 300.f);
+	TestTrue(TEXT("Reached at least 90 percent of free-fall speed before the impact"), MaxSpeed >= 0.9f * Free);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSBodyRecoveryWaitsForSpaceTest, "CombatSimulator.CS.Body.RecoveryWaitsForSpace", CSPhysicsBodyTests::TestFlags)
+bool FCSBodyRecoveryWaitsForSpaceTest::RunTest(const FString& Parameters)
+{
+	// Lying under a low ceiling with nowhere clear to stand (the ceiling covers the search radius and
+	// the spot where the ragdoll started): the recovery does not stand the capsule up inside the
+	// ceiling. It stays Ragdoll with the capsule not colliding, keeps trying, and stands up once the
+	// ceiling is gone.
+	AddExpectedMessagePlain(TEXT("nowhere clear to stand up"), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, 0);
+	FBodySim Sim;
+	if (!Sim.Init(*this))
+	{
+		return false;
+	}
+	Sim.HoldRagdollDown();
+	Sim.PhysicsBody->EnterRagdoll();
+	Sim.Run(1.5f);
+	TestEqual(TEXT("Lying down"), Sim.State(), ECSBodyState::Ragdoll);
+	const float Top = Sim.Mesh()->Bounds.GetBox().Max.Z;
+	AddInfo(FString::Printf(TEXT("Lying body top at %.0f cm; ceiling from %.0f cm"), Top, Top + 10.f));
+	// A 20 m square slab from just above the body to 4 m.
+	UBoxComponent* Ceiling = Sim.AddBox(FVector(0.f, 0.f, Top + 10.f + 200.f), FVector(1000.f, 1000.f, 200.f));
+
+	Sim.PhysicsBody->Recover();
+	TestEqual(TEXT("R under the ceiling: still Ragdoll"), Sim.State(), ECSBodyState::Ragdoll);
+	TestEqual(TEXT("R under the ceiling: the capsule is still not colliding"), Sim.Capsule()->GetCollisionEnabled(), ECollisionEnabled::NoCollision);
+
+	// Normal settle times again: the automatic recovery keeps trying and keeps failing.
+	Sim.Tuning->RagdollSettleSeconds = 0.5f;
+	FString Message;
+	UCSDevTools::ReloadTuning(*Sim.Character, Message);
+	bool bLeftRagdoll = false;
+	for (int32 i = 0; i < FMath::CeilToInt(3.f / Sim.Dt); ++i)
+	{
+		Sim.Step();
+		bLeftRagdoll |= Sim.State() != ECSBodyState::Ragdoll || Sim.Capsule()->GetCollisionEnabled() != ECollisionEnabled::NoCollision;
+	}
+	TestFalse(TEXT("Under the ceiling for 3 s: never stood up, capsule never colliding"), bLeftRagdoll);
+
+	Ceiling->GetOwner()->Destroy();
+	const bool bBack = Sim.RunUntil(Sim.Tuning->RagdollSettleSeconds + Sim.Tuning->RagdollRecoverSeconds + 1.f, [&]() { return Sim.State() == ECSBodyState::Normal; });
+	TestTrue(TEXT("Ceiling gone: the next try stands up"), bBack);
+	CheckStanding(*this, Sim, TEXT("Ceiling gone"));
 	return true;
 }
 

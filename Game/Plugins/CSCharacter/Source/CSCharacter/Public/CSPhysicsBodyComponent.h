@@ -51,7 +51,8 @@ DECLARE_MULTICAST_DELEGATE_TwoParams(FCSBodyStateChanged, ECSBodyState /* Old */
  * ACSCharacter::SetRagdolled(true), so the camera rig uses third person and input is ignored.
  *
  * Ragdoll damping and friction (RagdollLinearDamping, RagdollAngularDamping, RagdollFriction) apply
- * while ragdolled, also after a reload, and are undone at the end of the recovery.
+ * while ragdolled, also after a reload, and are undone at the end of the recovery. Linear damping
+ * applies only while the pelvis is on the ground, so a fall is not slowed.
  *
  * Recovering: when the pelvis has stayed slower than RagdollSettleSpeed for RagdollSettleSeconds
  * (or after RagdollMaxSeconds, or on R), the world transforms of the bodies are snapshotted and
@@ -117,6 +118,9 @@ public:
 	/** Mass of all bodies, kg (0 without a physics body). */
 	UFUNCTION(BlueprintPure, Category = "CS|Body")
 	float GetBodyMass() const;
+
+	/** In Ragdoll: true while the pelvis is on the ground (RagdollLinearDamping applies), false in the air. */
+	bool IsRagdollOnGround() const { return State == ECSBodyState::Ragdoll && bRagdollOnGround; }
 
 	/** Hit weight of a body: 1 at HitProfile, 0 at Normal (0 for a body never hit or unknown). */
 	float GetHitWeight(FName Bone) const;
@@ -188,6 +192,8 @@ private:
 	bool BeginRecovery();
 	/** Ragdoll damping and friction from the tuning onto every body. */
 	void ApplyRagdollPhysics();
+	/** Ragdoll damping for the current ground contact (linear damping only on the ground). */
+	void ApplyRagdollDamping();
 	/** The bodies' own damping and material back (out of Ragdoll). */
 	void RestoreBodyPhysics();
 	/** Holds every body at its snapshot transform with no velocity. */
@@ -245,6 +251,8 @@ private:
 	/** Friction override for the ragdoll bodies (RagdollFriction), made on first use. */
 	UPROPERTY(Transient)
 	TObjectPtr<UPhysicalMaterial> RagdollMaterial;
+	/** In Ragdoll: the pelvis is close above the ground (ground damping on). */
+	bool bRagdollOnGround = false;
 	/** The tuning object the ragdoll damping was last written from. */
 	TWeakObjectPtr<const UCSMovementTuning> RagdollTuning;
 	bool bWarnedNoBody = false;

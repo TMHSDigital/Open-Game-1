@@ -12,6 +12,7 @@ public class CombatSimulator : ModuleRules
 			"CoreUObject",
 			"Engine",
 			"InputCore",
+			"PhysicsCore",  // physical materials in the body tests (CSPhysicsBodyTests.cpp)
 			"EnhancedInput",  // input asset tests (CSInputAssetTests.cpp)
 			"CSCharacter"  // Game/Plugins/CSCharacter: ACSCharacter, UCSMovementTuning
 		});

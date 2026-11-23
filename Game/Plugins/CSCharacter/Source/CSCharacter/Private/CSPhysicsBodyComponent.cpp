@@ -26,6 +26,8 @@ namespace
 	constexpr float StandSweepBelow = 250.f;
 	// The capsule follows the pelvis onto ground at most this far below it, cm (on top of the half height).
 	constexpr float FollowFloorReach = 100.f;
+	// The ragdoll counts as on the ground (ground damping) with the pelvis this close above the floor, cm.
+	constexpr float GroundContactDistance = 35.f;
 
 	FPhysicalAnimationData Scaled(const FPhysicalAnimationData& D, float Scale)
 	{
@@ -387,6 +389,7 @@ void UCSPhysicsBodyComponent::EnterRagdoll()
 	{
 		PhysicalAnimation->SetStrengthMultiplyer(0.f);
 	}
+	bRagdollOnGround = false;
 	ApplyRagdollPhysics();
 	Body->WakeAllRigidBodies();
 	// The body carries on with the character's motion (a run, a fall).
@@ -424,17 +427,29 @@ void UCSPhysicsBodyComponent::ApplyRagdollPhysics()
 		RagdollMaterial = NewObject<UPhysicalMaterial>(this, NAME_None, RF_Transient);
 		RagdollMaterial->Friction = T.RagdollFriction;
 		RagdollMaterial->StaticFriction = T.RagdollFriction;
+		// The larger of the body's and the ground's friction, not their average, so the value set
+		// here is the friction the body slides with.
+		RagdollMaterial->bOverrideFrictionCombineMode = true;
+		RagdollMaterial->FrictionCombineMode = EFrictionCombineMode::Max;
 	}
-	for (FBodyInstance* B : Body->Bodies)
+	ApplyRagdollDamping();
+	Body->SetPhysMaterialOverride(RagdollMaterial);
+}
+
+void UCSPhysicsBodyComponent::ApplyRagdollDamping()
+{
+	// Linear damping only on the ground: in the air the body keeps the bodies' own (near zero)
+	// damping, so a fall is a real fall; on the ground RagdollLinearDamping slows the slide.
+	const UCSMovementTuning& T = GetTuning();
+	for (int32 i = 0; i < Body->Bodies.Num(); ++i)
 	{
-		if (B && B->IsValidBodyInstance())
+		if (FBodyInstance* B = Body->Bodies[i]; B && B->IsValidBodyInstance())
 		{
-			B->LinearDamping = T.RagdollLinearDamping;
+			B->LinearDamping = bRagdollOnGround ? T.RagdollLinearDamping : (BaseDamping.IsValidIndex(i) ? BaseDamping[i].X : 0.f);
 			B->AngularDamping = T.RagdollAngularDamping;
 			B->UpdateDampingProperties();
 		}
 	}
-	Body->SetPhysMaterialOverride(RagdollMaterial);
 }
 
 void UCSPhysicsBodyComponent::RestoreBodyPhysics()
@@ -544,9 +559,17 @@ void UCSPhysicsBodyComponent::FollowPelvis()
 	// camera, which pivots on it) stays at standing height over a body lying on the floor.
 	FHitResult Hit;
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(CSRagdollFollow), false, Character);
+	bool bOnGround = false;
 	if (GetWorld()->LineTraceSingleByChannel(Hit, At, At - FVector(0.f, 0.f, HalfHeight + FollowFloorReach), ECC_Pawn, Params) && !Hit.bStartPenetrating)
 	{
 		Target.Z = FMath::Max(At.Z, Hit.ImpactPoint.Z + HalfHeight);
+		bOnGround = At.Z - Hit.ImpactPoint.Z <= GroundContactDistance;
+	}
+	if (bOnGround != bRagdollOnGround)
+	{
+		// Damping changes only when ground contact changes.
+		bRagdollOnGround = bOnGround;
+		ApplyRagdollDamping();
 	}
 	// No teleport: the simulated bodies are in world space and stay where physics put them.
 	Character->SetActorLocation(Target, false, nullptr, ETeleportType::None);
@@ -706,9 +729,19 @@ bool UCSPhysicsBodyComponent::BeginRecovery()
 	}
 	if (!bStandFound)
 	{
-		Stand = PelvisAt + FVector(0.f, 0.f, Character->GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
+		UCapsuleComponent* Capsule = Character->GetCapsuleComponent();
+		Stand = PelvisAt + FVector(0.f, 0.f, Capsule->GetScaledCapsuleHalfHeight());
 		FRotator Rotation(0.f, Yaw, 0.f);
-		if (!GetWorld()->FindTeleportSpot(Character, Stand, Rotation))
+		// FindTeleportSpot only sees geometry for a capsule with query collision, and the ragdoll's
+		// capsule has none: switch queries on around the call. Then check the spot it gives.
+		Capsule->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+		const bool bMoved = GetWorld()->FindTeleportSpot(Character, Stand, Rotation);
+		Capsule->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		FCollisionQueryParams Params(SCENE_QUERY_STAT(CSRagdollRecovery), false, Character);
+		const bool bBlocked = GetWorld()->OverlapBlockingTestByChannel(Stand, FQuat::Identity, Capsule->GetCollisionObjectType(),
+			FCollisionShape::MakeCapsule(Capsule->GetScaledCapsuleRadius(), Capsule->GetScaledCapsuleHalfHeight()), Params,
+			FCollisionResponseParams(Capsule->GetCollisionResponseToChannels()));
+		if (!bMoved || bBlocked)
 		{
 			UE_LOG(LogCSCharacter, Warning, TEXT("%s: nowhere clear to stand up near %s; staying down and trying again."),
 				*Character->GetName(), *PelvisAt.ToString());
