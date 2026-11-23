@@ -15,5 +15,8 @@ Reusable code here goes in self-contained plugins under `Game/Plugins/CS<Name>/`
 | UE automation test harness | `siege-game#ue-automation-test-harness` | adapted | `tools/ue/test.ps1`, `Game/Source/CombatSimulator/Tests/`, `Game/Source/CSCapture/Private/Tests/` |
 | Secret scanning (pre-commit, CI, pre-release) | `specs/secret-scanning` | adapted | `tools/og/secrets.py`, `tools/hooks/pre-commit`, `.github/workflows/checks.yml` |
 | Media layer (clips, stills, redaction) | `specs/media-layer` | adapted | screencast-mcp for clips and redaction; WebP stills in `tools/og/devlog.py` |
+| Tunable weighty character movement (gaits, sprint ramp, slope and landing costs, validated data-asset tuning with live reload) | none yet | contributes | `Game/Plugins/CSCharacter/` (`ACSCharacter`, `UCSMovementTuning`, `UCSDevTools`), `Game/Content/Characters/Base/DA_MovementTuning` |
+| First and third person camera rig (one key, blended, head hidden from the owner only) | none yet | contributes | `Game/Plugins/CSCharacter/` (`UCSCameraRig`) |
+| Physics-driven body (physical animation, stagger, ragdoll and recovery) | none yet | contributes | `Game/Plugins/CSCharacter/` (`UCSPhysicsBodyComponent`, editor module `CSCharacterEditor` for the ragdoll physics asset builder) |
 | UE mod support | none yet | contributes (planned) | not started; shaped by OD-002, OD-003 and OD-004 |
 | Physics sandbox toolset | none yet | contributes (planned) | not started; shaped by OD-001 |

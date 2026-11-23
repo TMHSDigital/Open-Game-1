@@ -99,5 +99,6 @@ Licensing note: the owner's tool repos below are CC-BY-NC-ND-4.0 (the Blender-De
 Not external, but the other half of every routine:
 
 - `uv run --project tools python -m og <secrets|assets|decisions|session|milestone|site>`: deterministic parts (scans, ledgers, devlog, site build).
+- `tools/blender/run.ps1`: runs a Blender Python script headless (`pwsh -NoProfile -File tools/blender/run.ps1 -Script <script.py> [-Blend <file.blend>] [-- <script args>]`). Factory settings, so no user add-ons; an uncaught Python error gives a non-zero exit. Env name: `BLENDER_PATH` (default is the Blender 5.1 install). Used by the base character build and its tests.
 - `tools/ue/*.ps1`: build, test, package and capture for the Unreal project. Env name: `UE_ROOT` (see `.env.example`).
 - `tools/steam/release.ps1`: the gated Steam release. Env names: `STEAM_APPID`, `STEAM_DEPOT_WIN`, `STEAM_BUILD_ACCOUNT`, `STEAMCMD_PATH`. Real uploads refuse to run inside Claude Code; the owner runs them in a terminal.
