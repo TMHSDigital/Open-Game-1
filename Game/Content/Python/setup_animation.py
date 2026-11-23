@@ -12,7 +12,9 @@ Makes or refreshes:
   /Game/ThirdParty/Quaternius/UAL1/Source/       the pack's mannequin (UAL1_Standard, its skeleton,
                                                  materials) and the CLIPS below, imported from the
                                                  glTF file; the pack's other clips are deleted
-  /Game/ThirdParty/Quaternius/UAL1/IK_UAL1_Mannequin       IK Rig of the pack's skeleton
+  /Game/ThirdParty/Quaternius/UAL1/IK_UAL1_Source          IK Rig of the pack's skeleton (it was
+                                                 IK_UAL1_Mannequin; a rerun deletes that name, which
+                                                 the repo's Epic-name guard rejects)
   /Game/ThirdParty/Quaternius/UAL1/RTG_UAL1_To_BaseCharacter  IK Retargeter, pack -> base character
   /Game/ThirdParty/Quaternius/UAL1/Retargeted/A_<clip>     the CLIPS on the base skeleton
   /Game/Characters/Base/IK_BaseCharacter         IK Rig of the base skeleton
@@ -57,7 +59,9 @@ import unreal
 PACK = "/Game/ThirdParty/Quaternius/UAL1"
 SOURCE = PACK + "/Source"
 RETARGETED = PACK + "/Retargeted"
-SOURCE_IK_RIG = PACK + "/IK_UAL1_Mannequin"
+SOURCE_IK_RIG = PACK + "/IK_UAL1_Source"
+# Earlier names of assets this script makes; deleted once nothing points at them.
+RETIRED = [PACK + "/IK_UAL1_Mannequin"]
 RETARGETER = PACK + "/RTG_UAL1_To_BaseCharacter"
 BASE = "/Game/Characters/Base"
 BASE_MESH = BASE + "/SK_BaseCharacter"
@@ -374,6 +378,16 @@ def main():
     scale = target_pelvis / source_pelvis
 
     rtg = make_retargeter(source_rig, target_rig, source_mesh, base_mesh, target_chains)
+    for path in RETIRED:
+        if unreal.EditorAssetLibrary.does_asset_exist(path):
+            delete_if_exists(path)
+            log("deleted retired " + path)
+        # A force delete in the commandlet can leave the file on disk; remove it too.
+        content = unreal.Paths.convert_relative_path_to_full(unreal.Paths.project_content_dir())
+        stale = os.path.join(content, path[len("/Game/"):] + ".uasset")
+        if os.path.isfile(stale):
+            os.remove(stale)
+            log("removed retired file " + stale)
     clips = retarget_clips(rtg, source_mesh, base_mesh)
 
     strides = stride_speeds_cm_s(glb_path("UAL1_Standard_RM.glb"))
