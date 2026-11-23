@@ -102,15 +102,25 @@ function Assert-NoHeadlessEditor {
     }
 }
 
-# Throws if any module's source (Game/Source/<Module>/**/*.h, .cpp, .cs) is newer than its editor
+# Throws if any module's source (Game/Source/<Module>/** or Game/Plugins/<Plugin>/Source/<Module>/**; .h, .cpp, .cs) is newer than its editor
 # DLL, so tests never report results for old code. Returns the DLL files checked.
 function Assert-BinariesFresh {
-    $binDir = Join-Path $GameDir 'Binaries\Win64'
     $checked = @()
-    foreach ($buildCs in Get-ChildItem (Join-Path $GameDir 'Source') -Recurse -Filter '*.Build.cs') {
+    # Game modules build into Game/Binaries; plugin modules into Game/Plugins/<Plugin>/Binaries.
+    $sources = @(Get-ChildItem (Join-Path $GameDir 'Source') -Recurse -Filter '*.Build.cs' |
+        ForEach-Object { [pscustomobject]@{ BuildCs = $_; BinDir = Join-Path $GameDir 'Binaries\Win64' } })
+    $pluginsDir = Join-Path $GameDir 'Plugins'
+    if (Test-Path -LiteralPath $pluginsDir) {
+        foreach ($uplugin in Get-ChildItem $pluginsDir -Recurse -Filter '*.uplugin') {
+            $sources += @(Get-ChildItem (Join-Path $uplugin.DirectoryName 'Source') -Recurse -Filter '*.Build.cs' -ErrorAction SilentlyContinue |
+                ForEach-Object { [pscustomobject]@{ BuildCs = $_; BinDir = Join-Path $uplugin.DirectoryName 'Binaries\Win64' } })
+        }
+    }
+    foreach ($src in $sources) {
+        $buildCs = $src.BuildCs
         $module = $buildCs.Name -replace '\.Build\.cs$', ''
-        $dll = Get-Item -LiteralPath (Join-Path $binDir "UnrealEditor-$module.dll") -ErrorAction SilentlyContinue
-        if (-not $dll) { throw "No UnrealEditor-$module.dll in Game/Binaries/Win64. Run tools/ue/build.ps1 (or test.ps1 -Build)." }
+        $dll = Get-Item -LiteralPath (Join-Path $src.BinDir "UnrealEditor-$module.dll") -ErrorAction SilentlyContinue
+        if (-not $dll) { throw "No UnrealEditor-$module.dll in $($src.BinDir). Run tools/ue/build.ps1 (or test.ps1 -Build)." }
         $newest = Get-ChildItem $buildCs.DirectoryName -Recurse -File -Include '*.h', '*.cpp', '*.cs' |
             Sort-Object LastWriteTime -Descending | Select-Object -First 1
         if ($newest -and $newest.LastWriteTime -gt $dll.LastWriteTime) {

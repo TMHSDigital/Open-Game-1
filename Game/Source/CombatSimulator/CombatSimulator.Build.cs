@@ -11,7 +11,8 @@ public class CombatSimulator : ModuleRules
 			"Core",
 			"CoreUObject",
 			"Engine",
-			"InputCore"
+			"InputCore",
+			"CSCharacter"  // Game/Plugins/CSCharacter: ACSCharacter, UCSMovementTuning
 		});
 	}
 }
