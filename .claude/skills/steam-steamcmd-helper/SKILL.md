@@ -1,11 +1,11 @@
 ---
 name: steam-steamcmd-helper
-description: steamcmd reference for Combat Simulator on Windows - commands, Steam Guard, troubleshooting, and the release.ps1 upload path the owner runs. Claude explains steamcmd but never executes it. Use when the user asks about steamcmd, SteamPipe uploads, or installing a dedicated server tool app.
+description: steamcmd reference for Combat Simulator on Windows - commands, Steam Guard, troubleshooting, and the release.ps1 upload path. Claude explains steamcmd and never calls it directly; uploads go through release.ps1. Use when the user asks about steamcmd, SteamPipe uploads, or installing a dedicated server tool app.
 ---
 
 # steamcmd helper (Windows, owner-run)
 
-Adapted from the Steam-Cursor-Plugin `steam-steamcmd-helper` skill. **Claude never runs `steamcmd`.** Claude may explain commands and output; uploads go only through `tools/steam/release.ps1` (see the `release` skill).
+Adapted from the Steam-Cursor-Plugin `steam-steamcmd-helper` skill. **Claude never calls `steamcmd` directly.** Claude may explain commands and output; uploads go only through `tools/steam/release.ps1` (see the `release` skill).
 
 ## Install (owner)
 
@@ -32,7 +32,7 @@ Do not install it under `Program Files` (it needs write access to its own folder
 
 ## Uploading a build
 
-The only upload path is `tools/steam/release.ps1`, run by the owner in their own terminal. It enforces the gates, bumps the version, packages, stages and fills the VDFs before steamcmd runs:
+The only upload path is `tools/steam/release.ps1`, run by Claude or the owner (decision 0014; `development` only). It enforces the gates, bumps the version, packages, stages and fills the VDFs before steamcmd runs:
 
 ```powershell
 pwsh tools/steam/release.ps1 dry-run   # gates, package, stage, VDFs; no upload (Claude may run this)

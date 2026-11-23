@@ -14,10 +14,11 @@
 # Test overrides: -BuildDir -LedgerPath -SteamCmd -SkipGitGates -NoGitHub -RepoDir -WorkDir -CheckCommand.
 #
 # Exit codes: 0 ok, 1 other error, 10+n gate n failed, 30 steamcmd error, 31 no BuildID,
-#             40 refused (a -Branch other than development, or CLAUDECODE set for a real Steam step).
+#             40 refused (a -Branch other than development, or 'promoted' with CLAUDECODE set).
 #
-# The owner runs every real Steam step (dev, upload-only, preview, promoted) in their own terminal:
-# the script refuses them when CLAUDECODE is set. No script ever sets the default branch live.
+# Claude Code may run the development-branch steps (dev, upload-only, preview); see decision 0014.
+# Recording a promotion (promoted) is the owner's: the script refuses it when CLAUDECODE is set.
+# No script ever sets the default branch live.
 #
 # IDs come from environment variables. If one is not set, only these keys are read from .env:
 # STEAM_APPID, STEAM_DEPOT_WIN, STEAM_BUILD_ACCOUNT, STEAMCMD_PATH. Values are never printed.
@@ -666,7 +667,7 @@ try {
     $branchProblem = Test-ReleaseBranch $Branch
     if ($branchProblem) { Stop-Release 40 $branchProblem }
     $Branch = $Branch.Trim()
-    if ($Mode -in 'dev', 'upload-only', 'preview', 'promoted' -and $env:CLAUDECODE) {
+    if ($Mode -eq 'promoted' -and $env:CLAUDECODE) {
         $cmd = "pwsh tools/steam/release.ps1 $Mode$(if ($Version) { " $Version" })"
         Stop-Release 40 "Refusing '$Mode' inside Claude Code (CLAUDECODE is set). The owner runs it in their own terminal: $cmd"
     }

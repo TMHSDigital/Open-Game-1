@@ -380,10 +380,11 @@ try {
     }
     $r = Invoke-Release @('dry-run', '-Branch', ' development ')
     Check "-Branch ' development ' is trimmed and accepted" ($r.Code -eq 0 -and (Get-Content (Join-Path $fx.Work 'app_build_run.vdf') -Raw) -match '"SetLive" "development"') $r.Output
-    foreach ($m in 'dev', 'upload-only', 'preview') {
-        $r = Invoke-Release @($m, '-SkipGitGates') @{ CLAUDECODE = '1' }
-        Check "CLAUDECODE=1 refuses real mode '$m' with 40" ($r.Code -eq 40 -and $r.Output -match 'own terminal') $r.Output
-    }
+    # Decision 0014: Claude Code runs the development-branch steps; only 'promoted' is refused.
+    $r = Invoke-Release @('preview') @{ CLAUDECODE = '1' }
+    Check "CLAUDECODE=1 allows 'preview' (development steps are Claude's, decision 0014)" ($r.Code -eq 0 -and $r.Output -notmatch 'own terminal') $r.Output
+    $r = Invoke-Release @('dev', '-SkipGitGates', '-Branch', 'default') @{ CLAUDECODE = '1' }
+    Check "CLAUDECODE=1 still cannot target 'default' (40)" ($r.Code -eq 40) $r.Output
     $r = Invoke-Release @('promoted', '0.0.1', '-SkipGitGates') @{ CLAUDECODE = '1' }
     Check "CLAUDECODE=1 refuses 'promoted' with 40" ($r.Code -eq 40) $r.Output
     Check 'Refusals made no ledger row and no gh calls' ((Get-LedgerRows $fx.Ledger).Count -eq 0 -and (Get-GhCalls).Count -eq 0)

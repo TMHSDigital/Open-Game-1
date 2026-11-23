@@ -5,7 +5,7 @@
 3. Before building a system, check `E:\Game-Systems\catalogues\views\INDEX.md` and `E:\Game-Systems\docs\specs\`.
 4. Every session starts and ends with the `session` skill.
 5. Decisions go through the `decide` skill.
-6. Never set the Steam `default` branch live, and never run real steamcmd uploads. The owner runs those in their own terminal.
+6. Steam: Claude runs uploads to the `development` branch through `tools/steam/release.ps1` (`dev`, `upload-only`, `preview`), never by calling steamcmd directly and never skipping a gate. Never set the `default` branch live and never record a promotion: those stay with the owner (decision 0014).
 7. Assets enter only through the `asset-import` skill.
 8. The Unreal project lives in `Game/`.
 9. No emojis, in docs, devlogs, commits or code.

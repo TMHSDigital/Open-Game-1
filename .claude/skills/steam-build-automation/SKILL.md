@@ -5,7 +5,7 @@ description: How Combat Simulator gets packaged and uploaded to Steam through St
 
 # Steam build automation (Combat Simulator)
 
-Adapted from the Steam-Cursor-Plugin `steam-build-automation` skill, for Unreal on Windows and this repo's rule that **Claude never runs steamcmd and never handles Steam credentials**. Day-to-day steps are in the `release` skill; the full reference is `docs/steam/BUILD-WORKFLOW.md`.
+Adapted from the Steam-Cursor-Plugin `steam-build-automation` skill, for Unreal on Windows and this repo's rule that **Claude never calls steamcmd directly and never handles Steam credentials** (uploads to `development` go through `release.ps1`, which Claude may run since decision 0014). Day-to-day steps are in the `release` skill; the full reference is `docs/steam/BUILD-WORKFLOW.md`.
 
 ## One entry point
 
@@ -23,7 +23,7 @@ What `dev` does, in order:
 3. **Package** with `tools/ue/package.ps1 -Config Shipping` (skip with `-SkipPackage`).
 4. **Stage** the Shipping package into `_scratch/steam/content`, dropping symbols, logs, `Saved`, `Intermediate`, `steam_appid.txt`, `Manifest_*.txt` and any stale non-Shipping exe left in the archive folder.
 5. **Render** `steam/templates/*.vdf` into `_scratch/steam/` with IDs from env vars, single backslashes, `SetLive` and `Preview`.
-6. **Upload** (owner only; refused when `CLAUDECODE` is set). Any `ERROR!` line is exit 30, no BuildID is exit 31, and nothing is recorded.
+6. **Upload** (Claude or owner, `development` only; decision 0014). Any `ERROR!` line is exit 30, no BuildID is exit 31, and nothing is recorded.
 7. **Record**: ledger row (committed and pushed), `v<version>` GitHub prerelease with no game files, `steam-development` deployment.
 
 ## IDs and credentials

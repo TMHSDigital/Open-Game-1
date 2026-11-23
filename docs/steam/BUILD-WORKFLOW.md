@@ -14,12 +14,12 @@ Steam setup still to do is in [SETUP-CHECKLIST.md](SETUP-CHECKLIST.md). The uplo
 | `dry-run` | `pwsh tools/steam/release.ps1 dry-run` | anyone, Claude included |
 | `status` | `pwsh tools/steam/release.ps1 status` | anyone (inside Claude Code it skips the Steam query) |
 | `promote <ver>` | `pwsh tools/steam/release.ps1 promote 0.1.4` | anyone, Claude included |
-| `preview` | `pwsh tools/steam/release.ps1 preview` | owner, own terminal |
-| `upload-only` | `pwsh tools/steam/release.ps1 upload-only` | owner, own terminal |
-| `dev` | `pwsh tools/steam/release.ps1 dev` | owner, own terminal |
+| `preview` | `pwsh tools/steam/release.ps1 preview` | Claude or owner |
+| `upload-only` | `pwsh tools/steam/release.ps1 upload-only` | Claude or owner |
+| `dev` | `pwsh tools/steam/release.ps1 dev` | Claude or owner |
 | `promoted <ver>` | `pwsh tools/steam/release.ps1 promoted 0.1.4` | owner, own terminal |
 
-The script refuses `dev`, `upload-only`, `preview` and `promoted` when `CLAUDECODE` is set (exit 40), so Claude Code can never upload or record a promotion.
+Claude Code runs the development-branch steps (`dev`, `upload-only`, `preview`) since decision 0014. The script still refuses `promoted` when `CLAUDECODE` is set (exit 40), and no mode can set `default` live, so the public branch stays with the owner. steamcmd uses the owner's cached login; if Steam asks for a password or a Steam Guard code the upload fails and the owner logs in to steamcmd again.
 
 ## Modes
 
@@ -63,7 +63,7 @@ The gates run in this order on the tree as it is (before the version bump), and 
 | 11 to 20 | gate `code - 10` failed |
 | 30 | steamcmd error: non-zero exit, or any `ERROR!` line even when the exit code is 0 |
 | 31 | steamcmd printed no BuildID |
-| 40 | refused: a `-Branch` other than `development` (including `default`, `Default`, ` default`, `public`), or `CLAUDECODE` set for a real Steam step |
+| 40 | refused: a `-Branch` other than `development` (including `default`, `Default`, ` default`, `public`), or `promoted` with `CLAUDECODE` set |
 
 On 30 and 31 nothing is recorded: no ledger row, no release, no deployment.
 

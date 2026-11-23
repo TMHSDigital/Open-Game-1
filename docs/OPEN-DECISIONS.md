@@ -24,3 +24,4 @@ Questions the project has not settled yet. Each has a GitHub Issue labelled `dec
 |---|---|---|---|
 | OD-001 | Core loop: what does a player do in the first 10 minutes? | [0011-start-with-a-blank-plane-and-one-base-character-movement-fee](decisions/0011-start-with-a-blank-plane-and-one-base-character-movement-fee.md) | [#1](https://github.com/TMHSDigital/Open-Game-1/issues/1) |
 | OD-013 | Should the Steam build include the movement gym map, with a dev key to switch to it? | [0013-ship-the-movement-gym-with-a-dev-map-switch-key](decisions/0013-ship-the-movement-gym-with-a-dev-map-switch-key.md) | [#14](https://github.com/TMHSDigital/Open-Game-1/issues/14) |
+| OD-014 | Who runs Steam development-branch uploads: the owner or Claude? | [0014-claude-runs-steam-development-uploads](decisions/0014-claude-runs-steam-development-uploads.md) | [#15](https://github.com/TMHSDigital/Open-Game-1/issues/15) |
