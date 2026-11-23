@@ -4,9 +4,15 @@
 #include "GameFramework/Character.h"
 #include "CSCharacter.generated.h"
 
+class UCSDevTools;
 class UCSMovementTuning;
+class UInputAction;
+class UInputMappingContext;
+struct FInputActionValue;
 
-/** Movement gait. Jog is the default; walk and sprint are held, crouch is toggled by the caller. */
+DECLARE_MULTICAST_DELEGATE(FCSToggleCameraRequested);
+
+/** Movement gait. Jog is the default; walk and sprint are held, crouch is toggled (see ResolveGait). */
 UENUM(BlueprintType)
 enum class ECSGait : uint8
 {
@@ -29,8 +35,14 @@ enum class ECSGait : uint8
  *
  * The mesh component faces the actor's +X when the skeletal mesh faces +Y (the UE5 humanoid
  * convention), with its origin at the feet and the capsule fitted to a 180 cm figure.
+ *
+ * Input is Enhanced Input. The mapping context and actions are soft references read from the game's
+ * config (section [/Script/CSCharacter.CSCharacter] in DefaultGame.ini) or set on a subclass, so the
+ * plugin assumes no content paths. Look values are degrees with +X right and +Y up (keep
+ * bEnableLegacyInputScales off). Dev keys go to UCSDevTools (DevTools), the camera key to
+ * OnToggleCameraRequested.
  */
-UCLASS(Blueprintable)
+UCLASS(Config = Game, Blueprintable)
 class CSCHARACTER_API ACSCharacter : public ACharacter
 {
 	GENERATED_BODY()
@@ -38,11 +50,19 @@ class CSCHARACTER_API ACSCharacter : public ACharacter
 public:
 	ACSCharacter(const FObjectInitializer& ObjectInitializer);
 
-	/** Feel values. When empty, the UCSMovementTuning class defaults are used. */
+	/**
+	 * Feel values. When empty, the UCSMovementTuning class defaults are used. The character runs on a
+	 * copy taken by ApplyTuning, so edits to the asset take effect only when applied or reloaded
+	 * (UCSDevTools::ReloadTuning, cs.Tuning.Reload).
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "CS|Movement")
 	TObjectPtr<UCSMovementTuning> Tuning;
 
-	/** Pushes the tuning values into the movement component. Called on BeginPlay; call again after changing Tuning. */
+	/**
+	 * Copies Tuning (or the class defaults) and pushes the values into the movement component.
+	 * Called on BeginPlay (where an invalid asset is replaced by the class defaults, with an error
+	 * logged); call again after changing Tuning. Does not validate: use UCSDevTools::ReloadTuning for that.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "CS|Movement")
 	void ApplyTuning();
 
@@ -53,8 +73,78 @@ public:
 	UFUNCTION(BlueprintPure, Category = "CS|Movement")
 	ECSGait GetGait() const { return Gait; }
 
-	/** The tuning in use: Tuning, or the class defaults when it is empty. */
+	/** The tuning in use: the copy last applied; before that, Tuning or the class defaults. */
 	const UCSMovementTuning& GetActiveTuning() const;
+
+	/**
+	 * Gait from the held and toggled gait keys: crouch (toggled) wins, then sprint (held), then walk
+	 * (held), otherwise jog. Pressing sprint clears the crouch toggle (see OnSprintStarted).
+	 */
+	static ECSGait ResolveGait(bool bCrouchToggled, bool bSprintHeld, bool bWalkHeld);
+
+	/** Dev tools (ragdoll and push keys, feel overlay, tuning reload). */
+	UCSDevTools* GetDevTools() const { return DevTools; }
+
+	/**
+	 * Name of the camera in use, shown by the feel overlay. None (shown as n/a) until a camera rig
+	 * overrides this.
+	 */
+	virtual FName GetActiveCameraName() const { return NAME_None; }
+
+	/** The camera key (V). Broadcasts OnToggleCameraRequested; a camera rig overrides or binds to it. */
+	UFUNCTION(BlueprintCallable, Category = "CS|Camera")
+	virtual void ToggleCamera();
+
+	/** Extension point for the camera rig: V was pressed. */
+	FCSToggleCameraRequested OnToggleCameraRequested;
+
+	// ----- Input (Enhanced Input; set in config or on a subclass) -----
+
+	/** Added to the local player's Enhanced Input subsystem when a player controller possesses the character. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CS|Input")
+	TSoftObjectPtr<UInputMappingContext> InputMappingContext;
+
+	/** Axis2D: X right, Y forward. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CS|Input")
+	TSoftObjectPtr<UInputAction> MoveAction;
+
+	/** Axis2D, degrees this frame: X yaw right, Y pitch up. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CS|Input")
+	TSoftObjectPtr<UInputAction> LookAction;
+
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CS|Input")
+	TSoftObjectPtr<UInputAction> JumpAction;
+
+	/** Held. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CS|Input")
+	TSoftObjectPtr<UInputAction> SprintAction;
+
+	/** Toggles on press. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CS|Input")
+	TSoftObjectPtr<UInputAction> CrouchAction;
+
+	/** Held. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CS|Input")
+	TSoftObjectPtr<UInputAction> WalkAction;
+
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CS|Input")
+	TSoftObjectPtr<UInputAction> ToggleCameraAction;
+
+	/** Dev tool: feel overlay. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CS|Input")
+	TSoftObjectPtr<UInputAction> DebugOverlayAction;
+
+	/** Dev tool: ragdoll. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CS|Input")
+	TSoftObjectPtr<UInputAction> DebugRagdollAction;
+
+	/** Dev tool: push. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CS|Input")
+	TSoftObjectPtr<UInputAction> DebugPushAction;
+
+	/** Binds every configured action (an unset one is skipped with a warning). Public so tests can bind a component directly. */
+	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
+	virtual void NotifyControllerChanged() override;
 
 	/** Top speed of a gait on flat ground, cm/s. */
 	float GetGaitSpeed(ECSGait InGait) const;
@@ -72,6 +162,32 @@ public:
 private:
 	float ComputeSlopeSpeedFactor(const UCSMovementTuning& Values) const;
 	float GetGravityMagnitude() const;
+	void UpdateGaitFromInput();
+
+	void OnMove(const FInputActionValue& Value);
+	void OnLook(const FInputActionValue& Value);
+	void OnJumpStarted();
+	void OnJumpCompleted();
+	void OnSprintStarted();
+	void OnSprintCompleted();
+	void OnWalkStarted();
+	void OnWalkCompleted();
+	void OnCrouchStarted();
+	void OnToggleCameraStarted();
+	void OnDebugOverlayStarted();
+	void OnDebugRagdollStarted();
+	void OnDebugPushStarted();
+
+	UPROPERTY(VisibleAnywhere, Category = "CS|Dev tools")
+	TObjectPtr<UCSDevTools> DevTools;
+
+	/** The values in use, copied from Tuning by ApplyTuning. */
+	UPROPERTY(Transient)
+	TObjectPtr<UCSMovementTuning> AppliedTuning;
+
+	bool bSprintHeld = false;
+	bool bWalkHeld = false;
+	bool bCrouchToggled = false;
 
 	ECSGait Gait = ECSGait::Jog;
 	float SlopeSpeedFactor = 1.f;

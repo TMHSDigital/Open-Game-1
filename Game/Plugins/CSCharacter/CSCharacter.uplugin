@@ -3,7 +3,7 @@
 	"Version": 1,
 	"VersionName": "0.1",
 	"FriendlyName": "CS Character",
-	"Description": "Weighty third- and first-person humanoid character: ACharacter subclass with gaits, a frame-rate independent sprint ramp, landing speed cost and slope speed, all driven by one tuning data asset. Editor module builds a human-range ragdoll physics asset for a UE5-style humanoid skeleton.",
+	"Description": "Weighty third- and first-person humanoid character: ACharacter subclass with gaits, a frame-rate independent sprint ramp, landing speed cost and slope speed, all driven by one tuning data asset; Enhanced Input bindings, and feel-testing dev tools (overlay, tuning reload, ragdoll and push requests) behind a tuning flag. Editor module builds a human-range ragdoll physics asset for a UE5-style humanoid skeleton.",
 	"Category": "Gameplay",
 	"CanContainContent": false,
 	"IsBetaVersion": false,
@@ -18,6 +18,12 @@
 			"Name": "CSCharacterEditor",
 			"Type": "Editor",
 			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "EnhancedInput",
+			"Enabled": true
 		}
 	]
 }

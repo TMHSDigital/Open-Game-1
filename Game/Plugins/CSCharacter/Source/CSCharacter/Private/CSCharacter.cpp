@@ -2,9 +2,18 @@
 
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "CSCharacterLog.h"
+#include "CSDevTools.h"
 #include "CSMovementTuning.h"
+#include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
+#include "EnhancedInputComponent.h"
+#include "EnhancedInputSubsystems.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/PlayerController.h"
+#include "InputAction.h"
+#include "InputActionValue.h"
+#include "InputMappingContext.h"
 
 namespace
 {
@@ -42,11 +51,30 @@ ACSCharacter::ACSCharacter(const FObjectInitializer& ObjectInitializer)
 	// The engine ticks a movement component before its owner by default; this class sets the
 	// speed caps in its own Tick, so it must run first (see BeginPlay).
 	Move->bTickBeforeOwner = false;
+
+	DevTools = CreateDefaultSubobject<UCSDevTools>(TEXT("DevTools"));
 }
 
 const UCSMovementTuning& ACSCharacter::GetActiveTuning() const
 {
+	if (AppliedTuning)
+	{
+		return *AppliedTuning.Get();
+	}
 	return Tuning ? *Tuning.Get() : *GetDefault<UCSMovementTuning>();
+}
+
+ECSGait ACSCharacter::ResolveGait(bool bCrouchToggled, bool bSprintHeld, bool bWalkHeld)
+{
+	if (bCrouchToggled)
+	{
+		return ECSGait::Crouch;
+	}
+	if (bSprintHeld)
+	{
+		return ECSGait::Sprint;
+	}
+	return bWalkHeld ? ECSGait::Walk : ECSGait::Jog;
 }
 
 float ACSCharacter::GetGaitSpeed(ECSGait InGait) const
@@ -78,7 +106,10 @@ float ACSCharacter::GetGravityMagnitude() const
 
 void ACSCharacter::ApplyTuning()
 {
-	const UCSMovementTuning& T = GetActiveTuning();
+	// Run on a copy, so later edits to the asset (a bad value typed mid-play) change nothing until
+	// they are applied or reloaded. With no asset the copy holds the class defaults.
+	AppliedTuning = NewObject<UCSMovementTuning>(this, NAME_None, RF_Transient, Tuning.Get());
+	const UCSMovementTuning& T = *AppliedTuning;
 	UCharacterMovementComponent* Move = GetCharacterMovement();
 
 	Move->MaxAcceleration = T.Acceleration;
@@ -122,7 +153,200 @@ void ACSCharacter::BeginPlay()
 	// the same frame; otherwise the ramp lags a frame (33 ms at 30 fps), which makes the time to
 	// sprint speed depend on the frame rate.
 	GetCharacterMovement()->AddTickPrerequisiteActor(this);
+
+	FString Reason;
+	if (Tuning && !Tuning->IsValid(Reason))
+	{
+		// No last good values yet: start on the class defaults; a fixed asset can be reloaded.
+		UE_LOG(LogCSCharacter, Error, TEXT("%s: tuning %s is invalid (%s); using the class defaults until it is fixed and reloaded."),
+			*GetName(), *Tuning->GetPathName(), *Reason);
+		TObjectPtr<UCSMovementTuning> Bad = Tuning;
+		Tuning = nullptr;
+		ApplyTuning();
+		Tuning = Bad;
+		return;
+	}
 	ApplyTuning();
+}
+
+void ACSCharacter::NotifyControllerChanged()
+{
+	Super::NotifyControllerChanged();
+	const APlayerController* PC = Cast<APlayerController>(Controller);
+	ULocalPlayer* LocalPlayer = PC ? PC->GetLocalPlayer() : nullptr;
+	UEnhancedInputLocalPlayerSubsystem* Subsystem = LocalPlayer ? LocalPlayer->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>() : nullptr;
+	if (!Subsystem)
+	{
+		return;
+	}
+	UInputMappingContext* Context = InputMappingContext.LoadSynchronous();
+	if (!Context)
+	{
+		UE_LOG(LogCSCharacter, Warning, TEXT("%s: InputMappingContext is not set (config section [/Script/CSCharacter.CSCharacter]); keys will do nothing."), *GetName());
+		return;
+	}
+	if (!Subsystem->HasMappingContext(Context))
+	{
+		Subsystem->AddMappingContext(Context, 0);
+	}
+}
+
+void ACSCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
+{
+	Super::SetupPlayerInputComponent(PlayerInputComponent);
+	UEnhancedInputComponent* Input = Cast<UEnhancedInputComponent>(PlayerInputComponent);
+	if (!Input)
+	{
+		UE_LOG(LogCSCharacter, Error, TEXT("%s: the input component is not a UEnhancedInputComponent (set DefaultInputComponentClass); keys will do nothing."), *GetName());
+		return;
+	}
+	auto Load = [this](TSoftObjectPtr<UInputAction>& Slot, const TCHAR* Name) -> UInputAction*
+	{
+		UInputAction* Action = Slot.LoadSynchronous();
+		if (!Action)
+		{
+			UE_LOG(LogCSCharacter, Warning, TEXT("%s: %s is not set; that key does nothing."), *GetName(), Name);
+		}
+		return Action;
+	};
+
+	if (UInputAction* A = Load(MoveAction, TEXT("MoveAction")))
+	{
+		Input->BindAction(A, ETriggerEvent::Triggered, this, &ACSCharacter::OnMove);
+	}
+	if (UInputAction* A = Load(LookAction, TEXT("LookAction")))
+	{
+		Input->BindAction(A, ETriggerEvent::Triggered, this, &ACSCharacter::OnLook);
+	}
+	if (UInputAction* A = Load(JumpAction, TEXT("JumpAction")))
+	{
+		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnJumpStarted);
+		Input->BindAction(A, ETriggerEvent::Completed, this, &ACSCharacter::OnJumpCompleted);
+	}
+	if (UInputAction* A = Load(SprintAction, TEXT("SprintAction")))
+	{
+		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnSprintStarted);
+		Input->BindAction(A, ETriggerEvent::Completed, this, &ACSCharacter::OnSprintCompleted);
+	}
+	if (UInputAction* A = Load(WalkAction, TEXT("WalkAction")))
+	{
+		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnWalkStarted);
+		Input->BindAction(A, ETriggerEvent::Completed, this, &ACSCharacter::OnWalkCompleted);
+	}
+	if (UInputAction* A = Load(CrouchAction, TEXT("CrouchAction")))
+	{
+		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnCrouchStarted);
+	}
+	if (UInputAction* A = Load(ToggleCameraAction, TEXT("ToggleCameraAction")))
+	{
+		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnToggleCameraStarted);
+	}
+	// Dev keys are always bound; UCSDevTools decides at press time whether they do anything, so a
+	// reload can turn bDevTools on or off.
+	if (UInputAction* A = Load(DebugOverlayAction, TEXT("DebugOverlayAction")))
+	{
+		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnDebugOverlayStarted);
+	}
+	if (UInputAction* A = Load(DebugRagdollAction, TEXT("DebugRagdollAction")))
+	{
+		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnDebugRagdollStarted);
+	}
+	if (UInputAction* A = Load(DebugPushAction, TEXT("DebugPushAction")))
+	{
+		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnDebugPushStarted);
+	}
+}
+
+void ACSCharacter::OnMove(const FInputActionValue& Value)
+{
+	const FVector2D Axis = Value.Get<FVector2D>();
+	// Along the view's yaw only, so looking up or down does not slow the character.
+	const FRotationMatrix Basis(FRotator(0.f, GetControlRotation().Yaw, 0.f));
+	AddMovementInput(Basis.GetUnitAxis(EAxis::X), Axis.Y);
+	AddMovementInput(Basis.GetUnitAxis(EAxis::Y), Axis.X);
+}
+
+void ACSCharacter::OnLook(const FInputActionValue& Value)
+{
+	const FVector2D Axis = Value.Get<FVector2D>();
+	AddControllerYawInput(Axis.X);
+	AddControllerPitchInput(Axis.Y);
+}
+
+void ACSCharacter::OnJumpStarted()
+{
+	Jump();
+}
+
+void ACSCharacter::OnJumpCompleted()
+{
+	StopJumping();
+}
+
+void ACSCharacter::OnSprintStarted()
+{
+	bSprintHeld = true;
+	// Sprinting from a crouch stands the character up; Ctrl crouches again.
+	bCrouchToggled = false;
+	UpdateGaitFromInput();
+}
+
+void ACSCharacter::OnSprintCompleted()
+{
+	bSprintHeld = false;
+	UpdateGaitFromInput();
+}
+
+void ACSCharacter::OnWalkStarted()
+{
+	bWalkHeld = true;
+	UpdateGaitFromInput();
+}
+
+void ACSCharacter::OnWalkCompleted()
+{
+	bWalkHeld = false;
+	UpdateGaitFromInput();
+}
+
+void ACSCharacter::OnCrouchStarted()
+{
+	bCrouchToggled = !bCrouchToggled;
+	UpdateGaitFromInput();
+}
+
+void ACSCharacter::UpdateGaitFromInput()
+{
+	const ECSGait NewGait = ResolveGait(bCrouchToggled, bSprintHeld, bWalkHeld);
+	if (NewGait != Gait)
+	{
+		SetGait(NewGait);
+	}
+}
+
+void ACSCharacter::ToggleCamera()
+{
+	OnToggleCameraRequested.Broadcast();
+}
+
+void ACSCharacter::OnToggleCameraStarted()
+{
+	ToggleCamera();
+}
+
+void ACSCharacter::OnDebugOverlayStarted()
+{
+	DevTools->ToggleOverlay();
+}
+
+void ACSCharacter::OnDebugRagdollStarted()
+{
+	DevTools->RequestRagdoll();
+}
+
+void ACSCharacter::OnDebugPushStarted()
+{
+	DevTools->RequestPush();
 }
 
 float ACSCharacter::ComputeSlopeSpeedFactor(const UCSMovementTuning& T) const

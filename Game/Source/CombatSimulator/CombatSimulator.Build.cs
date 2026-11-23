@@ -12,6 +12,7 @@ public class CombatSimulator : ModuleRules
 			"CoreUObject",
 			"Engine",
 			"InputCore",
+			"EnhancedInput",  // input asset tests (CSInputAssetTests.cpp)
 			"CSCharacter"  // Game/Plugins/CSCharacter: ACSCharacter, UCSMovementTuning
 		});
 	}
