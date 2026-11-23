@@ -60,3 +60,18 @@ def test_build_writes_outputs(build):
     for name in ("SK_BaseCharacter.blend", "SK_BaseCharacter.fbx",
                  "turn_front.png", "turn_side.png", "turn_back.png"):
         assert (out / name).exists(), name
+
+
+@needs_blender
+def test_failed_build_does_not_overwrite_outputs(tmp_path):
+    """A failed check exits non-zero and leaves an existing .blend and .fbx untouched."""
+    blend, fbx = tmp_path / "SK_BaseCharacter.blend", tmp_path / "SK_BaseCharacter.fbx"
+    blend.write_bytes(b"old blend")
+    fbx.write_bytes(b"old fbx")
+    r = subprocess.run([PWSH, "-NoProfile", "-File", str(RUN_PS1), "-Script", str(SCRIPT),
+                        "--", "--out-dir", str(tmp_path), "--force-fail"],
+                       capture_output=True, text=True, timeout=900)
+    assert r.returncode != 0, (r.stdout + r.stderr)[-2000:]
+    assert blend.read_bytes() == b"old blend"
+    assert fbx.read_bytes() == b"old fbx"
+    assert not list(tmp_path.glob("_tmp_*"))

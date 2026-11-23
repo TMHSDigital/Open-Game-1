@@ -35,6 +35,7 @@ How it is built:
 import argparse
 import json
 import math
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -66,6 +67,9 @@ def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--out-dir", default=None)
     p.add_argument("--check-only", action="store_true")
+    # Treat the build as failed after the checks (used by the test that a failed build never
+    # overwrites the .blend and .fbx).
+    p.add_argument("--force-fail", action="store_true", help=argparse.SUPPRESS)
     return p.parse_args(argv)
 
 
@@ -163,7 +167,7 @@ def left_joints():
         j["_fingertips_l"][f] = p
     # Thumb: thumb_01 is the metacarpal, from the base of the palm toward the front and palm side.
     t = (ha * 0.70 + hf * 0.60 + hn * 0.38).normalized()
-    p = w + ha * 0.022 + hf * 0.018 + hn * 0.008
+    p = w + ha * 0.034 + hf * 0.020 + hn * 0.009
     for i, (ln, bend) in enumerate(zip((0.046, 0.033, 0.027), (0.0, 18.0, 30.0)), start=1):
         di = _rotate_toward(t, ha, bend)
         q = p + di * ln
@@ -251,9 +255,9 @@ def build_graph(j):
     # Torso and head, bottom to top. Radii are skin radii (the subdivided surface ends up a little
     # inside them). Head: an egg, slightly deeper than wide, no features.
     torso = [
-        ("pelvis_c", (0, 0.026, HIP_Z - 0.030), (0.158, 0.126)),
-        ("hip_band", (0, 0.018, HIP_Z + 0.030), (0.152, 0.118)),
-        ("abdomen", (0, 0.008, 1.040), (0.147, 0.113)),
+        ("pelvis_c", (0, 0.016, HIP_Z - 0.030), (0.172, 0.136)),
+        ("hip_band", (0, 0.010, HIP_Z + 0.030), (0.166, 0.132)),
+        ("abdomen", (0, -0.002, 1.040), (0.152, 0.120)),
         ("waist", (0, 0.004, 1.105), (0.146, 0.111)),
         ("ribs_low", (0, -0.002, 1.165), (0.152, 0.117)),
         ("ribs", (0, -0.008, 1.225), (0.162, 0.127)),
@@ -271,6 +275,13 @@ def build_graph(j):
     for n, p, r in torso:
         g.node(n, p, r)
     g.chain(*[n for n, _, _ in torso])
+    # Crotch: a small mass below the pelvis so the inner thighs meet in a V, not a flat bridge.
+    # Like the other add-on masses it is its own piece of the graph (an extra branch on a busy
+    # node makes the skin hull fail) and merge_islands unions it into the body.
+    g.node("crotch_top", (0, 0.010, HIP_Z - 0.050), 0.050)
+    g.node("crotch", (0, 0.008, HIP_Z - 0.100), 0.048)
+    g.chain("crotch_top", "crotch")
+    g.roots.append("crotch_top")
 
     for side, sx in (("l", 1.0), ("r", -1.0)):
         def P(v):
@@ -287,7 +298,7 @@ def build_graph(j):
         df = (w - e).normalized()
         arm = [
             N("trap", Vector((0.110, 0.018, SHOULDER_Z + 0.022)), 0.068),
-            N("deltoid", s + Vector((0.012, 0.0, 0.000)), 0.074),
+            N("deltoid", s + Vector((0.020, 0.0, 0.010)), 0.087),
             N("arm_a", s + du * 0.060, 0.068),
             N("arm_b", s + du * 0.120, 0.062),
             N("arm_c", s + du * 0.185, 0.058),
@@ -298,10 +309,17 @@ def build_graph(j):
             N("forearm_mid", e + df * 0.140, 0.050),
             N("forearm_lo", e + df * 0.195, 0.042),
             N("wrist", w, (0.036, 0.028)),
+            N("palm_base", w + df * 0.028, (0.044, 0.022)),
             N("palm", w + df * 0.066, (0.050, 0.019)),
         ]
         g.edges.append((g.index["shoulder_line"], g.index[arm[0]]))
         g.chain(*arm)
+        # Armpit: a latissimus mass from the upper chest toward the back of the armpit, so the
+        # torso side meets the arm in a fold instead of a gap.
+        ax0 = N("axilla_in", Vector((0.060, 0.026, 1.330)), (0.055, 0.070))
+        ax1 = N("axilla", Vector((0.105, 0.026, 1.320)), (0.046, 0.064))
+        g.chain(ax0, ax1)
+        g.roots.append(ax0)
         # Knuckle row and fingers
         knuckles = [N(f"k_{f}", j[f"{f}_metacarpal_l"][1], 0.0125)
                     for f in ("index", "middle", "ring", "pinky")]
@@ -312,26 +330,32 @@ def build_graph(j):
             # bends on its own loops; the radius tapers toward the tip.
             r0 = 0.0106 if f != "pinky" else 0.0094
             b1, b2, b3 = (j[f"{f}_{i:02d}_l"] for i in (1, 2, 3))
-            n0 = N(f"{f}_1m", b1[0].lerp(b1[1], 0.5), r0)
+            # extra ring just past the knuckle: the palm-side crease folds on it in a fist
+            n00 = N(f"{f}_1c", b1[0].lerp(b1[1], 0.2), r0 * 1.02)
+            n0 = N(f"{f}_1m", b1[0].lerp(b1[1], 0.55), r0)
             n1 = N(f"{f}_2", b2[0], r0 * 0.94)
             n1m = N(f"{f}_2m", b2[0].lerp(b2[1], 0.5), r0 * 0.90)
             n2 = N(f"{f}_3", b3[0], r0 * 0.87)
             tip = j["_fingertips_l"][f]
             n3 = N(f"{f}_tip", tip - (tip - b3[0]).normalized() * 0.004, r0 * 0.80)
-            g.chain(k, n0, n1, n1m, n2, n3)
+            g.chain(k, n00, n0, n1, n1m, n2, n3)
         th1, th2, th3 = (j[f"thumb_{i:02d}_l"] for i in (1, 2, 3))
-        # The thumb is its own piece of the graph, starting inside the ball of the thumb in the
-        # palm; the union in merge_islands joins it. A fifth branch on the palm node makes the
-        # skin hull fail, and a branch off the wrist roots it on the forearm.
-        t0 = N("thumb_0", th1[0], 0.0200)
+        # Thumb: a broad thenar mass starting inside the base of the palm, and a free thumb
+        # cylinder from thumb_02; both are separate graph pieces unioned into the hand. A branch
+        # off the palm node makes the skin hull fail, and one off the wrist roots the thumb on
+        # the forearm.
+        t0 = N("thenar", th1[0].lerp(th1[1], 0.20), 0.0215)
+        t1 = N("thenar_end", th1[0].lerp(th1[1], 0.80), 0.0170)
+        g.chain(t0, t1)
         g.roots.append(t0)
-        t1 = N("thumb_1", th1[0].lerp(th1[1], 0.55), 0.0175)
-        t2 = N("thumb_2", th2[0], 0.0140)
+        t2s = N("thumb_2s", th1[0].lerp(th1[1], 0.62), 0.0150)  # overlaps the thenar end
+        t2 = N("thumb_2", th2[0], 0.0145)
+        g.roots.append(t2s)
         t2m = N("thumb_2m", th2[0].lerp(th2[1], 0.5), 0.0132)
         t3 = N("thumb_3", th3[0], 0.0124)
         tip = j["_fingertips_l"]["thumb"]
         t4 = N("thumb_tip", tip - (tip - th3[0]).normalized() * 0.004, 0.0108)
-        g.chain(t0, t1, t2, t2m, t3, t4)
+        g.chain(t2s, t2, t2m, t3, t4)
 
         # Leg
         hip, knee = j["thigh_l"]
@@ -339,7 +363,7 @@ def build_graph(j):
         toe = j["ball_l"][1]
         heel_y = j["_heel_y"]
         leg = [
-            N("hips", Vector((HIP_X + 0.006, 0.016, HIP_Z - 0.085)), 0.096),
+            N("hips", Vector((HIP_X + 0.006, 0.036, HIP_Z - 0.085)), (0.092, 0.106)),
             N("thigh_up", hip.lerp(knee, 0.25), 0.098),
             N("thigh_mid", hip.lerp(knee, 0.45), 0.092),
             N("thigh_lo", hip.lerp(knee, 0.68), 0.082),
@@ -363,7 +387,11 @@ def build_graph(j):
 
 
 def skin_mesh(g):
-    """Skin modifier over the graph, subdivided twice; returns a new applied mesh datablock."""
+    """Skin cage over the graph, merged into one closed piece, then subdivided twice.
+
+    The union runs on the low-resolution cage, before Subsurf, so its seams get smoothed by the
+    subdivision like the rest of the surface. Returns a new applied mesh datablock.
+    """
     me = bpy.data.meshes.new("skin_graph")
     me.from_pydata([tuple(p) for p in g.pos], g.edges, [])
     me.update()
@@ -378,14 +406,16 @@ def skin_mesh(g):
     for name in ["pelvis_c"] + g.roots:
         data[g.index[name]].use_root = True
     sub = obj.modifiers.new("Subsurf", "SUBSURF")
-    sub.levels = 2
-    sub.render_levels = 2
-    deps = bpy.context.evaluated_depsgraph_get()
-    evaluated = obj.evaluated_get(deps)
-    result = bpy.data.meshes.new_from_object(evaluated)
+    sub.levels = sub.render_levels = 2
+    result = _evaluated_copy(obj)
     bpy.data.objects.remove(obj, do_unlink=True)
     bpy.data.meshes.remove(me)
     return merge_islands(result)
+
+
+def _evaluated_copy(obj):
+    deps = bpy.context.evaluated_depsgraph_get()
+    return bpy.data.meshes.new_from_object(obj.evaluated_get(deps))
 
 
 def _islands(bm):
@@ -420,11 +450,12 @@ def _mesh_from_subset(bm, keep, name):
 
 
 def merge_islands(me):
-    """Make the body one closed piece.
+    """Make the skin cage one closed piece.
 
-    At busy branch nodes (palm, wrist) the skin modifier's hull can fail and leave a finger or the
-    hand as a separate shell that only overlaps its neighbour, and a stray loose vertex or two.
-    Loose vertices are removed and the overlapping shells are unioned with the exact boolean.
+    Separate graph pieces (the thumbs) and shells left where a busy branch node's skin hull fails
+    only overlap their neighbours; tubes can also pass through each other. Loose vertices are
+    removed, then an exact boolean union with self-intersection joins every shell and resolves
+    the overlaps.
     """
     bm = bmesh.new()
     try:
@@ -432,9 +463,6 @@ def merge_islands(me):
         bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context="VERTS")
         bm.verts.index_update()
         pieces = sorted(_islands(bm), key=len, reverse=True)
-        if len(pieces) == 1:
-            bm.to_mesh(me)
-            return me
         main = _mesh_from_subset(bm, pieces[0], "merge_main")
         rest = _mesh_from_subset(bm, set().union(*pieces[1:]), "merge_rest")
     finally:
@@ -446,13 +474,31 @@ def merge_islands(me):
     mod = a.modifiers.new("Union", "BOOLEAN")
     mod.operation, mod.operand_type, mod.object = "UNION", "OBJECT", b
     mod.solver, mod.use_self = "EXACT", True
-    deps = bpy.context.evaluated_depsgraph_get()
-    result = bpy.data.meshes.new_from_object(a.evaluated_get(deps))
+    result = _evaluated_copy(a)
     for o, m in ((a, main), (b, rest)):
         bpy.data.objects.remove(o, do_unlink=True)
         bpy.data.meshes.remove(m)
     bpy.data.meshes.remove(me)
     result.materials.clear()  # the boolean adds an empty slot for its operand
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(result)
+        # The exact boolean can leave slivers, and its seam is a hard crease: weld, triangulate
+        # the n-gons it made, then relax the seam (three rings around it) so it blends in.
+        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-4)
+        bmesh.ops.dissolve_degenerate(bm, edges=bm.edges, dist=1e-4)
+        ngons = [f for f in bm.faces if len(f.verts) != 4]
+        seam = {v for f in ngons for v in f.verts}
+        bmesh.ops.triangulate(bm, faces=[f for f in ngons if len(f.verts) > 4])
+        for _ in range(3):
+            seam |= {e.other_vert(v) for v in list(seam) for e in v.link_edges}
+        for _ in range(10 if seam else 0):
+            bmesh.ops.smooth_vert(bm, verts=list(seam), factor=0.5,
+                                  use_axis_x=True, use_axis_y=True, use_axis_z=True)
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+        bm.to_mesh(result)
+    finally:
+        bm.free()
     return result
 
 
@@ -587,6 +633,32 @@ def smooth_weights(obj, weights, iterations, factor):
         weights[:] = new
 
 
+JOINT_BLEND = 0.006  # metres either side of a finger joint over which two finger bones blend
+
+
+def _chain_share(bones, pl, i, t, hand):
+    """Weights (summing to 1) for a point at parameter t on segment i of a finger chain."""
+    lengths = [(pl[k + 1] - pl[k]).length for k in range(len(pl) - 1)]
+    s_start = sum(lengths[:i])
+    s = s_start + t * lengths[i]
+    share = {bones[i]: 1.0}
+    if i > 0 and s - s_start < JOINT_BLEND:
+        f = (s - s_start + JOINT_BLEND) / (2 * JOINT_BLEND)
+        share = {bones[i]: f, bones[i - 1]: 1.0 - f}
+    elif i + 1 < len(bones) and s_start + lengths[i] - s < JOINT_BLEND:
+        f = (s - (s_start + lengths[i]) + JOINT_BLEND) / (2 * JOINT_BLEND)
+        share = {bones[i + 1]: f, bones[i]: 1.0 - f}
+    # The first bone of the chain (metacarpal, or thumb_01 in the ball of the thumb) shares the
+    # palm with the hand bone, more of it toward the knuckle.
+    first = share.pop(bones[0], 0.0)
+    if first:
+        q = min(1.0, s / lengths[0])
+        q = 0.6 * q if "metacarpal" in bones[0] else min(1.0, q / 0.4)
+        share[bones[0]] = first * q
+        share[hand] = share.get(hand, 0.0) + first * (1.0 - q)
+    return share
+
+
 def correct_weights(obj, joints):
     pts = [v.co.copy() for v in obj.data.vertices]
     weights = read_weights(obj)
@@ -606,15 +678,51 @@ def correct_weights(obj, joints):
             for b in wd:
                 wd[b] *= (1.0 - f) / tot
             wd["pelvis"] = wd.get("pelvis", 0.0) + f
-    smooth_weights(obj, weights, iterations=3, factor=0.5)
+
+    # Shoulders: bone heat lets the upper arm pull torso skin medial to the shoulder joint (chest,
+    # back and the latissimus mass), which balloons into a lump when the arm is raised. Cap the
+    # arm's share there, fading in across the joint, and hand the rest to the clavicle above the
+    # armpit and to spine_05 below it.
+    for side, sx in (("l", 1.0), ("r", -1.0)):
+        s0, s1 = joints[f"upperarm_{side}"]
+        du = (s1 - s0).normalized()
+        arm_bones = [f"upperarm_{side}", f"upperarm_twist_01_{side}", f"upperarm_twist_02_{side}"]
+        for p, wd in zip(pts, weights):
+            if p.x * sx <= 0.0 or p.z < s0.z - 0.20:
+                continue
+            depth = (p - s0).dot(du)
+            lateral = (p.x - s0.x) * sx  # the deltoid cap outside the joint follows the arm
+            if depth >= 0.06:
+                continue
+            if lateral > 0.0:
+                # the shoulder cap itself: the arm moves it at most 60 percent, fading to fully
+                # by 6 cm down the arm, so the deltoid ring does not swing round as a ball
+                keep = 0.6 + 0.4 * max(0.0, min(1.0, depth / 0.06))
+            else:
+                keep = max(0.0, min(1.0, (depth + 0.03) / 0.06)) ** 2
+                keep = keep + (1.0 - keep) * max(0.0, min(1.0, (lateral + 0.03) / 0.03))
+            moved = 0.0
+            for b in arm_bones:
+                if b in wd:
+                    moved += wd[b] * (1.0 - keep)
+                    wd[b] *= keep
+            if moved > 0.0:
+                target = f"clavicle_{side}" if p.z > s0.z - 0.06 else "spine_05"
+                wd[target] = wd.get(target, 0.0) + moved
+    smooth_weights(obj, weights, iterations=4, factor=0.5)
 
     for side in ("l", "r"):
-        # Fingers: the heat solver only knows the hand bone; split the hand's weight among the
-        # nearest finger bones for vertices past the base of the palm.
+        # Fingers: the heat solver only knows the hand bone. Past the base of the palm each vertex
+        # goes to the one finger chain it is nearest (metacarpal + three phalanges, or the three
+        # thumb bones), along that chain to one bone, blending linearly with the next bone only
+        # within JOINT_BLEND of a joint; palm vertices share the metacarpal with the hand.
         hand = f"hand_{side}"
         w0, w1 = joints[hand]
         a = (w1 - w0).normalized()
-        bones = [f"{n}_{side}" for n in FINGER_BONES] + [hand]
+        chains = [[f"thumb_{i:02d}_{side}" for i in (1, 2, 3)]]
+        chains += [[f"{f}_metacarpal_{side}"] + [f"{f}_{i:02d}_{side}" for i in (1, 2, 3)]
+                   for f in ("index", "middle", "ring", "pinky")]
+        polylines = [[joints[c[0]][0]] + [joints[b][1] for b in c] for c in chains]
         for p, wd in zip(pts, weights):
             wh = wd.get(hand, 0.0)
             if wh <= 0.0:
@@ -623,15 +731,14 @@ def correct_weights(obj, joints):
             # Palm and finger region; near the wrist the hand bone keeps everything.
             if t < 0.015:
                 continue
-            dists = sorted((_dist_to_bone(p, *joints[b]), b) for b in bones)
-            near = dists[:3]
-            raw = [(b, 1.0 / max(d, 0.002) ** 4) for d, b in near]
-            tot = sum(r for _, r in raw)
+            dist, ci, si, st = min((_dist_to_bone(p, pl[i], pl[i + 1]), ci, i, _seg_t(p, pl[i], pl[i + 1]))
+                                   for ci, pl in enumerate(polylines) for i in range(len(pl) - 1))
+            share = _chain_share(chains[ci], polylines[ci], si, st, hand)
             # Blend in over the first few centimetres of the palm so the wrist stays smooth.
             k = min(1.0, (t - 0.015) / 0.03)
             wd[hand] = wh * (1.0 - k)
-            for b, r in raw:
-                wd[b] = wd.get(b, 0.0) + wh * k * r / tot
+            for b, wt in share.items():
+                wd[b] = wd.get(b, 0.0) + wh * k * wt
 
         # Twist bones: share of their limb along its length (tent around each twist head).
         for limb, (t1, t2) in TWIST.items():
@@ -852,6 +959,21 @@ def to_centimetre_scene(obj, arm):
         raise RuntimeError("centimetre conversion went wrong")
 
 
+def save_and_export(out_dir):
+    """Save and export to temporary names, then move both into place only if both succeed."""
+    blend, fbx = out_dir / f"{NAME}.blend", out_dir / f"{NAME}.fbx"
+    tmp_blend, tmp_fbx = out_dir / f"_tmp_{NAME}.blend", out_dir / f"_tmp_{NAME}.fbx"
+    try:
+        bpy.ops.wm.save_as_mainfile(filepath=str(tmp_blend), compress=True, copy=True)
+        export_fbx(tmp_blend, tmp_fbx)
+        os.replace(tmp_blend, blend)
+        os.replace(tmp_fbx, fbx)
+    finally:
+        for t in (tmp_blend, tmp_fbx, Path(str(tmp_blend) + "1")):
+            if t.exists():
+                t.unlink()
+
+
 def export_fbx(blend_path, fbx_path):
     """Export through the blender-to-unreal-export skill script, so its preset and checks apply."""
     cmd = [bpy.app.binary_path, "-b", str(blend_path), "--factory-startup", "--python-exit-code", "1",
@@ -902,15 +1024,13 @@ def main():
     print("checks: " + json.dumps(checks))
 
     render_turnarounds(scratch_dir)
+    if not ok or args.force_fail:
+        # A failed build never touches the committed .blend and .fbx.
+        print("BUILD CHECK FAILED (no .blend or .fbx written)")
+        sys.exit(1)
     if not args.check_only:
         to_centimetre_scene(obj, arm)
-        blend = out_dir / f"{NAME}.blend"
-        bpy.ops.wm.save_as_mainfile(filepath=str(blend), compress=True)
-        export_fbx(blend, out_dir / f"{NAME}.fbx")
-
-    if not ok:
-        print("BUILD CHECK FAILED")
-        sys.exit(1)
+        save_and_export(out_dir)
     print("BUILD OK")
 
 

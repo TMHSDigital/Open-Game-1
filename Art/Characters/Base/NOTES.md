@@ -74,11 +74,17 @@ script. Build choices:
   `center_of_mass` sit at the origin pointing +Y with roll 0, so they import with no rotation.
   `ik_foot_*` and `ik_hand_*` copy the foot and hand bones. The ik and helper bones, and `root`,
   carry no weights.
-- Mesh: skin modifier over a node graph, subdivided twice (about 17,000 triangles). Rest pose is
-  the A-pose above, with a 12 degree elbow bend and a slight knee bend. Each hand has a separate
-  thumb and four fingers with a ring at every finger joint; the thumb is its own piece of the
-  graph. Where the skin hull leaves overlapping shells (thumb, palm and wrist branch nodes), an
-  exact boolean union joins them, so the body is one closed piece (checked: `mesh_islands` 1).
+- Mesh: skin modifier over a node graph, subdivided twice (about 18,000 triangles). Rest pose is
+  the A-pose above, with a 12 degree elbow bend and a slight knee bend. Each hand has a palm, four
+  fingers with a ring at every joint and a crease ring past the knuckle, and a thumb built from a
+  thenar mass inside the palm plus a free thumb from `thumb_02`. Add-on masses (thenar, thumb,
+  armpit, crotch) are separate pieces of the graph, because an extra branch on a busy node makes
+  the skin hull fail; an exact boolean union joins them and the seam is relaxed, so the body is
+  one closed piece (checked: `mesh_islands` 1).
+- Weights: bone heat on the main bones, then corrections (legs, crotch, shoulders, one finger
+  chain per finger vertex with linear blends only near the joints, twist shares, 4 influences).
+- A failed check exits non-zero before anything is saved; the .blend and .fbx are written to
+  temporary names and moved into place only when both succeed.
 - The scene is built in metres and converted to a centimetre scene (Unit Scale 0.01, armature
   scaled 100 and applied) before it is saved and exported: the export skill's skeletal path.
 
@@ -99,4 +105,4 @@ skeleton's reference pose.
 
 Why the centimetre scene: the first export came from a metre scene, and its root bone imported at
 scale 100 with every Apply Scalings option (Unreal folds the metre-to-centimetre conversion of the
-`Armature` node into `root`); the export skill now exports skeletal meshes from a centimetre scene.
+`Armature` node into `root`); the export skill now exports skeletal meshes from a centimetre scene (decision 0012).
