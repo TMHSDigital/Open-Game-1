@@ -167,3 +167,29 @@ def test_non_http_clip_is_not_linked(repo, tmp_path):
     site.build(repo, out)
     html = (out / "index.html").read_text("utf-8") + (out / "devlog/2026-11-23-d.html").read_text("utf-8")
     assert "javascript:" not in html
+
+
+def test_decision_links_to_other_docs_are_rewritten(repo, tmp_path):
+    d = repo / "docs"
+    (d / "decisions" / "0002-links.md").write_text(
+        "# 0002: Links\n\nStatus: Accepted\nDate: 2026-11-02\n\n## Links\n\n"
+        "- [0001](0001-use-files.md)\n- [checklist](../steam/SETUP-CHECKLIST.md#top)\n", "utf-8")
+    out = tmp_path / "_site"
+    site.build(repo, out)
+    page = (out / "decisions" / "0002-links.html").read_text("utf-8")
+    assert 'href="../decisions/0001-use-files.html"' in page
+    assert ".md" not in "".join(links_of(out / "decisions" / "0002-links.html"))
+    assert site.broken_links(out) == []
+
+
+def test_build_fails_on_a_broken_relative_link(repo, tmp_path):
+    (repo / "docs" / "decisions" / "0003-bad.md").write_text(
+        "# 0003: Bad\n\nStatus: Accepted\nDate: 2026-11-03\n\n[gone](missing-page.html)\n", "utf-8")
+    with pytest.raises(SystemExit, match="missing-page.html"):
+        site.build(repo, tmp_path / "_site")
+
+
+def test_real_repo_site_has_no_broken_links(tmp_path):
+    real = Path(__file__).resolve().parents[2]
+    site.build(real, tmp_path / "_site")
+    assert site.broken_links(tmp_path / "_site") == []

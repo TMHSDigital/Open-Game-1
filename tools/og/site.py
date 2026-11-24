@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import html
 import json
+import posixpath
 import re
 import shutil
 import sys
@@ -15,7 +16,7 @@ from pathlib import Path
 
 from markdown_it import MarkdownIt
 
-from og import decisions
+from og import decisions, gh
 
 SITE_DIR = Path(__file__).resolve().parents[2] / "site"
 _SLOT = re.compile(r"\{\{(\w+)\}\}")
@@ -23,6 +24,9 @@ _FRONT = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n?", re.S)
 _DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 _SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 _HTTP = re.compile(r"https?://", re.I)
+_HREF = re.compile(r'href="([^"]+)"')
+_NOT_RELATIVE = re.compile(r"(?:[a-z][a-z0-9+.-]*:|#|/)", re.I)
+_LINK_ATTR = re.compile(r'(?:href|src)="([^"]+)"')
 
 
 def _render_md(text: str) -> str:
@@ -65,6 +69,29 @@ class _Site:
     def __init__(self, repo: Path, out: Path, site_dir: Path):
         self.repo, self.out, self.site_dir = repo, out, site_dir
         self.docs = repo / "docs"
+
+    def fix_links(self, body: str, src_dir: str) -> str:
+        """Rewrite relative links to .md files in a rendered page one level below the site root.
+
+        The docs link to each other by repo-relative markdown path, which works on GitHub but
+        not here: only .html pages are published. A link to a decision or milestone that has a
+        page goes to that page; any other .md link goes to the file on GitHub."""
+        def sub(m: re.Match) -> str:
+            href = html.unescape(m.group(1))
+            path, sep, frag = href.partition("#")
+            if _NOT_RELATIVE.match(href) or not path.endswith(".md"):
+                return m.group(0)
+            target = posixpath.normpath(posixpath.join(src_dir, path))
+            new = None
+            for folder, pattern in (("decisions", r"\d{4}-[^/]+"), ("milestones", r"m\d+-[^/]+")):
+                hit = re.fullmatch(rf"docs/{folder}/({pattern})\.md", target)
+                if hit and (self.docs / folder / f"{hit.group(1)}.md").is_file():
+                    new = f"../{folder}/{hit.group(1)}.html{sep}{frag}"
+            if new is None:
+                slug = gh.repo_slug(self.repo)
+                new = f"https://github.com/{slug}/blob/main/{target}{sep}{frag}" if slug else "#"
+            return f'href="{html.escape(new, quote=True)}"'
+        return _HREF.sub(sub, body)
 
     def template(self, name: str) -> str:
         return (self.site_dir / "templates" / f"{name}.html").read_text("utf-8")
@@ -131,7 +158,8 @@ class _Site:
                     meta.append(f"{k.split('_')[0]}: {_esc(str(e[k])[:7])}")
             if e.get("clip"):
                 meta.append(f'<a href="{_esc(e["clip"])}">clip</a>')
-            body = _render_md(e["body"]).replace('src="media/', 'src="../media/')
+            body = self.fix_links(_render_md(e["body"]), "docs/devlog").replace(
+                'src="media/', 'src="../media/')
             self.page(f"devlog/{e['id']}.html", str(e.get("goal") or e["id"]), "entry",
                       {"meta": " | ".join(meta), "body": body})
 
@@ -141,7 +169,7 @@ class _Site:
             return '<p class="empty">No milestones yet.</p>'
         items = []
         for p in pages:
-            body = _render_md(p.read_text("utf-8")).replace(
+            body = self.fix_links(_render_md(p.read_text("utf-8")), "docs/milestones").replace(
                 'src="../../docs/devlog/media/', 'src="../media/')
             self.page(f"milestones/{p.stem}.html", p.stem, "entry", {"meta": "", "body": body})
             items.append(f'<li><a href="milestones/{_esc(p.stem)}.html">{_esc(p.stem)}</a></li>')
@@ -194,7 +222,8 @@ class _Site:
                 text = (self.docs / "decisions" / a.filename).read_text("utf-8")
                 stem = a.filename[:-3]
                 self.page(f"decisions/{stem}.html", f"{a.number:04d}: {a.title}", "entry",
-                          {"meta": _esc(a.status), "body": _render_md(text)})
+                          {"meta": _esc(a.status),
+                           "body": self.fix_links(_render_md(text), "docs/decisions")})
                 items.append(f'<li><a href="decisions/{_esc(stem)}.html">'
                              f'{a.number:04d}: {_esc(a.title)}</a><br>'
                              f'<span class="meta">{_esc(a.status)}</span></li>')
@@ -249,6 +278,23 @@ def build(repo: Path, out: Path, site_dir: Path | None = None) -> None:
     s.gallery()
     s.decisions()
     s.builds()
+    broken = broken_links(s.out)
+    if broken:
+        raise SystemExit("og site build: broken relative link(s), nothing should be deployed:\n"
+                         + "\n".join(f"  {page}: {link}" for page, link in broken))
+
+
+def broken_links(out: Path) -> list[tuple[str, str]]:
+    """(page, link) for every relative href or src in the built site whose target is missing."""
+    bad = []
+    for page in sorted(out.rglob("*.html")):
+        for link in _LINK_ATTR.findall(page.read_text("utf-8")):
+            link = html.unescape(link)
+            if _NOT_RELATIVE.match(link):
+                continue
+            if not (page.parent / link.split("#")[0]).exists():
+                bad.append((page.relative_to(out).as_posix(), link))
+    return bad
 
 
 def _repo_root() -> Path:
