@@ -14,7 +14,11 @@ $joined = $args -join ' '
 if ($env:FAKE_STEAMCMD_LOG) { Add-Content -LiteralPath $env:FAKE_STEAMCMD_LOG -Value $joined }
 
 Write-Output 'Redirecting stderr to fake log'
-Write-Output 'Logging in user ... OK'
+# Like the real tool, echo the account name, a SteamID and the IDs, so the tests can check
+# that release.ps1 masks them.
+$login = if ($args -contains '+login') { $args[[array]::IndexOf($args, '+login') + 1] } else { 'nobody' }
+Write-Output "Logging in user '$login' [U:1:55555555] to Steam Public...OK"  # og-secrets: allow (fake SteamID)
+Write-Output "AppID $($env:STEAM_APPID) depot $($env:STEAM_DEPOT_WIN) (fake)"
 
 if ($args -contains '+app_info_print') {
     $appId = $args[[array]::IndexOf($args, '+app_info_print') + 1]

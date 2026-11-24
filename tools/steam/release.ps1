@@ -22,6 +22,7 @@
 #
 # IDs come from environment variables. If one is not set, only these keys are read from .env:
 # STEAM_APPID, STEAM_DEPOT_WIN, STEAM_BUILD_ACCOUNT, STEAMCMD_PATH. Values are never printed.
+# steamcmd output is masked (Protect-SteamOutput) before it is shown or written to the log.
 # No password is stored anywhere: steamcmd asks for it (and Steam Guard) on first login and caches a
 # session in its own folder.
 
@@ -274,16 +275,34 @@ function Invoke-Check([string]$Gate, [string[]]$Command) {
     $LASTEXITCODE
 }
 
+# Masks the account name, SteamID, App ID and Depot ID in one line of steamcmd output. Everything
+# shown on the console or written to the log goes through this, so the values never reach a
+# terminal recording, an agent transcript or a pasted log line.
+function Protect-SteamOutput([string]$Line) {
+    $pairs = @(
+        @($env:STEAM_BUILD_ACCOUNT, '<STEAM_BUILD_ACCOUNT>'),
+        @($env:STEAM_DEPOT_WIN, '<STEAM_DEPOT_WIN>'),
+        @($env:STEAM_APPID, '<STEAM_APPID>'))
+    foreach ($pair in $pairs) {
+        if ($pair[0]) { $Line = $Line -replace "(?<![A-Za-z0-9])$([regex]::Escape($pair[0]))(?![A-Za-z0-9])", $pair[1] }
+    }
+    $Line = $Line -replace "Logging in user '[^']*'", "Logging in user '<STEAM_BUILD_ACCOUNT>'"
+    $Line -replace '\[U:1:\d+\]', '[U:1:****]'
+}
+
+# Runs steamcmd. The console and the log file get masked lines; the caller gets the raw lines in
+# memory only, to parse the BuildID and ERROR! lines.
 function Invoke-SteamCmd([string[]]$SteamArgs, [string]$Log) {
     $lines = [System.Collections.Generic.List[string]]::new()
+    $shown = [System.Collections.Generic.List[string]]::new()
     $exe = $SteamCmd; $pre = @()
     if ($SteamCmd -like '*.ps1') { $exe = 'pwsh'; $pre = @('-NoProfile', '-File', $SteamCmd) }
     $all = @($pre) + @($SteamArgs)
-    & $exe @all 2>&1 | ForEach-Object { $s = "$_"; Write-Host $s; $lines.Add($s) }
+    & $exe @all 2>&1 | ForEach-Object { $s = "$_"; $m = Protect-SteamOutput $s; Write-Host $m; $lines.Add($s); $shown.Add($m) }
     $code = $LASTEXITCODE
     if ($Log) {
         New-Item -ItemType Directory -Force -Path (Split-Path $Log) | Out-Null
-        Set-Content -LiteralPath $Log -Value $lines -Encoding utf8
+        Set-Content -LiteralPath $Log -Value $shown -Encoding utf8
     }
     [pscustomobject]@{ Code = $code; Lines = $lines.ToArray() }
 }

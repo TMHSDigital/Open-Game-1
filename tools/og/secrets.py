@@ -21,7 +21,8 @@ BINARY_ASSET_SUFFIXES = {".uasset", ".umap", ".blend", ".fbx", ".glb", ".wav", "
 # fixtures (PRAGMA_PATHS). Anywhere else the marker is ignored, so a real finding in a doc, a
 # devlog or a release note cannot be cleared by appending a comment.
 PRAGMA = "og-secrets: allow"
-PRAGMA_PATHS = ("tools/tests/", "tools/og/secrets.py", "tools/steam/test-release.ps1")
+PRAGMA_PATHS = ("tools/tests/", "tools/og/secrets.py", "tools/steam/test-release.ps1",
+                "tools/steam/fake-steamcmd.ps1")
 # Keys whose local values (process environment or the gitignored .env) are searched for verbatim.
 LOCAL_VALUE_KEYS = ("STEAM_APPID", "STEAM_DEPOT_WIN", "STEAM_BUILD_ACCOUNT")
 EXCERPT_MAX = 120
@@ -61,7 +62,7 @@ RULES = [
     ("steam-build-account",
      re.compile(r"STEAM_BUILD_ACCOUNT[\"']?\s*[=:][ \t]*[\"']?(?P<s>[A-Za-z0-9_.@-]+)")),
     ("steam-build-account",
-     re.compile(r"Logging in user '(?P<s>[^']+)'")),  # og-secrets: allow
+     re.compile(r"Logging in user '(?P<s>[^'<$\[][^']*)'")),  # og-secrets: allow
     ("steam-build-account",
      re.compile(r"\+login\s+(?P<s>(?!anonymous\b)[A-Za-z0-9_.@-]+)")),
     ("steam-cookie",

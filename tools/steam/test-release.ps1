@@ -306,6 +306,10 @@ try {
     Set-Content (Join-Path $fx.Repo '.env') 'UNRELATED_SETTING=1'
     $r = Invoke-Release @('dev', '-NoGitHub')
     Check 'Review Focus 4: ignored-only dirty tree (_release/x, .env) passes the clean-tree gate' ($r.Code -eq 0) $r.Output
+    $steamLog = Get-Content -LiteralPath (Join-Path $fx.Work 'steamcmd.log') -Raw
+    $leak = '1234560|1234561|fake_builder|55555555'  # og-secrets: allow (fake test IDs)
+    Check 'steamcmd output on the console is masked (no IDs, account name or SteamID)' ($r.Output -notmatch $leak -and $r.Output -match '<STEAM_APPID>' -and $r.Output -match "Logging in user '<STEAM_BUILD_ACCOUNT>'") $r.Output
+    Check 'steamcmd.log is masked the same way' ($steamLog -notmatch $leak -and $steamLog -match '<STEAM_DEPOT_WIN>' -and $steamLog -match '\[U:1:\*\*\*\*\]') $steamLog
     $remoteIni = (Invoke-Git $fx.Remote show 'main:Game/Config/DefaultGame.ini') -join "`n"
     Check 'dev bumps ProjectVersion to 0.1.1, commits and pushes it' ($remoteIni -match 'ProjectVersion=0\.1\.1')
     $remoteLedger = (Invoke-Git $fx.Remote show 'main:docs/steam/BUILDS.md') -join "`n"
