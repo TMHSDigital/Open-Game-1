@@ -252,9 +252,37 @@ class _Site:
             elif not all(re.fullmatch(r":?-+:?", c) for c in cells):
                 rows.append(cells)
         if header and rows:
-            th = "".join(f"<th>{_esc(h)}</th>" for h in header)
-            trs = "".join("<tr>" + "".join(f"<td>{_esc(c)}</td>" for c in r) + "</tr>\n"
-                          for r in reversed(rows))
+            slug = gh.repo_slug(self.repo)
+            col = {name: i for i, name in enumerate(header)}
+
+            def cell(row: list[str], name: str) -> str:
+                return row[col[name]] if name in col and col[name] < len(row) else ""
+
+            def render(row: list[str], prev: list[str] | None) -> str:
+                """One table row: the commit is a link, and a last cell says what changed."""
+                version, sha = cell(row, "version"), cell(row, "git_sha")
+                tds = []
+                for i, c in enumerate(row):
+                    if slug and header[i] == "git_sha" and re.fullmatch(r"[0-9a-f]{7,40}", c):
+                        c = (f'<a href="https://github.com/{slug}/commit/{c}">'
+                             f"<code>{c[:7]}</code></a>")
+                    else:
+                        c = _esc(c)
+                    tds.append(f"<td>{c}</td>")
+                links = []
+                prev_sha = cell(prev, "git_sha") if prev else ""
+                if slug and prev_sha and sha:
+                    links.append(f'<a href="https://github.com/{slug}/compare/{prev_sha}...{sha}">'
+                                 f'changes since {_esc(cell(prev, "version"))}</a>')
+                if slug and re.fullmatch(r"\d+\.\d+\.\d+", version):
+                    links.append(f'<a href="https://github.com/{slug}/releases/tag/v{version}">'
+                                 "release notes</a>")
+                tds.append(f"<td>{' | '.join(links)}</td>")
+                return "<tr>" + "".join(tds) + "</tr>\n"
+
+            th = "".join(f"<th>{_esc(h)}</th>" for h in header) + "<th>what changed</th>"
+            trs = "".join(render(r, rows[i - 1] if i else None)
+                          for i, r in reversed(list(enumerate(rows))))
             body = f"<table>\n<tr>{th}</tr>\n{trs}</table>"
         else:
             body = '<p class="empty">No builds yet.</p>'

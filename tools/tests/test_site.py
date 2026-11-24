@@ -193,3 +193,21 @@ def test_real_repo_site_has_no_broken_links(tmp_path):
     real = Path(__file__).resolve().parents[2]
     site.build(real, tmp_path / "_site")
     assert site.broken_links(tmp_path / "_site") == []
+
+
+def test_builds_page_links_commit_changes_and_release_notes(repo, tmp_path):
+    (repo / ".git").mkdir()
+    (repo / ".git" / "config").write_text(
+        '[remote "origin"]\n\turl = https://github.com/someone/project.git\n', "utf-8")
+    ledger = repo / "docs" / "steam" / "BUILDS.md"
+    second = "b" * 40
+    ledger.write_text(ledger.read_text("utf-8") + "| 0.1.1 | 12346 | " + second +
+                      " | 2026-11-23T10:00:00Z | 2026-11-23T10:05:00Z | | | | second |\n", "utf-8")
+    out = tmp_path / "_site"
+    site.build(repo, out)
+    page = (out / "builds.html").read_text("utf-8")
+    assert f"https://github.com/someone/project/commit/{second}" in page
+    assert f"https://github.com/someone/project/compare/{SHA}...{second}" in page
+    assert "changes since 0.1.0" in page
+    assert "https://github.com/someone/project/releases/tag/v0.1.1" in page
+    assert page.index("0.1.1") < page.index("12345")  # newest build first
