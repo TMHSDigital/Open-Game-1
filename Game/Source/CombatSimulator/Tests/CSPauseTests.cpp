@@ -115,35 +115,32 @@ bool FCSPauseParseNumberTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSPauseCloseKeyActsOnReleaseTest, "CombatSimulator.CS.Pause.CloseKeyActsOnRelease", CSPauseTests::TestFlags)
-bool FCSPauseCloseKeyActsOnReleaseTest::RunTest(const FString& Parameters)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSPauseHeldCloseKeyDoesNotReopenTest, "CombatSimulator.CS.Pause.HeldCloseKeyDoesNotReopen", CSPauseTests::TestFlags)
+bool FCSPauseHeldCloseKeyDoesNotReopenTest::RunTest(const FString& Parameters)
 {
 	for (const FKey& Key : {EKeys::Escape, EKeys::Tab, EKeys::Gamepad_Special_Right, EKeys::Gamepad_FaceButton_Right})
 	{
-		TestTrue(FString::Printf(TEXT("%s closes the screen"), *Key.ToString()), FCSPauseKeyLatch::IsCloseKey(Key));
+		TestTrue(FString::Printf(TEXT("%s closes the screen"), *Key.ToString()), FCSPauseKeyGuard::IsCloseKey(Key));
 	}
-	TestFalse(TEXT("Other keys do not"), FCSPauseKeyLatch::IsCloseKey(EKeys::W) || FCSPauseKeyLatch::IsCloseKey(EKeys::Enter));
+	TestFalse(TEXT("Other keys do not"), FCSPauseKeyGuard::IsCloseKey(EKeys::W) || FCSPauseKeyGuard::IsCloseKey(EKeys::Enter));
 
-	// The press that opened the screen is still held: its repeats and its release do nothing.
-	FCSPauseKeyLatch Latch;
-	Latch.KeyDown(EKeys::Escape, true);
-	Latch.KeyDown(EKeys::Escape, true);
-	TestFalse(TEXT("The release of the opening press does not close"), Latch.KeyUp(EKeys::Escape));
+	FCSPauseKeyGuard Guard;
+	TestFalse(TEXT("Nothing is swallowed before the screen was closed by a key"), Guard.ShouldSwallow(EKeys::Escape, false, 10.0));
 
-	// A new press closes, on its release and once, however long it is held.
-	Latch.KeyDown(EKeys::Escape, false);
-	Latch.KeyDown(EKeys::Escape, true);
-	Latch.KeyDown(EKeys::Escape, true);
-	TestTrue(TEXT("A press that began on the screen closes on release"), Latch.KeyUp(EKeys::Escape));
-	TestFalse(TEXT("Only once"), Latch.KeyUp(EKeys::Escape));
+	// Escape closed the screen at t = 100 and is still held: its repeats must not reach the game.
+	Guard.Arm(EKeys::Escape, 100.0);
+	TestTrue(TEXT("The first repeat is swallowed"), Guard.ShouldSwallow(EKeys::Escape, false, 100.3));
+	TestTrue(TEXT("So is every later one"), Guard.ShouldSwallow(EKeys::Escape, false, 101.5));
+	TestFalse(TEXT("Other keys pass"), Guard.ShouldSwallow(EKeys::W, false, 101.6));
+	TestFalse(TEXT("The release passes"), Guard.ShouldSwallow(EKeys::Escape, true, 102.0));
+	TestFalse(TEXT("And the next press opens the screen again"), Guard.ShouldSwallow(EKeys::Escape, false, 102.5));
 
-	// The release must be of the key that was pressed.
-	Latch.KeyDown(EKeys::Tab, false);
-	TestFalse(TEXT("The release of another key does not close"), Latch.KeyUp(EKeys::Escape));
-	TestTrue(TEXT("Its own release does"), Latch.KeyUp(EKeys::Tab));
-
-	Latch.KeyDown(EKeys::W, false);
-	TestFalse(TEXT("A key that is not a closing key never closes"), Latch.KeyUp(EKeys::W));
+	// A release lost with focus must not swallow a press made much later.
+	Guard.Arm(EKeys::Tab, 200.0);
+	TestTrue(TEXT("Swallowed inside the limit"), Guard.ShouldSwallow(EKeys::Tab, false, 200.0 + FCSPauseKeyGuard::MaxSeconds - 0.1));
+	Guard.Arm(EKeys::Tab, 300.0);
+	TestFalse(TEXT("Not swallowed after the limit"), Guard.ShouldSwallow(EKeys::Tab, false, 300.0 + FCSPauseKeyGuard::MaxSeconds + 0.1));
+	TestFalse(TEXT("And the guard is over"), Guard.ShouldSwallow(EKeys::Tab, false, 300.0 + FCSPauseKeyGuard::MaxSeconds + 0.2));
 	return true;
 }
 

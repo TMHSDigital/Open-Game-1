@@ -105,6 +105,21 @@ void ACSPlayerController::SetPauseScreenOpen(bool bOpen)
 	}
 }
 
+void ACSPlayerController::ClosePauseScreenFromKey(const FKey& Key)
+{
+	PauseKeyGuard.Arm(Key, FPlatformTime::Seconds());
+	SetPauseScreenOpen(false);
+}
+
+bool ACSPlayerController::InputKey(const FInputKeyEventArgs& Params)
+{
+	if (PauseKeyGuard.ShouldSwallow(Params.Key, Params.Event == IE_Released, FPlatformTime::Seconds()))
+	{
+		return true;
+	}
+	return Super::InputKey(Params);
+}
+
 void ACSPlayerController::QuitToDesktop()
 {
 	UKismetSystemLibrary::QuitGame(this, this, EQuitPreference::Quit, false);

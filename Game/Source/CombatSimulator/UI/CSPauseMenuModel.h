@@ -25,27 +25,34 @@ struct FCSKeyRow
 };
 
 /**
- * Decides when a key closes the pause screen.
+ * Keeps the key that closed the pause screen from opening it again.
  *
- * The keys that close the screen are also the pause action's keys. If the screen closed on key down,
- * the same key, still held and repeating, would reach the game as a new press and open the screen
- * again. So the screen swallows every key down of a closing key (repeats too) and closes on the
- * release, and only for a press that began while the screen was up: the release of the press that
- * opened the screen does nothing.
+ * The keys that close the screen (FCSPauseKeyGuard::IsCloseKey) are also the pause action's keys. The
+ * screen closes on key down and swallows that event, so the game never saw the key go down. While the
+ * key is still held, its repeat events now reach the game, which would take the first one as a new
+ * press of the pause action and open the screen again. The player controller arms this guard when the
+ * screen closes from a key and asks it about every key event: presses and repeats of that key are
+ * swallowed until the key is released (or MaxSeconds pass, in case the release was lost with focus).
  */
-struct COMBATSIMULATOR_API FCSPauseKeyLatch
+struct COMBATSIMULATOR_API FCSPauseKeyGuard
 {
+	static constexpr double MaxSeconds = 5.0;
+
 	/** Escape, Tab, gamepad Start and the right face button. */
 	static bool IsCloseKey(const FKey& Key);
 
-	/** A closing key went down on the screen. A first press arms the latch; a repeat does not. */
-	void KeyDown(const FKey& Key, bool bIsRepeat);
+	/** The screen was just closed by Key, at time Now (seconds). */
+	void Arm(const FKey& Key, double Now);
 
-	/** A key was released. True when it ends a press that began on the screen: close now. */
-	bool KeyUp(const FKey& Key);
+	/**
+	 * A key event is about to reach the game. True: swallow it (a press or repeat of the closing key
+	 * while it is still held). The release of the closing key ends the guard and is let through.
+	 */
+	bool ShouldSwallow(const FKey& Key, bool bIsRelease, double Now);
 
 private:
 	FKey Armed;
+	double ArmedAt = 0.0;
 };
 
 /**

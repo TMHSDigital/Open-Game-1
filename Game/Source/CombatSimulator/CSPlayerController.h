@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
+#include "UI/CSPauseMenuModel.h"
 #include "CSPlayerController.generated.h"
 
 class SCSPauseScreen;
@@ -44,6 +45,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "CS|Pause")
 	void TogglePauseScreen();
 
+	/**
+	 * Closes the pause screen because Key was pressed on it. The key is then ignored by the game
+	 * until it is released (FCSPauseKeyGuard), so holding it does not open the screen again.
+	 */
+	void ClosePauseScreenFromKey(const FKey& Key);
+
 	/** Leaves the game. */
 	UFUNCTION(BlueprintCallable, Category = "CS|Pause")
 	void QuitToDesktop();
@@ -55,6 +62,7 @@ public:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void OnPossess(APawn* InPawn) override;
 	virtual void SetupInputComponent() override;
+	virtual bool InputKey(const FInputKeyEventArgs& Params) override;
 
 protected:
 	/** Adds the pause screen to the game viewport or removes it. Does nothing without a viewport (headless runs). */
@@ -62,6 +70,7 @@ protected:
 
 private:
 	bool bPauseScreenOpen = false;
+	FCSPauseKeyGuard PauseKeyGuard;
 	FDelegateHandle SettingsChangedHandle;
 	TSharedPtr<SCSPauseScreen> PauseScreen;
 	/** The viewport content that holds PauseScreen, kept so it can be removed. */

@@ -187,11 +187,18 @@ FReply SCSPauseScreen::OnPreviewKeyDown(const FGeometry& MyGeometry, const FKeyE
 {
 	// Seen before any focused control, so these keys always work.
 	const FKey Key = InKeyEvent.GetKey();
-	if (FCSPauseKeyLatch::IsCloseKey(Key))
+	if (FCSPauseKeyGuard::IsCloseKey(Key))
 	{
-		// Swallowed here, repeats included, so a held key never reaches the game as a new press of
-		// the pause action. The screen closes when the key is released (OnKeyUp).
-		CloseLatch.KeyDown(Key, InKeyEvent.IsRepeat());
+		// These are also the pause action's keys. A repeat here is the press that opened the screen,
+		// still held: swallowed. A new press closes, and the controller then ignores the key until
+		// it is released, so the held key cannot open the screen again.
+		if (!InKeyEvent.IsRepeat())
+		{
+			if (ACSPlayerController* C = Owner.Get())
+			{
+				C->ClosePauseScreenFromKey(Key);
+			}
+		}
 		return FReply::Handled();
 	}
 	if (InKeyEvent.IsRepeat())
@@ -207,17 +214,6 @@ FReply SCSPauseScreen::OnPreviewKeyDown(const FGeometry& MyGeometry, const FKeyE
 	{
 		StepTab(1);
 		return FReply::Handled();
-	}
-	return FReply::Unhandled();
-}
-
-FReply SCSPauseScreen::OnKeyUp(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent)
-{
-	// Only a press that began on the screen closes it. The release of the press that opened the
-	// screen is left for the game, which needs to see that key come up.
-	if (CloseLatch.KeyUp(InKeyEvent.GetKey()))
-	{
-		return Resume();
 	}
 	return FReply::Unhandled();
 }
