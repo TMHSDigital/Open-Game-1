@@ -43,6 +43,7 @@ Every design decision, every work session and every Steam build is recorded in t
 | Where | What you get |
 |---|---|
 | [Devlog site](https://tmhsdigital.github.io/Open-Game-1/) | One entry per work session: the goal, what changed, the decisions it touched, and screenshots |
+| [Feed](https://tmhsdigital.github.io/Open-Game-1/feed.xml) | An Atom feed of the devlog entries, for any feed reader |
 | [Gallery](https://tmhsdigital.github.io/Open-Game-1/gallery.html) | Each fixed camera with a slider to scrub through its shots over time |
 | [Decisions](https://tmhsdigital.github.io/Open-Game-1/decisions.html) | What is settled, why, and what was rejected |
 | [Open questions](https://github.com/TMHSDigital/Open-Game-1/issues?q=is%3Aissue+is%3Aopen+label%3Adecision) | GitHub Issues where anyone can comment before a decision is made |

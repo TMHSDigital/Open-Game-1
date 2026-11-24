@@ -211,3 +211,27 @@ def test_builds_page_links_commit_changes_and_release_notes(repo, tmp_path):
     assert "changes since 0.1.0" in page
     assert "https://github.com/someone/project/releases/tag/v0.1.1" in page
     assert page.index("0.1.1") < page.index("12345")  # newest build first
+
+
+def test_feed_lists_entries_newest_first_with_absolute_links(repo, tmp_path):
+    import xml.etree.ElementTree as ET
+    (repo / ".git").mkdir()
+    (repo / ".git" / "config").write_text(
+        '[remote "origin"]\n\turl = https://github.com/Someone/project.git\n', "utf-8")
+    out = tmp_path / "_site"
+    site.build(repo, out)
+    ns = {"a": "http://www.w3.org/2005/Atom"}
+    feed = ET.parse(out / "feed.xml").getroot()
+    links = [e.find("a:link", ns).get("href") for e in feed.findall("a:entry", ns)]
+    assert links == [f"https://someone.github.io/project/devlog/2026-11-{d}.html"
+                     for d in ("22-b", "21-c", "20-a")]
+    assert feed.findall("a:entry", ns)[0].find("a:title", ns).text == "third <goal>"
+    assert 'href="feed.xml"' in (out / "index.html").read_text("utf-8")
+
+
+def test_feed_is_valid_and_empty_without_a_github_origin(repo, tmp_path):
+    import xml.etree.ElementTree as ET
+    out = tmp_path / "_site"
+    site.build(repo, out)
+    feed = ET.parse(out / "feed.xml").getroot()
+    assert feed.findall("{http://www.w3.org/2005/Atom}entry") == []

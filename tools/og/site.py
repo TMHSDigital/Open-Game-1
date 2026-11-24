@@ -139,6 +139,7 @@ class _Site:
 
     def devlog(self) -> None:
         entries = self.entries()
+        self.feed(entries)
         if entries:
             items = []
             for e in entries:
@@ -168,6 +169,40 @@ class _Site:
                 'src="media/', 'src="../media/')
             self.page(f"devlog/{e['id']}.html", str(e.get("goal") or e["id"]), "entry",
                       {"meta": " | ".join(meta), "body": body})
+
+    def feed(self, entries: list[dict]) -> None:
+        """feed.xml: an Atom feed of the devlog, newest first, so the build can be followed
+        without a GitHub account. Feed links must be absolute, so the Pages address is derived
+        from the origin; with no GitHub origin an empty feed is written (the link in every
+        page still resolves)."""
+        slug = gh.repo_slug(self.repo)
+        base = ""
+        if slug:
+            owner, name = slug.split("/", 1)
+            base = f"https://{owner.lower()}.github.io/{name}/"
+        newest = sorted(entries, key=lambda e: (str(e["date"]), str(e["id"])), reverse=True)[:30]
+        items = []
+        for e in newest if base else []:
+            url = f"{base}devlog/{e['id']}.html"
+            items.append(
+                "<entry>"
+                f"<title>{_esc(str(e.get('goal') or e['id']))}</title>"
+                f'<link href="{_esc(url)}"/>'
+                f"<id>{_esc(url)}</id>"
+                f"<updated>{_esc(str(e['date'])[:10])}T00:00:00Z</updated>"
+                f"<summary>Devlog entry {_esc(str(e['id']))}: {_esc(str(e.get('goal') or ''))}</summary>"
+                "</entry>")
+        updated = f"{str(newest[0]['date'])[:10]}T00:00:00Z" if newest else "1970-01-01T00:00:00Z"
+        text = ('<?xml version="1.0" encoding="utf-8"?>\n'
+                '<feed xmlns="http://www.w3.org/2005/Atom">'
+                "<title>Combat Simulator devlog</title>"
+                f"<id>{_esc(base or 'urn:combat-simulator:devlog')}</id>"
+                f"<updated>{updated}</updated>"
+                "<author><name>Combat Simulator</name></author>"
+                + (f'<link href="{_esc(base)}"/><link rel="self" href="{_esc(base)}feed.xml"/>'
+                   if base else "")
+                + "".join(items) + "</feed>\n")
+        (self.out / "feed.xml").write_text(text, "utf-8", newline="\n")
 
     def milestones(self) -> str:
         pages = sorted((self.docs / "milestones").glob("m[0-9]*-*.md"))
