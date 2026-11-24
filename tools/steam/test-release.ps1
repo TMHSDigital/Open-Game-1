@@ -150,7 +150,7 @@ function New-Fixture {
 function Invoke-Release([string[]]$Arguments, [hashtable]$EnvOverride = @{}, [switch]$NoDefaults) {
     $envVars = [ordered]@{
         STEAM_APPID = '1234560'; STEAM_DEPOT_WIN = '1234561'; STEAM_BUILD_ACCOUNT = 'fake_builder'  # og-secrets: allow (fake test IDs)
-        STEAMCMD_PATH = $null; CLAUDECODE = $null; UE_ROOT = $ue58
+        STEAMCMD_PATH = $null; CLAUDECODE = $null; UE_ROOT = $ue58; RELEASE_TEST_MODE = '1'
         FAKE_STEAMCMD_MODE = 'ok'; FAKE_STEAMCMD_BUILDID = '98765'; FAKE_STEAMCMD_BRANCHES = $null
         FAKE_CHECK_FAIL = $null; FAKE_CHECK_REAL = $null; FAKE_STEAMCMD_INFO = $null; FAKE_STEAMCMD_LOG = $null
         GH_RECORD = $script:fx.Record; PATH = "$shimDir;$env:PATH"
@@ -389,6 +389,10 @@ try {
     Check "CLAUDECODE=1 allows 'preview' (development steps are Claude's, decision 0014)" ($r.Code -eq 0 -and $r.Output -notmatch 'own terminal') $r.Output
     $r = Invoke-Release @('dev', '-SkipGitGates', '-Branch', 'default') @{ CLAUDECODE = '1' }
     Check "CLAUDECODE=1 still cannot target 'default' (40)" ($r.Code -eq 40) $r.Output
+    $r = Invoke-Release @('dev', '-SkipGitGates') @{ RELEASE_TEST_MODE = $null }
+    Check 'test-only switches are refused outside the test harness (exit 40)' ($r.Code -eq 40 -and $r.Output -match 'test-only') $r.Output
+    $r = Invoke-Release @('dev', '-CheckCommand', $checkCmd, '-SteamCmd', (Join-Path $tmp 'steamcmd.exe')) -NoDefaults
+    Check 'test-only switches are refused with a steamcmd that is not the fake (exit 40)' ($r.Code -eq 40 -and $r.Output -match 'test-only') $r.Output
     $r = Invoke-Release @('promoted', '0.0.1', '-SkipGitGates') @{ CLAUDECODE = '1' }
     Check "CLAUDECODE=1 refuses 'promoted' with 40" ($r.Code -eq 40) $r.Output
     Check 'Refusals made no ledger row and no gh calls' ((Get-LedgerRows $fx.Ledger).Count -eq 0 -and (Get-GhCalls).Count -eq 0)

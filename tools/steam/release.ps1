@@ -12,9 +12,12 @@
 # Switches: -SkipPackage (reuse the last package), -Notes "text" (secret-scanned in gate 7).
 # -Branch exists only to be refused: anything but 'development' exits 40.
 # Test overrides: -BuildDir -LedgerPath -SteamCmd -SkipGitGates -NoGitHub -RepoDir -WorkDir -CheckCommand.
+# -SkipGitGates, -CheckCommand, -LedgerPath, -RepoDir and -NoGitHub are refused (exit 40) outside the
+# test harness: a real release runs every gate.
 #
 # Exit codes: 0 ok, 1 other error, 10+n gate n failed, 30 steamcmd error, 31 no BuildID,
-#             40 refused (a -Branch other than development, or 'promoted' with CLAUDECODE set).
+#             40 refused (a -Branch other than development, 'promoted' with CLAUDECODE set, or a
+#                test-only switch outside the test harness).
 #
 # Claude Code may run the development-branch steps (dev, upload-only, preview); see decision 0014.
 # Recording a promotion (promoted) is the owner's: the script refuses it when CLAUDECODE is set.
@@ -682,6 +685,16 @@ try {
     $WorkDir = [IO.Path]::GetFullPath($WorkDir)
     Import-SteamEnv (Join-Path $RepoDir '.env')
     if (-not $SteamCmd) { $SteamCmd = if ($env:STEAMCMD_PATH) { $env:STEAMCMD_PATH } else { 'C:\steamcmd\steamcmd.exe' } }
+
+    # The test overrides switch gates off, so they are refused unless the test harness is running
+    # (it sets RELEASE_TEST_MODE) and, for the modes that call steamcmd, the fake is in use.
+    $testOnly = @('SkipGitGates', 'CheckCommand', 'LedgerPath', 'RepoDir', 'NoGitHub' | Where-Object { $PSBoundParameters.ContainsKey($_) })
+    if ($testOnly) {
+        $fake = (Split-Path -Leaf $SteamCmd) -eq 'fake-steamcmd.ps1'
+        if ($env:RELEASE_TEST_MODE -ne '1' -or ($Mode -in 'dev', 'upload-only', 'preview' -and -not $fake)) {
+            Stop-Release 40 "Refusing test-only switch(es) -$($testOnly -join ', -') outside tools/steam/test-release.ps1. A real release runs every gate."
+        }
+    }
 
     $branchProblem = Test-ReleaseBranch $Branch
     if ($branchProblem) { Stop-Release 40 $branchProblem }

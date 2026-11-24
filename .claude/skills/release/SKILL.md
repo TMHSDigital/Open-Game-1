@@ -12,6 +12,7 @@ Full reference: `docs/steam/BUILD-WORKFLOW.md`. History: `docs/steam/BUILDS.md`.
 
 - Claude may run only: `dry-run`, `status`, `promote <ver>`, and the test script `tools/steam/test-release.ps1`.
 - Claude runs `dev`, `upload-only` and `preview` itself, always through `tools/steam/release.ps1` and never by calling steamcmd directly or skipping a gate (decision 0014). Claude never runs `promoted` (the script refuses it inside Claude Code, exit 40) and never sets `default` live. If steamcmd asks for a password or a Steam Guard code, stop and ask the owner to log in to steamcmd; never handle the credentials.
+- Never pass the script's test-only switches (`-SkipGitGates`, `-CheckCommand`, `-LedgerPath`, `-RepoDir`, `-NoGitHub`). They exist for `tools/steam/test-release.ps1`; the script refuses them anywhere else (exit 40).
 - Never set the `default` branch live, and never suggest a command that does.
 - Never read `.env`, never print or write App IDs, Depot IDs or the build account name. The script prints only variable names.
 - Never attach game files to a GitHub Release.
