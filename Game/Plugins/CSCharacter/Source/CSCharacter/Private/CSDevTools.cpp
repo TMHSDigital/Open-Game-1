@@ -545,6 +545,12 @@ void UCSDevTools::DrawOverlay(AHUD* HUD, UCanvas* Canvas)
 	{
 		return;
 	}
+	// While the game is paused the pause screen is up: its tuning tab shows the same status line, and
+	// the overlay's text would lie over the screen's rows.
+	if (const UWorld* World = GetWorld(); World && World->IsPaused())
+	{
+		return;
+	}
 	UFont* Font = GEngine->GetSmallFont();
 	const float LineHeight = Font ? Font->GetMaxCharHeight() + 2.f : 14.f;
 	const float X = 24.f;
