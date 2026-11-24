@@ -360,7 +360,10 @@ function Invoke-Upload {
             & git -C $RepoDir fetch --quiet origin main 2>&1 | Out-Null
             if ($LASTEXITCODE -ne 0) { return 'could not fetch origin main.' }
             & git -C $RepoDir merge-base --is-ancestor HEAD origin/main 2>&1 | Out-Null
-            if ($LASTEXITCODE -ne 0) { 'HEAD is not on origin/main. Push first, so every build maps to a public commit.' }
+            if ($LASTEXITCODE -ne 0) { return 'HEAD is not on origin/main. Push first, so every build maps to a public commit.' }
+            $local = ((Invoke-Git rev-parse HEAD) | Out-String).Trim()
+            $remote = ((Invoke-Git rev-parse origin/main) | Out-String).Trim()
+            if ($local -ne $remote) { 'local main is behind origin/main. Pull first, so the gates run on the tree that gets released.' }
         } -WarnOnly:$gitWarnOnly
     }
     Invoke-Gate 4 'UE 5.8.x' {
@@ -415,21 +418,26 @@ function Invoke-Upload {
         if (@(Get-ChildItem -LiteralPath $staging -Force).Count) { "$staging is not empty after recreating it." }
     }
 
-    # --- Version: dev and upload-only bump, commit and push before packaging ------------------
+    # --- Version: dev and upload-only bump and commit before packaging -------------------------
+    # The bump commit stays local until the build is on Steam: it is pushed together with the
+    # ledger row. If packaging, staging or steamcmd fails first, the commit is undone, so a failed
+    # run leaves no public "release" commit for a build that does not exist.
     $version = $script:nextVersion
+    $bumpCommitted = $false; $buildMayExist = $false
     if ($realUpload) {
         Set-ProjectVersion $iniPath $version
         if ($SkipGitGates) { Write-Host "ProjectVersion bumped to $version (not committed: -SkipGitGates)." }
         else {
             Invoke-Git add '--' 'Game/Config/DefaultGame.ini' | Out-Null
             Invoke-Git commit -q -m "chore: release $version" '--' 'Game/Config/DefaultGame.ini' | Out-Null
-            Invoke-Git push -q origin HEAD:main | Out-Null
-            Write-Host "ProjectVersion bumped to $version, committed and pushed."
+            $bumpCommitted = $true
+            Write-Host "ProjectVersion bumped to $version and committed (pushed after the upload)."
         }
     }
     else { Write-Host "Version for this run: $version (ProjectVersion stays $($script:currentVersion); $Mode does not bump)." }
     $sha = ((Invoke-Git rev-parse HEAD) | Out-String).Trim()
 
+    try {
     # --- Package and stage ---------------------------------------------------------------------
     if (-not $SkipPackage) {
         if ($BuildDir) { $env:CS_PACKAGE_DIR = $BuildDir }
@@ -474,9 +482,12 @@ function Invoke-Upload {
 
     # --- steamcmd (owner only) -----------------------------------------------------------------
     if (-not (Test-Path -LiteralPath $SteamCmd)) { Stop-Release 30 "steamcmd not found at $SteamCmd. Install it or set STEAMCMD_PATH." }
-    $run = Invoke-SteamCmd @('+login', $env:STEAM_BUILD_ACCOUNT, '+run_app_build', $appVdf, '+quit') (Join-Path $WorkDir 'steamcmd.log')
+    # Unattended (Claude Code): never wait at a password prompt; a missing login is an error.
+    $noPrompt = if ($env:CLAUDECODE) { @('+@NoPromptForPassword', '1') } else { @() }
+    $run = Invoke-SteamCmd (@($noPrompt) + @('+login', $env:STEAM_BUILD_ACCOUNT, '+run_app_build', $appVdf, '+quit')) (Join-Path $WorkDir 'steamcmd.log')
     $errors = @($run.Lines | Where-Object { $_ -match 'ERROR!' })
     $buildId = Get-BuildIdFromLog $run.Lines
+    if ($buildId) { $buildMayExist = $true }
     if ($run.Code -ne 0 -or $errors.Count) {
         $msg = "steamcmd failed (exit $($run.Code), $($errors.Count) ERROR! line(s)). Nothing was recorded. Log: $(Join-Path $WorkDir 'steamcmd.log')"
         if ($values.SETLIVE -and ($errors -match '(?i)branch')) {
@@ -485,6 +496,22 @@ function Invoke-Upload {
         Stop-Release 30 $msg
     }
     if (-not $buildId) { Stop-Release 31 "steamcmd printed no BuildID. Nothing was recorded. Log: $(Join-Path $WorkDir 'steamcmd.log')" }
+    }
+    catch {
+        $failure = $_.Exception.Message
+        if ($bumpCommitted -and $buildMayExist) {
+            # The build may be on Steam under this version: keep the version and publish its commit.
+            try { Invoke-Git push -q origin HEAD:main | Out-Null; $failure += " The 'chore: release $version' commit was kept and pushed, because the build may exist on Steam." }
+            catch { $failure += " The 'chore: release $version' commit is local only: push it by hand." }
+        }
+        elseif ($bumpCommitted) {
+            Invoke-Git reset -q --soft 'HEAD~1' | Out-Null
+            Invoke-Git reset -q HEAD '--' 'Game/Config/DefaultGame.ini' | Out-Null
+            Invoke-Git checkout -q '--' 'Game/Config/DefaultGame.ini' | Out-Null
+            $failure += " The version bump to $version was undone; nothing was pushed."
+        }
+        throw $failure
+    }
 
     if ($Mode -eq 'preview') {
         Write-Host "Preview build $buildId finished: nothing uploaded. Manifest and logs in $(Join-Path $WorkDir 'output')."
@@ -538,8 +565,7 @@ function Invoke-Status {
     $expected = [ordered]@{ development = Get-LiveRow $ledger 'development'; default = Get-LiveRow $ledger 'default' }
 
     $reason = $null
-    if ($env:CLAUDECODE) { $reason = 'skipped inside Claude Code (steamcmd may prompt for a login). Run status in your own terminal for the drift check.' }
-    elseif (-not $env:STEAM_APPID -or -not $env:STEAM_BUILD_ACCOUNT) { $reason = 'STEAM_APPID or STEAM_BUILD_ACCOUNT not set.' }
+    if (-not $env:STEAM_APPID -or -not $env:STEAM_BUILD_ACCOUNT) { $reason = 'STEAM_APPID or STEAM_BUILD_ACCOUNT not set.' }
     elseif (-not (Test-Path -LiteralPath $SteamCmd)) { $reason = "steamcmd not found at $SteamCmd." }
     Write-Host ''
     if (-not $reason) {

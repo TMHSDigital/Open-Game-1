@@ -384,6 +384,40 @@ try {
     }
     $r = Invoke-Release @('dry-run', '-Branch', ' development ')
     Check "-Branch ' development ' is trimmed and accepted" ($r.Code -eq 0 -and (Get-Content (Join-Path $fx.Work 'app_build_run.vdf') -Raw) -match '"SetLive" "development"') $r.Output
+    # --- Failed uploads leave no half-done state (issue 25) -------------------------------------
+    New-Fixture | Out-Null
+    $ini = Join-Path $fx.Repo 'Game\Config\DefaultGame.ini'
+    $r = Invoke-Release @('dev', '-NoGitHub') @{ FAKE_STEAMCMD_MODE = 'error-exit0' }
+    $headNow = ((Invoke-Git $fx.Repo rev-parse HEAD) | Out-String).Trim()
+    $remoteNow = ((Invoke-Git $fx.Remote rev-parse main) | Out-String).Trim()
+    $dirtyNow = @(Invoke-Git $fx.Repo status --porcelain | Where-Object { $_ })
+    Check 'a steamcmd error undoes the version bump: HEAD, origin and the ini are as before' ($r.Code -eq 30 -and $headNow -eq $fx.Head -and $remoteNow -eq $fx.Head -and $dirtyNow.Count -eq 0 -and (Get-Content $ini -Raw) -match 'ProjectVersion=0\.1\.0' -and $r.Output -match 'undone') $r.Output
+    $r = Invoke-Release @('dev', '-NoGitHub')
+    Check 'the next run after a failed upload reuses the same version (no gap)' ($r.Code -eq 0 -and (Get-Content $fx.Ledger -Raw) -match '\| 0\.1\.1 \| 98765 \|') $r.Output
+
+    New-Fixture | Out-Null
+    $r = Invoke-Release @('dev', '-NoGitHub') @{ FAKE_STEAMCMD_MODE = 'bad-branch' }
+    $remoteIni = (Invoke-Git $fx.Remote show 'main:Game/Config/DefaultGame.ini') -join "`n"
+    Check 'an upload that could not be set live keeps and pushes the version bump' ($r.Code -eq 30 -and $remoteIni -match 'ProjectVersion=0\.1\.1' -and $r.Output -match 'kept and pushed') $r.Output
+
+    New-Fixture | Out-Null
+    $other = Join-Path $fx.Root 'other'
+    & git clone -q $fx.Remote $other 2>&1 | Out-Null
+    Invoke-Git $other config user.name 'Release Test' | Out-Null
+    Invoke-Git $other config user.email 'release-test@example.com' | Out-Null
+    Invoke-Git $other config commit.gpgsign false | Out-Null
+    Set-Content (Join-Path $other 'docs\devlog6-11-22-01-third.md') "# Third devlog`r`n"
+    Invoke-Git $other add -A | Out-Null
+    Invoke-Git $other commit -q -m 'docs: third' | Out-Null
+    Invoke-Git $other push -q origin main | Out-Null
+    $r = Invoke-Release @('dev', '-NoGitHub')
+    $headNow = ((Invoke-Git $fx.Repo rev-parse HEAD) | Out-String).Trim()
+    Check 'Gate 3: local main behind origin exits 13 before any bump' ($r.Code -eq 13 -and $r.Output -match 'Pull first' -and $headNow -eq $fx.Head) $r.Output
+
+    $r = Invoke-Release @('dev', '-NoGitHub', '-SkipGitGates') @{ CLAUDECODE = '1'; FAKE_STEAMCMD_LOG = (Join-Path $fx.Root 'steamcmd-args.log') }
+    Check 'inside Claude Code the upload login never prompts for a password' ($r.Code -eq 0 -and (Get-Content (Join-Path $fx.Root 'steamcmd-args.log') -Raw) -match '\+@NoPromptForPassword 1 \+login') $r.Output
+    New-Fixture | Out-Null
+
     # Decision 0014: Claude Code runs the development-branch steps; only 'promoted' is refused.
     $r = Invoke-Release @('preview') @{ CLAUDECODE = '1' }
     Check "CLAUDECODE=1 allows 'preview' (development steps are Claude's, decision 0014)" ($r.Code -eq 0 -and $r.Output -notmatch 'own terminal') $r.Output

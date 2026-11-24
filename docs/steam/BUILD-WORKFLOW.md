@@ -12,7 +12,7 @@ Steam setup still to do is in [SETUP-CHECKLIST.md](SETUP-CHECKLIST.md). The uplo
 | Mode | Command | Who |
 |---|---|---|
 | `dry-run` | `pwsh tools/steam/release.ps1 dry-run` | anyone, Claude included |
-| `status` | `pwsh tools/steam/release.ps1 status` | anyone (inside Claude Code it skips the Steam query) |
+| `status` | `pwsh tools/steam/release.ps1 status` | anyone |
 | `promote <ver>` | `pwsh tools/steam/release.ps1 promote 0.1.4` | anyone, Claude included |
 | `preview` | `pwsh tools/steam/release.ps1 preview` | Claude or owner |
 | `upload-only` | `pwsh tools/steam/release.ps1 upload-only` | Claude or owner |
@@ -25,7 +25,7 @@ Claude Code runs the development-branch steps (`dev`, `upload-only`, `preview`) 
 
 | Mode | What it does |
 |---|---|
-| `dev` | gates, version bump (commit and push), package, stage, VDF, steamcmd, set live on `development`, ledger row (commit and push), `v<version>` GitHub prerelease, `steam-development` deployment |
+| `dev` | gates, version bump (local commit), package, stage, VDF, steamcmd, set live on `development`, ledger row (commit; the bump and the ledger are pushed together), `v<version>` GitHub prerelease, `steam-development` deployment |
 | `upload-only` | the same, with SetLive blank and no deployment. Used for the first build, before the `development` branch exists |
 | `dry-run` | gates, package, stage and VDF; prints the steamcmd line. Does not bump the version. Git gates 1 to 3 only warn, so you can dry-run before committing |
 | `preview` | like `dry-run`, then steamcmd with `"Preview" "1"`: Steam checks the build and writes logs and a manifest, nothing is uploaded |
@@ -69,9 +69,9 @@ On 30 and 31 nothing is recorded: no ledger row, no release, no deployment.
 
 ## Versions
 
-`ProjectVersion` in `Game/Config/DefaultGame.ini` is `0.<milestone>.<build>`. `release dev` and `upload-only` bump the build number after the gates pass, commit `chore: release <version>`, push, then package, so the packaged game reports the version it was uploaded as. To start a new milestone, set `ProjectVersion` to `0.<milestone>.0` by hand and commit; the next release is `0.<milestone>.1`.
+`ProjectVersion` in `Game/Config/DefaultGame.ini` is `0.<milestone>.<build>`. `release dev` and `upload-only` bump the build number after the gates pass, commit `chore: release <version>` locally, then package, so the packaged game reports the version it was uploaded as. To start a new milestone, set `ProjectVersion` to `0.<milestone>.0` by hand and commit; the next release is `0.<milestone>.1`.
 
-If a run fails after the bump (packaging, steamcmd), that version number is skipped: the next run bumps again. The ledger only holds versions that reached Steam.
+The bump commit stays local until steamcmd reports a BuildID. If packaging, staging or steamcmd fails first, the script undoes the bump and nothing is pushed, so the next run uses the same version. If the build uploaded but could not be set live, the bump is kept and pushed, because that version now exists on Steam. The ledger only holds versions that reached Steam. Gate 3 requires local `main` to equal `origin/main`: pull first if it is behind.
 
 ## Staging and the VDFs
 
