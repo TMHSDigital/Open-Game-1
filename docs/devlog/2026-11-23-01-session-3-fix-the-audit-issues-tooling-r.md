@@ -13,7 +13,17 @@ clip: null
 
 ## Narrative
 
-<!-- narrative -->
+This session worked through the issues that a full audit of the repository filed the same day. Twenty-five are closed.
+
+The secrets scan, which is the only thing between private Steam values and a public repository, had real holes. Run on a folder or with no arguments it scanned nothing and reported success. It also missed Steam store links, `steam://` links and lines pasted from steamcmd. It now fails closed, knows those forms, matches this machine's own Steam values in any form, and also scans commit messages, file names, Issue text and decision text before they are published. The allow marker only works in test fixtures.
+
+The release script is safer to run unattended. It masks the account name and IDs in steamcmd output, refuses its test-only switches on a real upload, and no longer leaves a pushed version bump behind when an upload fails. CI now runs the release script's tests on Windows, the workflow actions are current and pinned, and one `og check` command defines the repo checks for the commit hook, CI and the release gates.
+
+In the game, a character spawned in the middle of a frame no longer crashes: a new test reproduced the crash and the physics body now starts one frame later in that case. The feel overlay shows the body state, the build version and the dev keys, and a tuning reload can turn dev tools back on.
+
+The public site got working links between decisions, a builds page that links each commit and its changes, and an Atom feed. The README explains how to set up a clone.
+
+Still open: the larger game features (things that can hit the character, pause and settings, tuning in the Steam build, a get-up motion), four refactors, and the owner's play-test of the movement. Next is a new build on the development branch with these fixes.
 
 ## Changes
 
