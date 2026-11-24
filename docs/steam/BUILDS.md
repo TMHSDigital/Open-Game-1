@@ -11,4 +11,5 @@ Do not edit rows by hand unless Steam and the ledger disagree and you are fixing
 | version | build_id | git_sha | uploaded_utc | development_live_utc | development_replaced_utc | default_live_utc | default_replaced_utc | notes |
 |---|---|---|---|---|---|---|---|---|
 | 0.1.1 | 26854724 | 959dba53d7c3038be29f8d6d8646065b378b72cf | 2026-11-22T20:59:17Z | 2026-11-22T21:28:44Z | 2026-11-23T22:50:45Z |  |  | first build; set live by hand in Steamworks (development branch created) |
-| 0.1.2 | 26879552 | 7d93ae4d038bba619dd395fc6b9a46713a8f74fd | 2026-11-23T22:50:45Z | 2026-11-23T22:50:45Z |  |  |  |  |
+| 0.1.2 | 26879552 | 7d93ae4d038bba619dd395fc6b9a46713a8f74fd | 2026-11-23T22:50:45Z | 2026-11-23T22:50:45Z | 2026-11-24T02:31:52Z |  |  |  |
+| 0.1.3 | 26883076 | 13054d2a02f3a0e0aea7d24085bf7b2ae07259bf | 2026-11-24T02:31:52Z | 2026-11-24T02:31:52Z |  |  |  | Fixes: a character spawned mid-frame no longer crashes; overlay shows body state, build version and keys; tuning reload can turn dev tools back on. |
