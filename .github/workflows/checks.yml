@@ -27,3 +27,18 @@ jobs:
         run: uv run --locked --project tools python -m og assets check
       - name: Decisions consistency
         run: uv run --locked --project tools python -m og decisions check --offline
+
+  windows:
+    # The release script and its tests are PowerShell and the project's only supported platform is
+    # Windows, so they need a Windows runner. No Steam, GitHub or Unreal is touched: the tests use
+    # a fake steamcmd, a gh shim and throwaway git repositories.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+      - name: Release script tests
+        run: pwsh -NoProfile -File tools/steam/test-release.ps1
+      - name: Python tests on Windows
+        run: uv run --locked --project tools pytest tools/tests -q
