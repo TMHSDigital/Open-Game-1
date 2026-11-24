@@ -49,8 +49,8 @@ The gates run in this order on the tree as it is (before the version bump), and 
 | 4 | Unreal Engine is 5.8.x (`Engine/Build/Build.version` under `UE_ROOT`) | 14 |
 | 5 | the next version is not already in `BUILDS.md` | 15 |
 | 6 | tests pass: `tools/ue/test.ps1` (Unreal automation) and the repo's pytest suite | 16 |
-| 7 | secret scan is clean: `og secrets --tracked` (the index content of every tracked file, LFS content verified against its pointer) plus the `-Notes` text | 17 |
-| 8 | asset check is clean: `og assets check` | 18 |
+| 7 | secret scan is clean: `og check --only secrets --tracked` (the index content of every tracked file, LFS content verified against its pointer) plus the `-Notes` text | 17 |
+| 8 | asset ledger and decisions are consistent: `og check --only assets --only decisions` | 18 |
 | 9 | `STEAM_APPID`, `STEAM_DEPOT_WIN`, `STEAM_BUILD_ACCOUNT` are set and plausible (numeric, not 480, depot not equal to app). Only names are printed, never values | 19 |
 | 10 | the staging folder `_scratch/steam/content` was deleted and recreated empty | 20 |
 

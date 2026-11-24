@@ -323,7 +323,8 @@ function New-Deployment([string]$Environment, [string]$Ref, [string]$Description
     Write-Host "Recorded a $Environment deployment for $Ref."
 }
 
-function Get-OgSecretsCommand { @('uv', 'run', '--project', $ToolsDir, 'python', '-m', 'og', 'secrets') }
+# Gates 7 and 8 run `og check`, the one list of repo checks that the hook and CI also use.
+function Get-OgSecretsCommand { @('uv', 'run', '--project', $ToolsDir, 'python', '-m', 'og', 'check', '--only', 'secrets') }
 
 function Save-LedgerCommit([string]$Message) {
     if ($SkipGitGates) { Write-Host "Ledger updated (not committed: -SkipGitGates): $LedgerPath"; return }
@@ -396,11 +397,11 @@ function Invoke-Upload {
             $scan += $notesCheck
         }
         $code = Invoke-Check 'secrets' $scan
-        if ($code -ne 0) { "og secrets reported findings in tracked files or -Notes (exit $code)." }
+        if ($code -ne 0) { "og check: the secrets scan reported findings in tracked files or -Notes (exit $code)." }
     }
-    Invoke-Gate 8 'asset check clean' {
-        $code = Invoke-Check 'assets' @('uv', 'run', '--project', $ToolsDir, 'python', '-m', 'og', 'assets', 'check')
-        if ($code -ne 0) { "og assets check failed (exit $code)." }
+    Invoke-Gate 8 'asset and decision checks clean' {
+        $code = Invoke-Check 'assets' @('uv', 'run', '--project', $ToolsDir, 'python', '-m', 'og', 'check', '--only', 'assets', '--only', 'decisions')
+        if ($code -ne 0) { "og check failed for the asset ledger or the decisions (exit $code)." }
     }
     Invoke-Gate 9 'Steam env vars' {
         $missing = @($RequiredEnvKeys | Where-Object { -not [Environment]::GetEnvironmentVariable($_) })

@@ -1,4 +1,4 @@
 #!/bin/sh
 # Enable with: git config core.hooksPath tools/hooks
-uv run --locked --project tools python -m og secrets --staged || exit 1
-uv run --locked --project tools python -m og assets check || exit 1
+# The check list lives in `og check` (tools/og/__main__.py); CI and the release gates use it too.
+uv run --locked --project tools python -m og check --staged || exit 1
