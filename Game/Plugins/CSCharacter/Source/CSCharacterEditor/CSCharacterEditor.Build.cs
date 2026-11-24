@@ -25,6 +25,7 @@ public class CSCharacterEditor : ModuleRules
 			"PhysicsCore",
 			"PhysicsUtilities",     // FPhysicsAssetUtils: bodies, capsule fitting, constraints
 			"UnrealEd",
+			"CSCharacter",          // UCSMovementTuning and the range table (CSTuningBaker)
 		});
 	}
 }
