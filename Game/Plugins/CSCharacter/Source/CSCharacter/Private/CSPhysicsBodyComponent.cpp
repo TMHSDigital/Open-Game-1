@@ -98,7 +98,7 @@ const UCSMovementTuning& UCSPhysicsBodyComponent::GetTuning() const
 
 bool UCSPhysicsBodyComponent::HasPhysicsBody() const
 {
-	return Body && Body->GetPhysicsAsset() && Body->Bodies.Num() > 0 && Body->GetBodyInstance(PelvisBone) != nullptr;
+	return !bStartPending && Body && Body->GetPhysicsAsset() && Body->Bodies.Num() > 0 && Body->GetBodyInstance(PelvisBone) != nullptr;
 }
 
 float UCSPhysicsBodyComponent::GetBodyMass() const
@@ -138,6 +138,19 @@ void UCSPhysicsBodyComponent::BeginPlay()
 		SetComponentTickEnabled(false);
 		return;
 	}
+	const UWorld* World = GetWorld();
+	if (World && World->bInTick)
+	{
+		// Spawned in the middle of a frame: wait for the next one (see bStartPending).
+		bStartPending = true;
+		StartPendingSince = World->GetTimeSeconds();
+		return;
+	}
+	StartBody();
+}
+
+void UCSPhysicsBodyComponent::StartBody()
+{
 	if (PhysicalAnimation)
 	{
 		PhysicalAnimation->SetSkeletalMeshComponent(Body);
@@ -495,6 +508,20 @@ void UCSPhysicsBodyComponent::ToggleRagdoll()
 void UCSPhysicsBodyComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+	if (bStartPending)
+	{
+		const UWorld* World = GetWorld();
+		if (!World || World->GetTimeSeconds() <= StartPendingSince)
+		{
+			return; // still the frame the character was spawned in
+		}
+		bStartPending = false;
+		if (!HasPhysicsBody())
+		{
+			return;
+		}
+		StartBody();
+	}
 	if (!HasPhysicsBody())
 	{
 		return;

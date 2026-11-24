@@ -256,4 +256,17 @@ private:
 	/** The tuning object the ragdoll damping was last written from. */
 	TWeakObjectPtr<const UCSMovementTuning> RagdollTuning;
 	bool bWarnedNoBody = false;
+
+	/**
+	 * True from BeginPlay until the first tick in a later frame, when the character was spawned in
+	 * the middle of a world tick (a timer, an AI spawner, a respawn). Starting the simulated body
+	 * in that same frame crashes in the engine's physics blend, because the new mesh has not been
+	 * through a full frame yet. While it is set the body counts as absent (HasPhysicsBody is false)
+	 * and hits are ignored: the character is plain animation for that one frame.
+	 */
+	bool bStartPending = false;
+	double StartPendingSince = 0.0;
+
+	/** Hooks the physical animation up to the mesh and enters the Normal state. */
+	void StartBody();
 };

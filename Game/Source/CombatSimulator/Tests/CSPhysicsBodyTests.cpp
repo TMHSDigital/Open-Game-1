@@ -1153,5 +1153,60 @@ bool FCSBodyFirstPersonCopyFollowsPhysicsTest::RunTest(const FString& Parameters
 	return true;
 }
 
+// A character spawned in the middle of a frame (here from a timer, as an AI spawner or a respawn
+// would) must come up with a working physics body. Without the deferred start in
+// UCSPhysicsBodyComponent this crashed in the physical animation component on the new
+// character's first frame.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSBodySpawnMidFrameTest, "CombatSimulator.CS.Body.SpawnMidFrameIsSafe", CSPhysicsBodyTests::TestFlags)
+bool FCSBodySpawnMidFrameTest::RunTest(const FString& Parameters)
+{
+	FBodySim Sim;
+	if (!Sim.Init(*this))
+	{
+		return false;
+	}
+	UWorld* World = Sim.World.GetTestWorld();
+	TWeakObjectPtr<ACSCharacter> Spawned;
+	bool bSpawnedInTick = false;
+	World->GetTimerManager().SetTimerForNextTick(FTimerDelegate::CreateLambda([World, &Spawned, &bSpawnedInTick, Tuning = Sim.Tuning.Get()]()
+	{
+		bSpawnedInTick = World->bInTick;
+		FActorSpawnParameters Params;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		Params.bDeferConstruction = true;
+		const FTransform SpawnTransform(FVector(400.f, 0.f, 120.f));
+		ACSCharacter* Character = World->SpawnActor<ACSCharacter>(ACSCharacter::StaticClass(), SpawnTransform, Params);
+		if (Character)
+		{
+			Character->Tuning = Tuning;
+			Character->FinishSpawning(SpawnTransform);
+			Character->GetCharacterMovement()->bRunPhysicsWithNoController = true;
+			Character->GetCharacterMovement()->SetDefaultMovementMode();
+		}
+		Spawned = Character;
+	}));
+	Sim.Run(1.f);
+
+	if (!TestTrue(TEXT("The timer spawned a second character"), Spawned.IsValid()))
+	{
+		return false;
+	}
+	TestTrue(TEXT("The spawn happened inside the world tick"), bSpawnedInTick);
+	UCSPhysicsBodyComponent* Body = Spawned->GetPhysicsBody();
+	if (!TestNotNull(TEXT("The spawned character has a physics body component"), Body))
+	{
+		return false;
+	}
+	TestTrue(TEXT("Its physics body is ready after the first frames"), Body->HasPhysicsBody());
+	TestEqual(TEXT("Its body is in the Normal state"), Body->GetState(), ECSBodyState::Normal);
+	TestTrue(TEXT("It stands on the floor"), Spawned->GetCharacterMovement()->IsMovingOnGround());
+
+	// The body works like any other: a large hit ragdolls it and it gets back up.
+	Body->ApplyImpulseAtBone(TEXT("spine_03"), FVector(Body->GetBodyMass() * 900.f, 0.f, 0.f));
+	Sim.Run(0.2f);
+	TestTrue(TEXT("A hit after a mid-frame spawn moves the body out of Normal"), Body->GetState() != ECSBodyState::Normal);
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS
 

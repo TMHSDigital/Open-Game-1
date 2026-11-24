@@ -34,6 +34,10 @@ enum class ECSGait : uint8
 /**
  * A humanoid character with weighty movement, built on ACharacter and its movement component.
  *
+ * Spawning: a character may be spawned at any point in a frame. When it is spawned inside a world
+ * tick (from a timer, a spawner or a respawn) its physics body starts one frame later, so for that
+ * frame it is plain animation and ignores hits (UCSPhysicsBodyComponent::bStartPending).
+ *
  * Feel comes from UCSMovementTuning (Tuning; the class defaults when unset). On top of the
  * movement component's own acceleration this class adds:
  * - a sprint ramp: the speed cap rises from jog to sprint at a constant rate, so the time to sprint
