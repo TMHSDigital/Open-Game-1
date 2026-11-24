@@ -377,3 +377,20 @@ def test_cli_prints_non_cp1252_excerpt_without_crashing(tmp_path):
                        capture_output=True, text=True, encoding="cp1252", errors="replace", env=env)
     assert r.returncode == 1
     assert "Traceback" not in r.stderr
+
+
+def test_directory_is_scanned_recursively(tmp_path):
+    sub = tmp_path / "d" / "deep"
+    sub.mkdir(parents=True)
+    (sub / "a.txt").write_text("STEAM_API_KEY=" + "0123456789abcdef" * 2)
+    assert [f.rule for f in scan_paths([tmp_path / "d"])] == ["steam-api-key"]
+
+
+def test_missing_path_is_a_finding_not_a_pass(tmp_path):
+    assert [f.rule for f in scan_paths([tmp_path / "nope.txt"])] == ["unscannable-path"]
+
+
+def test_cli_with_nothing_to_scan_exits_2(tmp_path):
+    r = og("secrets", cwd=tmp_path)
+    assert r.returncode == 2
+    assert "nothing to scan" in r.stderr

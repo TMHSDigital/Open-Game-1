@@ -157,14 +157,22 @@ def _scan_blob(path: str, data: bytes) -> list[Finding]:
 
 
 def scan_paths(paths: list[Path]) -> list[Finding]:
+    """Scan files; a directory is walked recursively (skipping .git). A path that does not
+    exist is a finding: a scan that read nothing must not look like a clean scan."""
     findings: list[Finding] = []
     for p in map(Path, paths):
-        if not p.is_file():
-            continue
-        if p.suffix.lower() in IMAGE_SUFFIXES:
-            findings += scan_image(p)
+        if p.is_dir():
+            files = sorted(f for f in p.rglob("*") if f.is_file() and ".git" not in f.parts)
+        elif p.is_file():
+            files = [p]
         else:
-            findings += _scan_blob(str(p), p.read_bytes())
+            findings.append(Finding(str(p), 0, "unscannable-path", "path does not exist"))
+            continue
+        for f in files:
+            if f.suffix.lower() in IMAGE_SUFFIXES:
+                findings += scan_image(f)
+            else:
+                findings += _scan_blob(str(f), f.read_bytes())
     return findings
 
 
@@ -314,6 +322,9 @@ def run(args) -> int:
             return 1
         print("secrets selftest ok")
         return 0
+    if not (args.paths or args.staged or args.tracked):
+        print("og secrets: nothing to scan. Give paths, --staged or --tracked.", file=sys.stderr)
+        return 2
     findings = scan_paths(args.paths)
     if args.staged:
         findings += scan_staged()

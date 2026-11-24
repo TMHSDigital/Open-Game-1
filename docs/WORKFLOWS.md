@@ -38,7 +38,7 @@ Skills: `blender-to-unreal-export`, and `asset-import` for anything not made fro
 4. Export with the same command minus `--check-only`.
 5. Import into the Content Browser by hand following the skill's steps (a Blender or Unreal MCP import is not wired up yet), then File, Save All.
 6. Verify the size against the mannequin in a level; add a capture camera with the `capture` skill if the asset should show in the devlog.
-7. Commit `.blend`, `.fbx` and `.uasset` files (tracked through Git LFS) and run `og secrets`.
+7. Commit `.blend`, `.fbx` and `.uasset` files (tracked through Git LFS) and let the pre-commit hook scan them (or run `og secrets --staged` yourself before committing).
 
 ## Tune character movement
 
