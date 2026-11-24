@@ -152,11 +152,49 @@ float ACSCharacter::GetGravityMagnitude() const
 	return FallbackGravity;
 }
 
-void ACSCharacter::ApplyTuning()
+const UCSMovementTuning& ACSCharacter::GetPackagedTuning() const
+{
+	return Tuning ? *Tuning.Get() : *GetDefault<UCSMovementTuning>();
+}
+
+UCSMovementTuning* ACSCharacter::MakeTuningCopy()
 {
 	// Run on a copy, so later edits to the asset (a bad value typed mid-play) change nothing until
 	// they are applied or reloaded. With no asset the copy holds the class defaults.
-	AppliedTuning = NewObject<UCSMovementTuning>(this, NAME_None, RF_Transient, Tuning.Get());
+	return NewObject<UCSMovementTuning>(this, NAME_None, RF_Transient, Tuning.Get());
+}
+
+void ACSCharacter::ApplyTuning()
+{
+	UCSMovementTuning* Values = MakeTuningCopy();
+	// Overrides are a dev tool: a tuning with bDevTools off runs exactly as packaged.
+	if (Values->bDevTools && TuningOverrides.Values.Num() > 0)
+	{
+		FString Reason;
+		if (!TuningOverrides.ApplyTo(*Values, Reason))
+		{
+			UE_LOG(LogCSCharacter, Warning, TEXT("%s: tuning changes dropped, %s."), *GetName(), *Reason);
+			TuningOverrides = FCSTuningOverrides();
+		}
+	}
+	CommitTuning(Values);
+}
+
+bool ACSCharacter::TryApplyTuning(const FCSTuningOverrides& Overrides, FString& OutReason)
+{
+	UCSMovementTuning* Values = MakeTuningCopy();
+	if (!Overrides.ApplyTo(*Values, OutReason) || !Values->IsValid(OutReason))
+	{
+		return false;
+	}
+	TuningOverrides = Overrides;
+	CommitTuning(Values);
+	return true;
+}
+
+void ACSCharacter::CommitTuning(UCSMovementTuning* Values)
+{
+	AppliedTuning = Values;
 	const UCSMovementTuning& T = *AppliedTuning;
 	UCharacterMovementComponent* Move = GetCharacterMovement();
 
@@ -270,6 +308,12 @@ void ACSCharacter::NotifyControllerChanged()
 	const APlayerController* PC = Cast<APlayerController>(Controller);
 	ULocalPlayer* LocalPlayer = PC ? PC->GetLocalPlayer() : nullptr;
 	UEnhancedInputLocalPlayerSubsystem* Subsystem = LocalPlayer ? LocalPlayer->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>() : nullptr;
+	// The local player's character runs on the tuning changes saved on this machine (a respawned or
+	// newly loaded character picks them up here).
+	if (PC && PC->IsLocalController() && DevTools)
+	{
+		DevTools->LoadOverrides();
+	}
 	if (!Subsystem)
 	{
 		return;

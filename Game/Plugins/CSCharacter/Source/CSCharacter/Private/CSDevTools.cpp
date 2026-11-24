@@ -78,14 +78,183 @@ bool UCSDevTools::ReloadTuning(ACSCharacter& Character, FString& OutMessage)
 		}
 		return false;
 	}
-	Character.ApplyTuning();
-	OutMessage = FString::Printf(TEXT("%s: tuning %s reloaded."), *Character.GetName(), *AssetName);
-	UE_LOG(LogCSCharacter, Log, TEXT("%s"), *OutMessage);
-	if (UCSDevTools* DevTools = Character.GetDevTools())
+	// Changes on top of the asset: the local player's character re-reads the store; any other keeps its own.
+	UCSDevTools* Tools = Character.GetDevTools();
+	FCSTuningOverrides Overrides = Character.GetTuningOverrides();
+	if (!Source->bDevTools)
 	{
-		DevTools->SetReloadResult(true, OutMessage);
+		Overrides = FCSTuningOverrides();
+	}
+	else if (Tools && Character.IsLocallyControlled() && Character.IsPlayerControlled())
+	{
+		bool bFound = false;
+		if (!Tools->ReadStore(Overrides, bFound, Reason))
+		{
+			OutMessage = FString::Printf(TEXT("%s: tuning changes in %s rejected, %s. Keeping the last good values."),
+				*Character.GetName(), *GetOverrideStore().Describe(), *Reason);
+			UE_LOG(LogCSCharacter, Warning, TEXT("%s"), *OutMessage);
+			Tools->SetReloadResult(false, OutMessage);
+			return false;
+		}
+	}
+	if (!Character.TryApplyTuning(Overrides, Reason))
+	{
+		OutMessage = FString::Printf(TEXT("%s: tuning %s with the saved changes rejected, %s. Keeping the last good values."),
+			*Character.GetName(), *AssetName, *Reason);
+		UE_LOG(LogCSCharacter, Warning, TEXT("%s"), *OutMessage);
+		if (Tools)
+		{
+			Tools->SetReloadResult(false, OutMessage);
+		}
+		return false;
+	}
+	OutMessage = FString::Printf(TEXT("%s: tuning %s reloaded."), *Character.GetName(), *AssetName);
+	if (Tools)
+	{
+		OutMessage += TEXT(" ") + Tools->GetTuningSourceText();
+	}
+	UE_LOG(LogCSCharacter, Log, TEXT("%s"), *OutMessage);
+	if (Tools)
+	{
+		Tools->SetReloadResult(true, OutMessage);
 	}
 	return true;
+}
+
+namespace
+{
+	ICSTuningOverrideStore* TestOverrideStore = nullptr;
+
+	/** What automation runs get when a test set no store: nothing stored, writes dropped. */
+	struct FNullOverrideStore : ICSTuningOverrideStore
+	{
+		virtual bool Load(FString& OutJson) override { return false; }
+		virtual bool Save(const FString& Json) override { return true; }
+		virtual bool Clear() override { return true; }
+		virtual FString Describe() const override { return TEXT("no store (automation run)"); }
+	};
+
+	const FString& ProjectVersionText();
+}
+
+ICSTuningOverrideStore& UCSDevTools::GetOverrideStore()
+{
+	static FCSTuningOverrideFileStore FileStore;
+	static FNullOverrideStore NullStore;
+	if (TestOverrideStore)
+	{
+		return *TestOverrideStore;
+	}
+	// A test run must not pick up, or write, the changes saved on the machine it runs on.
+	return GIsAutomationTesting ? static_cast<ICSTuningOverrideStore&>(NullStore) : FileStore;
+}
+
+void UCSDevTools::SetOverrideStoreForTests(ICSTuningOverrideStore* Store)
+{
+	TestOverrideStore = Store;
+}
+
+bool UCSDevTools::ReadStore(FCSTuningOverrides& OutOverrides, bool& bOutFound, FString& OutReason) const
+{
+	OutOverrides = FCSTuningOverrides();
+	FString Json;
+	bOutFound = GetOverrideStore().Load(Json);
+	if (!bOutFound)
+	{
+		return true;
+	}
+	if (!OutOverrides.Parse(Json, OutReason))
+	{
+		return false;
+	}
+	if (const ACSCharacter* Character = GetCharacter())
+	{
+		OutOverrides.PruneEqualTo(Character->GetPackagedTuning());
+	}
+	return true;
+}
+
+bool UCSDevTools::LoadOverrides()
+{
+	ACSCharacter* Character = GetCharacter();
+	if (!Character || !IsReloadAllowed())
+	{
+		return false;
+	}
+	FCSTuningOverrides Overrides;
+	bool bFound = false;
+	FString Reason;
+	if (!ReadStore(Overrides, bFound, Reason) || !Character->TryApplyTuning(Overrides, Reason))
+	{
+		const FString Message = FString::Printf(TEXT("%s: tuning changes in %s rejected, %s. Keeping the last good values."),
+			*Character->GetName(), *GetOverrideStore().Describe(), *Reason);
+		UE_LOG(LogCSCharacter, Warning, TEXT("%s"), *Message);
+		SetReloadResult(false, Message);
+		return false;
+	}
+	if (Overrides.Values.Num() > 0)
+	{
+		// Say so on screen: the build is not running on the values it was packaged with.
+		const FString Message = FString::Printf(TEXT("%s: %s"), *Character->GetName(), *GetTuningSourceText());
+		UE_LOG(LogCSCharacter, Log, TEXT("%s"), *Message);
+		SetReloadResult(true, Message);
+	}
+	return true;
+}
+
+bool UCSDevTools::SetOverrides(const FCSTuningOverrides& Overrides, bool bSave, FString& OutReason)
+{
+	OutReason.Reset();
+	ACSCharacter* Character = GetCharacter();
+	if (!Character || !IsReloadAllowed())
+	{
+		OutReason = TEXT("dev tools are off (bDevTools), tuning cannot be changed");
+		return false;
+	}
+	FCSTuningOverrides Wanted = Overrides;
+	Wanted.Version = FCSTuningOverrides::CurrentVersion;
+	Wanted.Build = ProjectVersionText();
+	Wanted.PruneEqualTo(Character->GetPackagedTuning());
+	if (!Character->TryApplyTuning(Wanted, OutReason))
+	{
+		return false;
+	}
+	if (bSave)
+	{
+		ICSTuningOverrideStore& Store = GetOverrideStore();
+		const bool bStored = Wanted.Values.Num() > 0 ? Store.Save(Wanted.ToJson()) : Store.Clear();
+		if (!bStored)
+		{
+			OutReason = FString::Printf(TEXT("the tuning changes could not be saved to %s; they stay in use until the game closes"), *Store.Describe());
+			const FString Message = FString::Printf(TEXT("%s: %s."), *Character->GetName(), *OutReason);
+			UE_LOG(LogCSCharacter, Warning, TEXT("%s"), *Message);
+			SetReloadResult(false, Message);
+		}
+	}
+	return true;
+}
+
+const FCSTuningOverrides& UCSDevTools::GetOverrides() const
+{
+	static const FCSTuningOverrides None;
+	const ACSCharacter* Character = GetCharacter();
+	return Character ? Character->GetTuningOverrides() : None;
+}
+
+FString UCSDevTools::GetTuningSourceText() const
+{
+	const FCSTuningOverrides& Overrides = GetOverrides();
+	const int32 Count = Overrides.Values.Num();
+	if (Count == 0)
+	{
+		return TEXT("tuning: packaged");
+	}
+	FString Text = FString::Printf(TEXT("tuning: packaged + %d %s"), Count, Count == 1 ? TEXT("change") : TEXT("changes"));
+	if (!Overrides.Build.IsEmpty() && Overrides.Build != ProjectVersionText())
+	{
+		Text += FString::Printf(TEXT(" (file from %s)"), *Overrides.Build);
+	}
+	return Text;
 }
 
 bool UCSDevTools::RequestReload()
@@ -346,6 +515,7 @@ FString UCSDevTools::GetOverlayText() const
 		TEXT("Camera    %s\n")
 		TEXT("Body      %s\n")
 		TEXT("Build     %s\n")
+		TEXT("Values    %s\n")
 		TEXT("Keys      F1 overlay  F2 map  F5 reload tuning  R ragdoll  P push  V camera"),
 		Sample.Speed,
 		Sample.Acceleration,
@@ -355,7 +525,8 @@ FString UCSDevTools::GetOverlayText() const
 		GaitName(Sample.Gait),
 		Sample.Camera.IsNone() ? TEXT("n/a") : *Sample.Camera.ToString(),
 		BodyStateName(GetCharacter()),
-		*ProjectVersionText());
+		*ProjectVersionText(),
+		*GetTuningSourceText());
 }
 
 void UCSDevTools::DrawOverlay(AHUD* HUD, UCanvas* Canvas)

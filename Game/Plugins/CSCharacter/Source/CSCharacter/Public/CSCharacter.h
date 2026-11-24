@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "CSTuningOverrides.h"
 #include "CSCharacter.generated.h"
 
 class UCameraComponent;
@@ -83,12 +84,28 @@ public:
 	TObjectPtr<UCSMovementTuning> Tuning;
 
 	/**
-	 * Copies Tuning (or the class defaults) and pushes the values into the movement component.
+	 * Copies Tuning (or the class defaults), writes the current overrides (GetTuningOverrides) on top
+	 * when the copy has bDevTools on, and pushes the values into the movement component.
 	 * Called on BeginPlay (where an invalid asset is replaced by the class defaults, with an error
 	 * logged); call again after changing Tuning. Does not validate: use UCSDevTools::ReloadTuning for that.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "CS|Movement")
 	void ApplyTuning();
+
+	/**
+	 * Applies Tuning with Overrides on top, if the result is valid: the overrides must name rows of
+	 * the range table with values in range, and the result must pass UCSMovementTuning::IsValid.
+	 * On success the result becomes the active tuning and Overrides the character's overrides. On
+	 * failure nothing changes and OutReason names the field. Not gated by bDevTools: the callers
+	 * (UCSDevTools) are.
+	 */
+	bool TryApplyTuning(const FCSTuningOverrides& Overrides, FString& OutReason);
+
+	/** The values the build was packaged with: Tuning, or the class defaults when it is unset. */
+	const UCSMovementTuning& GetPackagedTuning() const;
+
+	/** The changes on top of the packaged tuning that are in use (empty: none). */
+	const FCSTuningOverrides& GetTuningOverrides() const { return TuningOverrides; }
 
 	/** Changes gait. Crouch crouches the character; any other gait stands it up. */
 	UFUNCTION(BlueprintCallable, Category = "CS|Movement")
@@ -277,6 +294,14 @@ private:
 	/** The values in use, copied from Tuning by ApplyTuning. */
 	UPROPERTY(Transient)
 	TObjectPtr<UCSMovementTuning> AppliedTuning;
+
+	/** Changes written on top of the copy (see TryApplyTuning). */
+	FCSTuningOverrides TuningOverrides;
+
+	/** A fresh copy of Tuning (or the class defaults), without overrides. */
+	UCSMovementTuning* MakeTuningCopy();
+	/** Makes Values the active tuning and pushes it into the movement component. */
+	void CommitTuning(UCSMovementTuning* Values);
 
 	bool bSprintHeld = false;
 	bool bWalkHeld = false;

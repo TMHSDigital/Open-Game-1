@@ -73,8 +73,47 @@ public:
 	 * A bad asset is rejected: the character keeps its last good values and OutMessage names the
 	 * first bad field. Logged either way. Not gated by bDevTools (cs.Tuning.Reload is).
 	 * Edits to the asset only take effect through this or ACSCharacter::ApplyTuning.
+	 *
+	 * Tuning changes (the overrides file) go on top of the asset: the local player's character
+	 * re-reads the file here when its dev tools allow it; any other character keeps the changes it
+	 * has. A file, or a combination of asset and changes, that is not valid is rejected the same way.
 	 */
 	static bool ReloadTuning(ACSCharacter& Character, FString& OutMessage);
+
+	// ----- Tuning changes kept on this machine (the overrides file) -----
+
+	/** Where the changes are kept: <ProjectSavedDir>/Tuning/MovementTuning.json, or the store a test set. */
+	static ICSTuningOverrideStore& GetOverrideStore();
+
+	/** Tests: use Store instead of the file (null: back to the default). Automation runs never touch the real file. */
+	static void SetOverrideStoreForTests(ICSTuningOverrideStore* Store);
+
+	/**
+	 * Reads the store and applies what it holds on top of the packaged tuning; with nothing stored,
+	 * the packaged values. Entries equal to the packaged value are dropped. Does nothing and returns
+	 * false with dev tools off in the source tuning. A bad file (not JSON, an unknown field, a value
+	 * out of range, a rule between fields broken) is rejected whole: nothing changes, the on-screen
+	 * reload line turns red and names the cause, and this returns false.
+	 */
+	bool LoadOverrides();
+
+	/**
+	 * Makes Overrides the changes in use, if the result is valid (ACSCharacter::TryApplyTuning) and
+	 * dev tools are on in the source tuning; otherwise returns false with the cause in OutReason and
+	 * changes nothing. With bSave the changes are also written to the store (cleared when empty); a
+	 * failed write keeps the values in use, returns true, and says so in OutReason and on screen.
+	 */
+	bool SetOverrides(const FCSTuningOverrides& Overrides, bool bSave, FString& OutReason);
+
+	/** The changes in use on the owner. */
+	const FCSTuningOverrides& GetOverrides() const;
+
+	/**
+	 * Which values are in play, for the overlay, the reload line and screenshots: "tuning: packaged",
+	 * "tuning: packaged + 3 changes", with " (file from 0.1.3)" added when the changes were written
+	 * by another build.
+	 */
+	FString GetTuningSourceText() const;
 
 	/**
 	 * What cs.Tuning.Reload runs: ReloadTuning on every ACSCharacter in the world whose dev tools are
@@ -161,6 +200,8 @@ private:
 	ACSCharacter* GetCharacter() const;
 	void SetOverlayVisible(bool bVisible);
 	void SetReloadResult(bool bAccepted, const FString& Message);
+	/** Reads and checks the store. bOutFound: something was stored. False: it is bad, OutReason says why. */
+	bool ReadStore(FCSTuningOverrides& OutOverrides, bool& bOutFound, FString& OutReason) const;
 	void UpdateHUDHook();
 	void TakeSample(float DeltaTime);
 	void DrawOverlay(AHUD* HUD, UCanvas* Canvas);

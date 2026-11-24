@@ -15,6 +15,7 @@ public class CSCharacter : ModuleRules
 			"EnhancedInput",
 			"InputCore",
 			"PhysicsCore",  // FBodyInstanceCore (physics body states)
+			"Json",  // the tuning overrides file (CSTuningOverrides.cpp)
 		});
 	}
 }

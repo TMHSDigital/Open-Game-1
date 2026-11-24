@@ -94,7 +94,7 @@ public:
 	 * Uphill speed loss (addition to the spec list): speed is scaled by 1 - UphillSpeedLoss * sin(slope
 	 * along the move direction). 0.3 gives about 10 percent slower on a 20 degree slope. Inside [0, 1).
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Braking and slopes", meta = (UIMin = "0", UIMax = "0.9"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Braking and slopes", meta = (UIMin = "0", UIMax = "0.99"))
 	float UphillSpeedLoss = 0.3f;
 
 	/**
@@ -140,14 +140,14 @@ public:
 	float CameraBlendSeconds = 0.2f;
 
 	/** Third-person spring arm length behind the eyes, cm (no spec value; default 260). Inside (0, 1000]. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Camera", meta = (UIMin = "100", UIMax = "600", Units = "cm"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Camera", meta = (UIMin = "50", UIMax = "1000", Units = "cm"))
 	float ThirdPersonArmLength = 260.f;
 
 	/**
 	 * Third-person camera offset at the end of the arm, in the view's frame (X forward, Y right,
 	 * Z up), cm. Default (0, 45, 10): over the right shoulder. Each part within [-200, 200].
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Camera")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Camera", meta = (UIMin = "-200", UIMax = "200"))
 	FVector ThirdPersonShoulderOffset = FVector(0.f, 45.f, 10.f);
 
 	/**
@@ -165,7 +165,7 @@ public:
 	 * First person: time constant of the eye's horizontal smoothing, seconds (default 0.1). Sway of
 	 * the head reaches the camera this slowly; moving and turning are followed at once. Within [0, 1].
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Camera", meta = (UIMin = "0", UIMax = "0.5", Units = "s"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Camera", meta = (UIMin = "0", UIMax = "1", Units = "s"))
 	float FirstPersonSmoothSeconds = 0.1f;
 
 	/**
@@ -174,7 +174,7 @@ public:
 	 * sideways and forward; its height is this fixed value, because the run cycle bounces the head
 	 * by up to 24 cm (no head bob, by design). Inside (0, 300].
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Camera", meta = (UIMin = "100", UIMax = "220", Units = "cm"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Camera", meta = (UIMin = "100", UIMax = "300", Units = "cm"))
 	float FirstPersonEyeHeightCm = 165.f;
 
 	/** First person, crouched: camera height above the feet, cm (default 90; the crouch pose puts the eyes at about 86). Positive, not above the standing height. */
@@ -182,7 +182,7 @@ public:
 	float FirstPersonCrouchedEyeHeightCm = 90.f;
 
 	/** First person: time constant of the move between the standing and crouched heights, seconds (default 0.15). Within [0, 2]. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Camera", meta = (UIMin = "0", UIMax = "0.5", Units = "s"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Camera", meta = (UIMin = "0", UIMax = "2", Units = "s"))
 	float FirstPersonHeightSmoothSeconds = 0.15f;
 
 	// ----- Ragdoll -----
@@ -214,7 +214,7 @@ public:
 	float RagdollSettleSpeed = 25.f;
 
 	/** Seconds the pelvis must stay below RagdollSettleSpeed before recovery starts (default 0.5). Must be positive. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ragdoll", meta = (UIMin = "0.1", UIMax = "3", Units = "s"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ragdoll", meta = (UIMin = "0.1", UIMax = "10", Units = "s"))
 	float RagdollSettleSeconds = 0.5f;
 
 	/**
@@ -231,18 +231,18 @@ public:
 	 * 2.9 m and then travels about 2 m on the ground (1.9 m at 1, 1.3 m at 2, 0.7 m at 5).
 	 * Within [0, 10].
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ragdoll", meta = (UIMin = "0", UIMax = "5"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ragdoll", meta = (UIMin = "0", UIMax = "10"))
 	float RagdollLinearDamping = 0.5f;
 
 	/** Angular damping of every ragdoll body, 1/s (default 1): less spinning and rolling. Within [0, 20]. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ragdoll", meta = (UIMin = "0", UIMax = "10"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ragdoll", meta = (UIMin = "0", UIMax = "20"))
 	float RagdollAngularDamping = 1.f;
 
 	/**
 	 * Friction of the ragdoll bodies (a physical material override; the larger of this and the
 	 * ground's friction is used; default 1). Higher stops a slide on the ground sooner. Within [0, 4].
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ragdoll", meta = (UIMin = "0", UIMax = "2"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ragdoll", meta = (UIMin = "0", UIMax = "4"))
 	float RagdollFriction = 1.f;
 
 	// ----- Body (physical animation) -----
@@ -293,6 +293,19 @@ public:
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Body", meta = (UIMin = "50", UIMax = "3000", Units = "cm/s"))
 	float DevPushSpeed = 300.f;
+
+	/**
+	 * Slowest the walk, jog, sprint and crouch clips may play. The play rate follows the ground speed
+	 * (UCSAnimInstance::ComputeLocomotion) so the feet match the ground at any gait speed; this and
+	 * LocomotionRateMax only stop a clip from playing absurdly slow or fast. Inside the limits the
+	 * feet do not slide; at a limit they do.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Body", meta = (UIMin = "0.25", UIMax = "1"))
+	float LocomotionRateMin = 0.5f;
+
+	/** Fastest the walk, jog, sprint and crouch clips may play (see LocomotionRateMin). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Body", meta = (UIMin = "1", UIMax = "4"))
+	float LocomotionRateMax = 2.f;
 
 	// ----- Dev tools -----
 
