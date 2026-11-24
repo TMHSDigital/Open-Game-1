@@ -290,7 +290,7 @@ void UCSCameraRig::UpdateRig(float DeltaSeconds)
 	const float TargetHeight = OwnerCharacter && OwnerCharacter->bIsCrouched ? T.FirstPersonCrouchedEyeHeightCm : T.FirstPersonEyeHeightCm;
 	// Sideways and forward: the eye socket, smoothed. Height: the stance's fixed eye height above
 	// the feet (the mesh origin), eased between standing and crouched; the head's run-cycle bounce
-	// never reaches the camera (spec 5.3: no head bob).
+	// never reaches the camera (no head bob, by design).
 	auto Ease = [DeltaSeconds](float Seconds) { return Seconds > 0.f ? 1.f - FMath::Exp(-DeltaSeconds / Seconds) : 1.f; };
 	if (bFirstUpdate)
 	{

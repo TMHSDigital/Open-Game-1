@@ -7,7 +7,7 @@ description: The one standard Blender-to-Unreal FBX export for Combat Simulator 
 
 There is one FBX preset for this project: `export_unreal_fbx.py` next to this file. Do not hand-tune export settings per asset. If the preset is wrong, fix it there and record the change as a decision (see the `decide` skill).
 
-Status: the preset was ported from an earlier Unreal project, where it was verified on Blender 5.1.1 (all parameters exist, and a 0.5 x 0.5 x 1.8 m reference box round-trips at 1.8 m with scale 1). It has not yet been run in this repo. On the first real export, check that the box imports at 180 cm and that a mesh facing Blender -Y faces the same way as the UE mannequin, then note the result in the devlog.
+Status: the preset was ported from an earlier Unreal project, where it was verified on Blender 5.1.1 (all parameters exist, and a 0.5 x 0.5 x 1.8 m reference box round-trips at 1.8 m with scale 1). In this repo the `static` kind (reference box) and the `skeletal` kind (`SK_BaseCharacter`) are verified on Blender 5.1.1 and UE 5.8.3; see `Art/Characters/Base/NOTES.md` and decision 0012. The `anim` kind and Blender 4.4 are not verified yet: on the first animation export, check the result in the editor and note it in the devlog.
 
 Blender versions: 4.4 and 5.1 are installed here. The owner's Blender-Developer-Tools target 4.5 and 5.2 LTS (open decision OD-009). The preset was verified on 5.1 only; run `--check-only` once on 4.4 before relying on it there.
 
@@ -63,7 +63,7 @@ $blender = 'C:\Program Files\Blender Foundation\Blender 5.1\blender.exe'
 
 `--kind static | skeletal | anim`, `--all` selects every mesh, armature and empty, `--check-only` validates without writing. The script exits non-zero on: wrong units, unapplied scale or rotation, wrong name prefix, more than 4 bone influences.
 
-Source `.blend` files go under `Art/` and exports in `Art/Export/`; both are tracked through Git LFS (see `.gitattributes`).
+Source `.blend` files go under `Art/`, and each export is written next to its source (for example `Art/Characters/Base/SK_BaseCharacter.fbx`); both are tracked through Git LFS (see `.gitattributes`).
 
 ## Import into Unreal 5.8 (manual until an Unreal MCP import toolset is set up)
 

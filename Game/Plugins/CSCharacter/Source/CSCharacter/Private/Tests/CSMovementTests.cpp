@@ -314,7 +314,7 @@ bool FCSMovementTurnRadiusTest::RunTest(const FString& Parameters)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSMovementLandedListenerTest, "CombatSimulator.CS.Movement.LandedListenerSeesThisLanding", CSMovementTests::TestFlags)
 bool FCSMovementLandedListenerTest::RunTest(const FString& Parameters)
 {
-	// A LandedDelegate listener (Task 7's ragdoll trigger) must read this landing's speed.
+	// A LandedDelegate listener (the ragdoll trigger) must read this landing's speed.
 	UCSMovementTuning* Tuning = NewTuning();
 	FMoveSim Sim;
 	if (!Sim.Init(*this, 1.f / 60.f, Tuning))

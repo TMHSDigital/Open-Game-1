@@ -76,7 +76,7 @@ ACSCharacter::ACSCharacter(const FObjectInitializer& ObjectInitializer)
 
 	CameraArm = CreateDefaultSubobject<UCSSpringArmComponent>(TEXT("CameraArm"));
 	CameraArm->SetupAttachment(GetCapsuleComponent());
-	// Over the right shoulder, positional lag only (spec 5.3). Length, offset and lag come from the
+	// Over the right shoulder, positional lag only. Length, offset and lag come from the
 	// applied tuning; the camera rig sets them every frame.
 	CameraArm->bUsePawnControlRotation = true;
 	CameraArm->bDoCollisionTest = true;

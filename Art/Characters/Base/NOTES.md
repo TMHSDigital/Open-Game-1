@@ -31,10 +31,9 @@ no pose correction against UE5 humanoid animations.
 
 ## Forward axis: build facing Blender -Y
 
-Scope: only a static mesh round-trip was verified. The skeletal export (armature orientation,
-root bone, bone axes, scale on the root) has not been verified yet; Task 2 must check it on its
-first export of the base character (skeleton imports at scale 1, root at the origin, character
-faces Unreal +Y, 180 cm tall).
+Scope: this section records the static mesh round-trip. The skeletal export (armature
+orientation, root bone, bone axes, scale on the root) was verified afterwards with the base
+character; see "Skeletal round-trip" below.
 
 Verified on 2026-11-22 with the export skill's reference-box round-trip (Blender 5.1.1, UE 5.8.3):
 
@@ -60,7 +59,7 @@ which is Blender -Y. Build the base character facing Blender -Y, as the export s
 its left side on Blender +X, and it faces the same way as the mannequin after import. As with the
 mannequin, the character's mesh component needs -90 degrees yaw so it faces actor +X.
 
-## Base character build (Task 2)
+## Base character build
 
 `build_base_character.py` builds the armature and the faceless mesh from scratch, checks them,
 saves `SK_BaseCharacter.blend` and exports `SK_BaseCharacter.fbx` through the export skill's own

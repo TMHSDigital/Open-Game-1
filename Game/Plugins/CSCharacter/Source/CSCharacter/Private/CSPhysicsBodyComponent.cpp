@@ -296,7 +296,7 @@ void UCSPhysicsBodyComponent::ApplyImpulseAtBone(FName Bone, FVector Impulse)
 		return;
 	}
 	const UCSMovementTuning& T = GetTuning();
-	// The size of a hit is the velocity change it would give the whole character (Task 3's definition).
+	// The size of a hit is the velocity change it would give the whole character (the same definition the movement tuning uses).
 	const FVector VelocityChange = Impulse / Mass;
 	const bool bRagdolls = VelocityChange.Size() >= T.RagdollImpulseThreshold;
 	FName BodyBone = FindBodyBone(Bone);

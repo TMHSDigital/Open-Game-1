@@ -30,7 +30,7 @@ DECLARE_MULTICAST_DELEGATE(FCSBodyRecovered);
 DECLARE_MULTICAST_DELEGATE_TwoParams(FCSBodyStateChanged, ECSBodyState /* Old */, ECSBodyState /* New */);
 
 /**
- * The physics-driven body of a CS character (spec 5.4), wrapping a UPhysicalAnimationComponent.
+ * The physics-driven body of a CS character, wrapping a UPhysicalAnimationComponent.
  * The strengths and times are in the owner's applied tuning (UCSMovementTuning: NormalProfile,
  * HitProfile and the Ragdoll and Body values), read every frame, so a reload takes effect at once.
  *

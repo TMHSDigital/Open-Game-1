@@ -34,7 +34,7 @@ namespace CSCameraAssetTests
 	// import_base_character.py places the socket at.
 	const FVector ExpectedEyes(0.f, 9.5f, 168.f);
 
-	// Owner-hidden in first person (spec 5.3).
+	// Owner-hidden in first person.
 	const TCHAR* HeadBones[] = {TEXT("neck_01"), TEXT("neck_02"), TEXT("head")};
 	// Visible in both views: arms, hands, torso and legs.
 	const TCHAR* BodyBones[] = {

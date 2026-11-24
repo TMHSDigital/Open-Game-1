@@ -54,7 +54,7 @@ ACTIONS = {
 }
 
 # (action, key, modifiers). Modifiers are names handled by make_modifiers. Keyboard and mouse keys
-# are the Global Constraints keys; gamepad follows spec 5.2 (sticks, L3 sprint, face buttons).
+# are the project's fixed key layout; the gamepad uses sticks, L3 sprint and the face buttons.
 KEYS = [
     ("IA_Move", "W", ["swizzle"]),
     ("IA_Move", "S", ["swizzle", "negate"]),

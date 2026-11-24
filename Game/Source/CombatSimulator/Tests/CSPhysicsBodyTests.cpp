@@ -1095,7 +1095,7 @@ bool FCSBodyHingesBendTheRightWayTest::RunTest(const FString& Parameters)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSBodyFirstPersonCopyFollowsPhysicsTest, "CombatSimulator.CS.Body.FirstPersonCopyFollowsPhysics", CSPhysicsBodyTests::TestFlags)
 bool FCSBodyFirstPersonCopyFollowsPhysicsTest::RunTest(const FString& Parameters)
 {
-	// Task 6 follow-up: the owner-only first-person body copies the body's pose, physics included;
+	// The owner-only first-person body copies the body's pose, physics included;
 	// no bone gap with physical animation active, and nothing breaks while ragdolled (third person then).
 	FBodySim Sim;
 	if (!Sim.Init(*this))

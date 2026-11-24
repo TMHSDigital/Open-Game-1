@@ -102,7 +102,7 @@ public:
 	 */
 	static ECSGait ResolveGait(bool bCrouchToggled, bool bSprintHeld, bool bWalkHeld);
 
-	/** The physics-driven body: sway, stagger, ragdoll and recovery (spec 5.4). */
+	/** The physics-driven body: sway, stagger, ragdoll and recovery. */
 	UCSPhysicsBodyComponent* GetPhysicsBody() const { return PhysicsBody; }
 
 	/** Dev tools (ragdoll and push keys, feel overlay, tuning reload). */

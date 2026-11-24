@@ -3,7 +3,7 @@
 // Each test builds the shared test world (CSMoveSim.h), drives the camera key through
 // ACSCharacter::ToggleCamera (the V handler) and reads the view the player would get from
 // ACSCharacter::CalcCamera, the call the player camera manager makes. The ragdoll is driven through
-// ACSCharacter::SetRagdolled, the contract Task 7's physics body fills in.
+// ACSCharacter::SetRagdolled, the contract the physics body fills in.
 //
 // The owner-only head hiding needs the base character's bones and eye socket, so
 // CombatSimulator.CS.Camera.FirstPersonHidesHeadForOwnerOnly and EyeSocketOnHead live in the game

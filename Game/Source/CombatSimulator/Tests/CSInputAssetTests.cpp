@@ -27,7 +27,7 @@ namespace CSInputAssetTests
 		TSoftObjectPtr<UInputAction> ACSCharacter::* Slot;
 	};
 
-	// Global Constraints keys; gamepad per spec 5.2 (sticks, L3 sprint, face buttons).
+	// The project's fixed key layout; gamepad: sticks, L3 sprint, face buttons.
 	TArray<FExpectedAction> ExpectedActions()
 	{
 		using T = EInputActionValueType;

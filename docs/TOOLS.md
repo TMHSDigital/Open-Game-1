@@ -82,7 +82,7 @@ Licensing note: the owner's tool repos below are CC-BY-NC-ND-4.0 (the Blender-De
 - **Commands:** `/catalogue-sync <repo>` or `/catalogue-sync new E:/Open-Game-1`, then `python scripts/catalogue.py build` and `python scripts/catalogue.py check`.
 - **Used by:** before building any system (check `catalogues/views/INDEX.md` and `docs/specs/`), and contribute a system.
 - **Limits:**
-  - Private: nothing from it is quoted or linked as a path in committed files here, other than slugs and entry names in `docs/systems/README.md`.
+  - Private: no content, code or spec text from it is copied or quoted in committed files here. Its local folder and file names may be named (as above and in `CLAUDE.md`), and `docs/systems/README.md` lists slugs and entry names.
   - Reusable code here lives in self-contained plugins under `Game/Plugins/CS<Name>/` so it can be catalogued.
   - Text contributed there has no em dashes and no emojis.
 

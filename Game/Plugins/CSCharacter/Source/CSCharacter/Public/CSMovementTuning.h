@@ -172,7 +172,7 @@ public:
 	 * First person, standing: camera height above the feet, cm (default 165; the base character's
 	 * eyes are at 168 at rest and about 162 in the idle pose). The camera follows the head only
 	 * sideways and forward; its height is this fixed value, because the run cycle bounces the head
-	 * by up to 24 cm (spec 5.3: no head bob). Inside (0, 300].
+	 * by up to 24 cm (no head bob, by design). Inside (0, 300].
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Camera", meta = (UIMin = "100", UIMax = "220", Units = "cm"))
 	float FirstPersonEyeHeightCm = 165.f;

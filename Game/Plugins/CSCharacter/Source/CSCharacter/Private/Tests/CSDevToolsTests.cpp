@@ -81,7 +81,7 @@ namespace CSDevToolsTests
 		int32 Release(FName Name) { return Fire(Name, ETriggerEvent::Completed); }
 	};
 
-	// Counts the dev tool requests that reach the extension points (Task 7 binds the real ragdoll and push here).
+	// Counts the dev tool requests that reach the extension points (the physics body binds the real ragdoll and push here).
 	struct FDevToolsProbe
 	{
 		int32 Ragdolls = 0;

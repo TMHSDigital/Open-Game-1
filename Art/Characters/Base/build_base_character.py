@@ -63,7 +63,7 @@ ARMATURE = "Armature"
 HEIGHT = 1.80  # metres; Unreal gets 180 cm through the export preset's unit conversion
 MAX_INFLUENCES = 4
 
-# Height range and other limits the checks enforce (Global Constraints of the base character plan).
+# Height range and other limits the checks enforce (the fixed limits for the base character).
 HEIGHT_TOLERANCE_CM = 1.0
 TRIS_RANGE = (15000, 25000)
 

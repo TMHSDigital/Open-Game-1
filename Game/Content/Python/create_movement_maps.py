@@ -2,8 +2,8 @@
 
 - /Game/Maps/L_Plane: the start map (GameDefaultMap). A 1 km square flat plane with a subtle
   neutral grid (1 m minor lines, 10 m major lines), sky, sun and a PlayerStart at the origin.
-- /Game/Maps/L_MovementGym: the same plane and sky with a measured course for tuning and captures
-  (spec 5.6). Every size below is in centimetres; +X is "forward" from the PlayerStart.
+- /Game/Maps/L_MovementGym: the same plane and sky with a measured course for tuning and captures.
+  Every size below is in centimetres; +X is "forward" from the PlayerStart.
 - /Game/Maps/Materials/M_Grid: world-aligned grid material (BaseColor and LineColor parameters),
   with instances MI_Grid_Obstacle (lighter, for gym geometry) and MI_Grid_Marker (near white, for
   lane markers).
@@ -24,7 +24,7 @@ Gym layout (feet of every feature at x = 0 unless noted, rows side by side along
   - Ledges (tags Ledge100 ... Ledge600): 400 wide at y 5400, 6000, 6600, 7200, 7800, a 30 degree
     ramp up to a 300 cm platform 100, 200, 300, 400 and 600 cm high with open floor beyond. A drop
     from 600 cm lands at about 1080 cm/s, above RagdollLandingSpeedThreshold (1000).
-  - Physics boxes (tag PhysicsBox): at x 600..1200, y -700..-400: 50, 75 and 100 cm cubes of 10,
+  - Physics boxes (tag PhysicsBox): at x 600..1200, y -775..-475: 50, 75 and 100 cm cubes of 10,
     20 and 40 kg, and a stack of three 50 cm cubes.
 
 Ramps are pitched engine cubes whose top face starts at the floor: the test

@@ -6,7 +6,7 @@ quaternius-universal-animation-library in assets/THIRD_PARTY.csv. The pack is no
 it from https://quaternius.com/packs/universalanimationlibrary.html (Download, then "Just give me the
 Download"; itch.io name-your-own-price, 0 is accepted) and unzip it under
 _scratch/quaternius_ual/unpacked/ (gitignored), or point CS_UAL1_GLB at UAL1_Standard.glb.
-These clips are stand-ins, replaced as the project's own animations arrive (design spec 5.5).
+These clips are stand-ins, replaced as the project's own animations arrive.
 
 Makes or refreshes:
   /Game/ThirdParty/Quaternius/UAL1/Source/       the pack's mannequin (UAL1_Standard, its skeleton,
