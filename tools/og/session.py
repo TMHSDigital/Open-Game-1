@@ -111,8 +111,22 @@ def _render_entry(repo: Path, d: dict) -> str:
     })
 
 
-def start(repo: Path, goal: str, today: datetime.date | None = None, commit: bool = False) -> str:
+def start(repo: Path, goal: str, today: datetime.date | None = None, commit: bool = False,
+          replace: bool = False) -> str:
+    """Open a session. Refuses while another one is open, because the state file holds one
+    session: a second start would lose the first one's start commit and leave its stub entry
+    behind. With replace, the open session is dropped and its unfinished entry deleted."""
     repo = Path(repo)
+    sp = _state_path(repo)
+    if sp.is_file():
+        old = json.loads(sp.read_text("utf-8"))
+        if not replace:
+            raise SessionError(f"session {old.get('id')} is still open. Finish it with "
+                               "`og session end`, or drop it with `og session start --replace`.")
+        stub = repo / "docs" / "devlog" / f"{old.get('id')}-{old.get('slug')}.md"
+        if stub.is_file() and "_Filled in by `og session end`._" in stub.read_text("utf-8"):
+            stub.unlink()
+        sp.unlink()
     day = today or datetime.date.today()
     sid = _next_id(repo, day)
     slug = _slugify(goal)
@@ -129,7 +143,6 @@ def start(repo: Path, goal: str, today: datetime.date | None = None, commit: boo
     state = {"id": sid, "slug": slug, "goal": goal, "start_sha": head,
              "started_at": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
              "screencast_session": None}
-    sp = _state_path(repo)
     sp.parent.mkdir(parents=True, exist_ok=True)
     sp.write_text(json.dumps(state, indent=2) + "\n", "utf-8")
     print(sid)
@@ -480,7 +493,7 @@ def _run_session(args) -> int:
     try:
         repo = _repo_root()
         if args.action == "start":
-            start(repo, args.goal, commit=args.commit)
+            start(repo, args.goal, commit=args.commit, replace=args.replace)
             return 0
         return end(repo, capture=args.capture, clip=args.clip,
                    contact_sheet=args.contact_sheet, capture_dir=args.capture_dir,
@@ -507,6 +520,8 @@ def add_parser(sub) -> None:
     s.add_argument("goal")
     s.add_argument("--commit", action="store_true",
                    help="also create an empty 'Session-Start: <id>' commit")
+    s.add_argument("--replace", action="store_true",
+                   help="drop the session that is still open (deletes its unfinished entry)")
     e = ss.add_parser("end", help="write the devlog entry and commit it")
     e.add_argument("--capture", action="store_true", help="run tools/ue/capture.ps1 -Cameras all")
     e.add_argument("--capture-dir", type=Path, help="use existing capture PNGs from this dir")

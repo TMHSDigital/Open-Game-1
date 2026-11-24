@@ -70,15 +70,28 @@ def test_start_creates_entry_and_state(repo, capsys):
     assert state["id"] == sid and state["goal"] == "Build the capture stage"
     assert state["start_sha"] == git(repo, "rev-parse", "HEAD")
     assert state["screencast_session"] is None
-    assert session.start(repo, "Second one", today=DAY) == "2026-11-22-02"
-    assert session.start(repo, "Next day", today=DAY + datetime.timedelta(days=1)) == "2026-11-23-01"
+
+
+def test_start_refuses_while_a_session_is_open(repo, capsys):
+    session.start(repo, "First", today=DAY)
+    with pytest.raises(session.SessionError, match="2026-11-22-01 is still open"):
+        session.start(repo, "Second", today=DAY)
+    assert len(list((repo / "docs/devlog").glob("2026-11-22-*.md"))) == 1
+
+
+def test_start_replace_drops_the_open_session_and_its_stub(repo, capsys):
+    session.start(repo, "First", today=DAY)
+    sid = session.start(repo, "Second", today=DAY, replace=True)
+    entries = sorted(p.name for p in (repo / "docs/devlog").glob("2026-11-22-*.md"))
+    assert entries == [f"{sid}-second.md"]
+    assert json.loads((repo / "_scratch/session.json").read_text("utf-8"))["goal"] == "Second"
 
 
 def test_start_warns_when_the_commit_hook_is_not_enabled(repo, capsys):
     session.start(repo, "No hook", today=DAY)
     assert "git config core.hooksPath tools/hooks" in capsys.readouterr().err
     git(repo, "config", "core.hooksPath", "tools/hooks")
-    session.start(repo, "With hook", today=DAY + datetime.timedelta(days=1))
+    session.start(repo, "With hook", today=DAY + datetime.timedelta(days=1), replace=True)
     assert capsys.readouterr().err == ""
 
 
@@ -89,7 +102,7 @@ def test_start_prints_open_setup_items(repo, capsys):
     (repo / "docs/steam/SETUP-CHECKLIST.md").write_text(
         "# Setup\n\n1. Create the app. *Done 2026-11-01.*\n"
         "2. Add the depot. *Pending.*\n3. Build account. *Blocked on owner.*\n", "utf-8")
-    session.start(repo, "With checklist", today=DAY)
+    session.start(repo, "With checklist", today=DAY, replace=True)
     out = capsys.readouterr().out
     assert "Add the depot" in out and "Build account" in out
     assert "Create the app" not in out
