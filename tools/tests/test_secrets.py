@@ -110,8 +110,13 @@ def test_not_an_image_is_skipped(tmp_path):
 
 def test_pragma_suppresses_only_its_line():
     text = f"STEAM_APPID={'1234567'}  # {PRAGMA}\nSTEAM_APPID={'7654321'}"  # og-secrets: allow
-    found = scan_text(text, "x")
+    found = scan_text(text, "tools/tests/fixture.py")
     assert [f.line for f in found] == [2]
+
+
+def test_pragma_is_ignored_outside_fixture_files():
+    text = f"STEAM_APPID={'1234567'}  <!-- {PRAGMA} -->"  # og-secrets: allow
+    assert [f.rule for f in scan_text(text, "docs/devlog/entry.md")] == ["steam-id"]
 
 
 def test_excerpt_is_redacted():
@@ -394,3 +399,51 @@ def test_cli_with_nothing_to_scan_exits_2(tmp_path):
     r = og("secrets", cwd=tmp_path)
     assert r.returncode == 2
     assert "nothing to scan" in r.stderr
+
+
+FAKE_ID = "1234" + "567"
+
+
+@pytest.mark.parametrize("line", [
+    "https://store.steampowered.com/app/" + FAKE_ID + "/Some_Game/",
+    "https://steamdb.info/app/" + FAKE_ID + "/",
+    "https://partner.steamgames.com/apps/landing/" + FAKE_ID,
+    "steam://run/" + FAKE_ID,
+    "steam://rungameid/" + FAKE_ID,
+    "Successfully finished AppID " + FAKE_ID + " build (BuildID 99)",
+    "Building depot " + FAKE_ID + "...",
+    "AppID: " + FAKE_ID,
+    "appid=" + FAKE_ID,
+    '"appid" ' + FAKE_ID,
+    "DepotID " + FAKE_ID,
+    "Logging in user 'some" + "builder' [U:1:" + "12345678] to Steam Public...OK",  # og-secrets: allow
+    "steamcmd +login some" + "builder +run_app_build x.vdf",  # og-secrets: allow
+    "github_pat_" + "A1b2" * 8,
+    "-----BEGIN OPENSSH " + "PRIVATE KEY-----",
+    "AKIA" + "ABCDEFGHIJKLMNOP",
+])
+def test_flags_leak_shapes_outside_assignments(line):
+    assert scan_text(line, "docs/x.md"), line
+
+
+@pytest.mark.parametrize("line", [
+    "https://store.steampowered.com/app/480/Spacewar/",
+    "steam://run/480",
+    "AppID 480",
+    "steamcmd +login anonymous +app_update 480",
+    "BuildID 26879552 is live on development",
+    "the depot holds 2 files",
+    "see steam://open/console",
+])
+def test_public_and_ordinary_steam_text_is_not_flagged(line):
+    assert scan_text(line, "docs/x.md") == [], line
+
+
+def test_local_values_are_flagged_in_any_form(monkeypatch):
+    from og import secrets
+    monkeypatch.setenv("STEAM_BUILD_ACCOUNT", "zq" + "localacct")
+    monkeypatch.setattr(secrets, "_local_rx", None)
+    found = scan_text("uploaded by zq" + "localacct yesterday", "docs/x.md")
+    monkeypatch.setattr(secrets, "_local_rx", None)
+    assert [f.rule for f in found] == ["steam-local-value"]
+    assert "localacct" not in found[0].excerpt_redacted

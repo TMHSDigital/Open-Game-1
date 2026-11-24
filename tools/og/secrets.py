@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import os
 import re
 import subprocess
 import sys
@@ -16,8 +17,13 @@ IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".ti
 # runs on their decoded bytes.
 BINARY_ASSET_SUFFIXES = {".uasset", ".umap", ".blend", ".fbx", ".glb", ".wav", ".ogg", ".psd",
                          ".exr", ".tga"}
-# A line containing this marker is never reported (for deliberate fake fixtures).
+# A line containing this marker is not reported, but only in the files that hold deliberate fake
+# fixtures (PRAGMA_PATHS). Anywhere else the marker is ignored, so a real finding in a doc, a
+# devlog or a release note cannot be cleared by appending a comment.
 PRAGMA = "og-secrets: allow"
+PRAGMA_PATHS = ("tools/tests/", "tools/og/secrets.py", "tools/steam/test-release.ps1")
+# Keys whose local values (process environment or the gitignored .env) are searched for verbatim.
+LOCAL_VALUE_KEYS = ("STEAM_APPID", "STEAM_DEPOT_WIN", "STEAM_BUILD_ACCOUNT")
 EXCERPT_MAX = 120
 
 EMAIL_RE = re.compile(r"(?P<s>[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)")
@@ -37,12 +43,37 @@ RULES = [
      re.compile(r"[\"'](?:appid|depotid)[\"']\s+[\"'](?P<s>(?!480[\"'])\d{4,})[\"']", re.I)),
     ("steam-id",
      re.compile(r"steam.{0,40}?app\s*id\D{0,6}(?P<s>\d{5,})", re.I)),
+    # Forms the IDs take outside an assignment: store and partner URLs, steam:// links and
+    # lines copied from steamcmd output. 480 (Spacewar, the public test app) is never a secret.
+    ("steam-id",
+     re.compile(r"(?:store\.steampowered\.com|steamcommunity\.com|steamdb\.info)/app/"
+                r"(?P<s>(?!480\b)\d{3,})", re.I)),
+    ("steam-id",
+     re.compile(r"partner\.steamgames\.com/\S*?(?P<s>\d{4,})", re.I)),
+    ("steam-id",
+     re.compile(r"steam://\w+/(?P<s>(?!480\b)\d{3,})", re.I)),
+    ("steam-id",
+     re.compile(r"\b(?:app|depot)\s*_?\s*id\b\W{0,6}(?P<s>(?!480\b)\d{4,})", re.I)),
+    ("steam-id",
+     re.compile(r"\bdepot\s+(?P<s>\d{4,})\b", re.I)),
+    ("steam-id",
+     re.compile(r"\[U:1:(?P<s>\d+)\]")),
     ("steam-build-account",
      re.compile(r"STEAM_BUILD_ACCOUNT[\"']?\s*[=:][ \t]*[\"']?(?P<s>[A-Za-z0-9_.@-]+)")),
+    ("steam-build-account",
+     re.compile(r"Logging in user '(?P<s>[^']+)'")),  # og-secrets: allow
+    ("steam-build-account",
+     re.compile(r"\+login\s+(?P<s>(?!anonymous\b)[A-Za-z0-9_.@-]+)")),
     ("steam-cookie",
      re.compile(r"(?:steamLoginSecure|steamMachineAuth\w*)\s*[=:]\s*(?P<s>\S+)")),
     ("github-token",
      re.compile(r"\b(?P<s>gh[pousr]_[A-Za-z0-9]{36,})")),
+    ("github-token",
+     re.compile(r"\b(?P<s>github_pat_[A-Za-z0-9_]{20,})")),
+    ("private-key",
+     re.compile(r"(?P<s>-----BEGIN [A-Z ]*PRIVATE KEY-----)")),
+    ("aws-access-key",
+     re.compile(r"\b(?P<s>AKIA[0-9A-Z]{16})\b")),
     ("valve-confidential",
      re.compile(r"(?P<s>Valve\s+Confidential)", re.I)),
 ]
@@ -60,11 +91,38 @@ def _mask(secret: str) -> str:
     return secret[:2] + "***" if len(secret) > 4 else "***"
 
 
+_local_rx: list | None = None
+
+
+def _local_value_rules() -> list:
+    """Regexes for this machine's own Steam values (LOCAL_VALUE_KEYS), read from the process
+    environment and from the repo's gitignored .env. They catch the real values in any form,
+    where the pattern rules can only guess at shapes. Values are never printed. Empty on a
+    machine without them (CI)."""
+    global _local_rx
+    if _local_rx is None:
+        values = {k: os.environ.get(k, "") for k in LOCAL_VALUE_KEYS}
+        try:
+            for raw in (_repo_root() / ".env").read_text("utf-8", "replace").splitlines():
+                key, sep, val = raw.partition("=")
+                key = key.strip()
+                if sep and key in LOCAL_VALUE_KEYS and not values[key]:
+                    values[key] = val.strip().strip("\"'")
+        except (OSError, subprocess.SubprocessError):
+            pass  # no .env, or not inside a repository
+        _local_rx = [re.compile(r"(?<![A-Za-z0-9])(?P<s>" + re.escape(v) + r")(?![A-Za-z0-9])")
+                     for v in values.values() if len(v) >= 4 and v != "480"]
+    return _local_rx
+
+
 def _spans(line: str, emails: bool = True):
     """Yield (rule, start, end) for every secret span on a line."""
     for rule, rx in RULES:
         for m in rx.finditer(line):
             yield rule, m.start("s"), m.end("s")
+    for rx in _local_value_rules():
+        for m in rx.finditer(line):
+            yield "steam-local-value", m.start("s"), m.end("s")
     if not emails:
         return
     for m in EMAIL_RE.finditer(line):
@@ -85,11 +143,24 @@ def _redact(line: str, spans) -> str:
     return text if len(text) <= EXCERPT_MAX else text[:EXCERPT_MAX] + "..."
 
 
+suppressed_lines = 0  # lines the pragma silenced in this process; `run` reports the count
+
+
+def _pragma_applies(path: str) -> bool:
+    posix = str(path).replace("\\", "/")
+    return posix == "selftest" or any(p in posix for p in PRAGMA_PATHS)
+
+
 def scan_text(text: str, path: str, emails: bool = True) -> list[Finding]:
+    global suppressed_lines
     findings = []
+    pragma_ok = _pragma_applies(path)
     for lineno, line in enumerate(text.splitlines(), 1):
-        spans = [] if PRAGMA in line else list(_spans(line, emails))
+        spans = list(_spans(line, emails))
         if not spans:
+            continue
+        if pragma_ok and PRAGMA in line:
+            suppressed_lines += 1
             continue
         excerpt = _redact(line, spans)
         for rule in dict.fromkeys(r for r, _, _ in spans):
@@ -335,6 +406,9 @@ def run(args) -> int:
         findings += scan_tracked(lfs_pointers_ok=args.lfs_pointers_ok)
     for f in findings:
         print(f"{f.path}:{f.line}: [{f.rule}] {f.excerpt_redacted}")
+    if suppressed_lines:
+        print(f"{suppressed_lines} line(s) suppressed by '{PRAGMA}' in fixture files.",
+              file=sys.stderr)
     if findings:
         print(f"{len(findings)} secret finding(s); commit blocked.", file=sys.stderr)
         return 1
