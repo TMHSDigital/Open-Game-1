@@ -2,6 +2,7 @@
 
 #include "CSCharacterLog.h"
 #include "CSMovementTuning.h"
+#include "CSPhysicsBodyComponent.h"
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -9,6 +10,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/HUD.h"
 #include "HAL/IConsoleManager.h"
+#include "Misc/ConfigCacheIni.h"
 
 namespace
 {
@@ -295,6 +297,43 @@ void UCSDevTools::TakeSample(float DeltaTime)
 	Sample.Camera = Character->GetActiveCameraName();
 }
 
+namespace
+{
+	// The project version the build was packaged as (ProjectVersion in DefaultGame.ini), so a
+	// screenshot or clip of the overlay can be tied to a Steam build.
+	const FString& ProjectVersionText()
+	{
+		static FString Version;
+		static bool bRead = false;
+		if (!bRead)
+		{
+			bRead = true;
+			if (!GConfig || !GConfig->GetString(TEXT("/Script/EngineSettings.GeneralProjectSettings"), TEXT("ProjectVersion"), Version, GGameIni) || Version.IsEmpty())
+			{
+				Version = TEXT("unknown");
+			}
+		}
+		return Version;
+	}
+
+	const TCHAR* BodyStateName(const ACSCharacter* Character)
+	{
+		const UCSPhysicsBodyComponent* Body = Character ? Character->GetPhysicsBody() : nullptr;
+		if (!Body || !Body->HasPhysicsBody())
+		{
+			return TEXT("none");
+		}
+		switch (Body->GetState())
+		{
+		case ECSBodyState::Normal: return TEXT("Normal");
+		case ECSBodyState::Hit: return TEXT("Hit");
+		case ECSBodyState::Ragdoll: return TEXT("Ragdoll");
+		case ECSBodyState::Recovering: return TEXT("Recovering");
+		}
+		return TEXT("?");
+	}
+}
+
 FString UCSDevTools::GetOverlayText() const
 {
 	return FString::Printf(
@@ -304,14 +343,19 @@ FString UCSDevTools::GetOverlayText() const
 		TEXT("Grounded  %s\n")
 		TEXT("Slope     %6.1f deg\n")
 		TEXT("Gait      %s\n")
-		TEXT("Camera    %s"),
+		TEXT("Camera    %s\n")
+		TEXT("Body      %s\n")
+		TEXT("Build     %s\n")
+		TEXT("Keys      F1 overlay  F2 map  F5 reload tuning  R ragdoll  P push  V camera"),
 		Sample.Speed,
 		Sample.Acceleration,
 		Sample.VerticalSpeed,
 		Sample.bGrounded ? TEXT("yes") : TEXT("no"),
 		Sample.SlopeAngleDeg,
 		GaitName(Sample.Gait),
-		Sample.Camera.IsNone() ? TEXT("n/a") : *Sample.Camera.ToString());
+		Sample.Camera.IsNone() ? TEXT("n/a") : *Sample.Camera.ToString(),
+		BodyStateName(GetCharacter()),
+		*ProjectVersionText());
 }
 
 void UCSDevTools::DrawOverlay(AHUD* HUD, UCanvas* Canvas)

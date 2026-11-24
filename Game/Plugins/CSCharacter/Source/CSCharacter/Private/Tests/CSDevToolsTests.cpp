@@ -323,6 +323,9 @@ bool FCSDevToolsOffDisablesKeysTest::RunTest(const FString& Parameters)
 				TestTrue(FString::Printf(TEXT("Overlay shows %s"), Field), Text.Contains(Field));
 			}
 			TestTrue(TEXT("Overlay camera reads the camera rig's view (third person by default)"), Text.Contains(TEXT("ThirdPerson")));
+			TestTrue(TEXT("Overlay shows the body state"), Text.Contains(TEXT("Body      ")));
+			TestTrue(TEXT("Overlay shows the build version"), Text.Contains(TEXT("Build     ")) && !Text.Contains(TEXT("Build     \n")));
+			TestTrue(TEXT("Overlay lists the dev keys"), Text.Contains(TEXT("F1 overlay")) && Text.Contains(TEXT("F5 reload tuning")));
 
 			// Acceleration: about Acceleration while speeding up from rest, about 0 at a steady speed.
 			Sim.Run(FVector::ZeroVector, 2.f);
