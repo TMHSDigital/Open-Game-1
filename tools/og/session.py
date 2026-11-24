@@ -135,6 +135,10 @@ def start(repo: Path, goal: str, today: datetime.date | None = None, commit: boo
     print(sid)
     for item in _open_setup_items(repo):
         print(f"Open setup item: {item}")
+    hooks = _git(repo, "config", "--get", "core.hooksPath", check=False)
+    if hooks.replace(chr(92), "/").rstrip("/") != "tools/hooks":
+        print("WARNING: the commit hook is not enabled on this clone, so commits are not scanned "
+              "before they are made. Run: git config core.hooksPath tools/hooks", file=sys.stderr)
     return sid
 
 

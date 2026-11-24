@@ -24,7 +24,7 @@ Every design decision, every work session and every Steam build is recorded in t
 
 <sub>Session 2: the base character on the start plane. The same fixed cameras photograph the game every session, so the <a href="https://tmhsdigital.github.io/Open-Game-1/gallery.html">gallery</a> becomes a time-lapse of the game taking shape.</sub>
 
-[Status](#status) · [Follow along](#follow-along) · [How it is built](#how-it-is-built) · [Open questions](#open-questions) · [Repository map](#repository-map) · [License](#license)
+[Status](#status) · [Follow along](#follow-along) · [How it is built](#how-it-is-built) · [Open questions](#open-questions) · [Repository map](#repository-map) · [Setting up a clone](#setting-up-a-clone) · [License](#license)
 
 </div>
 
@@ -70,7 +70,7 @@ flowchart LR
 - **Decisions are written down before they are acted on.** Open questions live in [`docs/OPEN-DECISIONS.md`](docs/OPEN-DECISIONS.md) and as Issues. Settled ones become numbered records in [`docs/decisions/`](docs/decisions/), listing only the options that were actually weighed.
 - **Sessions leave a record.** A session ends with a devlog entry, fixed-camera stills of the current build and, when recorded, a short clip. Anything captured from the desktop is checked for secrets before it can be published.
 - **Releases are gated.** One local command checks the tree, runs the tests, scans for secrets, packages a Shipping build, uploads it to Steam's password-protected `development` branch and records it. Promotion to the public `default` branch is always done by hand in Steamworks.
-- **Nothing private gets in.** A secrets scanner runs before every commit, in CI and before every release. Steam App and Depot IDs, keys, account names, unpublished release notes and Steamworks partner-page screenshots never enter the repository.
+- **Nothing private gets in.** A secrets scanner runs before every commit (through the commit hook, see [Setting up a clone](#setting-up-a-clone)), in CI and before every release. Steam App and Depot IDs, keys, account names, unpublished release notes and Steamworks partner-page screenshots never enter the repository.
 - **Third-party assets are license-checked.** Each one is recorded in a ledger with its source and license; anything non-commercial, no-derivatives, share-alike or GPL-family is refused, and [`CREDITS.md`](CREDITS.md) is generated from the ledger.
 
 The details, step by step: [`docs/WORKFLOWS.md`](docs/WORKFLOWS.md). The tools behind them: [`docs/TOOLS.md`](docs/TOOLS.md).
@@ -115,6 +115,16 @@ steam/templates/  SteamPipe build configs (no IDs)
 site/             Devlog site templates
 .claude/skills/   Project skills for Claude Code
 ```
+
+## Setting up a clone
+
+The project is developed on Windows. A fresh clone needs these steps once; the second one matters most, because without it commits are not scanned before they are made:
+
+1. Install [Git LFS](https://git-lfs.com/) and run `git lfs install` (models, maps and Unreal assets are LFS files).
+2. Enable the commit hook: `git config core.hooksPath tools/hooks`. It runs the secrets scan, the asset license check and the decisions check on every commit, and carries the Git LFS hooks.
+3. Install [uv](https://docs.astral.sh/uv/) and PowerShell 7. Check the tooling with `uv run --project tools pytest tools/tests -q` and `pwsh tools/steam/test-release.ps1`.
+4. To build the game: Unreal Engine 5.8 (set the `UE_ROOT` environment variable if it is not in the default location, see [`docs/TOOLS.md`](docs/TOOLS.md)) and Blender for the character build.
+5. Steam uploads read their IDs from a local `.env` (copy `.env.example`); that file is never committed.
 
 ## Contributing
 

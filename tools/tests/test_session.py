@@ -74,6 +74,14 @@ def test_start_creates_entry_and_state(repo, capsys):
     assert session.start(repo, "Next day", today=DAY + datetime.timedelta(days=1)) == "2026-11-23-01"
 
 
+def test_start_warns_when_the_commit_hook_is_not_enabled(repo, capsys):
+    session.start(repo, "No hook", today=DAY)
+    assert "git config core.hooksPath tools/hooks" in capsys.readouterr().err
+    git(repo, "config", "core.hooksPath", "tools/hooks")
+    session.start(repo, "With hook", today=DAY + datetime.timedelta(days=1))
+    assert capsys.readouterr().err == ""
+
+
 def test_start_prints_open_setup_items(repo, capsys):
     session.start(repo, "No checklist yet", today=DAY)
     assert "setup" not in capsys.readouterr().out.lower()
