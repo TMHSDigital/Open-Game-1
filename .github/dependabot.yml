@@ -1,0 +1,13 @@
+# Weekly update pull requests for the workflow actions (pinned to commit SHAs) and the Python
+# tooling lockfile. Pull requests from the public are not accepted (OD-011); these come from
+# Dependabot only and are merged by the owner.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: uv
+    directory: /tools
+    schedule:
+      interval: weekly

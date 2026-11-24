@@ -1,4 +1,4 @@
 #!/bin/sh
 # Enable with: git config core.hooksPath tools/hooks
-uv run --project tools python -m og secrets --staged || exit 1
-uv run --project tools python -m og assets check || exit 1
+uv run --locked --project tools python -m og secrets --staged || exit 1
+uv run --locked --project tools python -m og assets check || exit 1

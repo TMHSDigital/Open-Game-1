@@ -2,6 +2,7 @@ name: checks
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 permissions:
@@ -19,10 +20,10 @@ jobs:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
       - name: Tests
-        run: uv run --project tools pytest tools/tests -q
+        run: uv run --locked --project tools pytest tools/tests -q
       - name: Secrets scan (all tracked files)
-        run: uv run --project tools python -m og secrets --tracked --lfs-pointers-ok
+        run: uv run --locked --project tools python -m og secrets --tracked --lfs-pointers-ok
       - name: Asset license check
-        run: uv run --project tools python -m og assets check
+        run: uv run --locked --project tools python -m og assets check
       - name: Decisions consistency
-        run: uv run --project tools python -m og decisions check --offline
+        run: uv run --locked --project tools python -m og decisions check --offline
