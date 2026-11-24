@@ -1,0 +1,7 @@
+#!/bin/sh
+# Scans the commit message for secrets before the commit is made: messages are published with
+# the commit, and the pre-commit hook only sees file content.
+uv run --locked --project tools python -m og secrets "$1" || {
+    echo "The commit message looks like it contains a secret; the commit was not made." >&2
+    exit 1
+}

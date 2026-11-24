@@ -8,7 +8,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from og import gh
+from og import gh, secrets
 from og.assets import _repo_root
 
 OPEN_DOC = Path("docs") / "OPEN-DECISIONS.md"
@@ -328,7 +328,18 @@ def _issue_title(r: OpenDecision) -> str:
     return f"{r.id}: {r.question}"
 
 
+def _refuse_secrets(text: str, what: str) -> None:
+    """Stop before text is posted to GitHub or written into a decision record. A public Issue
+    cannot be recalled by a later failed commit, so the scan has to come first."""
+    found = secrets.scan_text(text, what)
+    if found:
+        rules = ", ".join(sorted({f.rule for f in found}))
+        raise RuntimeError(f"{what} looks like it contains a secret ({rules}); nothing was "
+                           "posted or written. Reword it and run the command again.")
+
+
 def _create_issue(r: OpenDecision, slug: str | None) -> int:
+    _refuse_secrets(_issue_title(r) + "\n" + _issue_body(r, slug), f"the Issue text for {r.id}")
     out = gh._gh(["issue", "create", "--title", _issue_title(r), "--body", _issue_body(r, slug),
                   "--label", LABEL, *_repo_flag(slug)])
     m = re.search(r"/issues/(\d+)", out)
@@ -405,6 +416,7 @@ def close_decision(repo: Path, od_id: str, title: str, decision: str) -> Path:
     row = next((r for r in rows if r.id == od_id), None)
     if row is None:
         raise KeyError(f"{od_id} is not an open decision")
+    _refuse_secrets(f"{title}\n{decision}", f"the decision text for {od_id}")
     number = next_adr_number(repo)
     filename = f"{number:04d}-{_kebab(title)}.md"
     rel = (ADR_DIR / filename).as_posix()

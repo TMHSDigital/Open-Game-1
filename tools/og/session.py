@@ -253,8 +253,19 @@ def _clip_text_findings(clip: Path) -> list:
     return found
 
 
+def _usable_ocr(media: Path) -> bool:
+    """True when the media file has OCR text that can stand for it: not empty, and not older
+    than the media (an older file is left over from an earlier recording of the same name)."""
+    media = Path(media)
+    for side in _ocr_sidecars(media):
+        if side.read_text("utf-8", "replace").strip() and \
+                side.stat().st_mtime >= media.stat().st_mtime:
+            return True
+    return False
+
+
 def _missing_ocr(clip: Path | None, contact_sheet: Path | None) -> list[Path]:
-    return [Path(m) for m in (contact_sheet, clip) if m and not _ocr_sidecars(Path(m))]
+    return [Path(m) for m in (contact_sheet, clip) if m and not _usable_ocr(Path(m))]
 
 
 def _merge_index(existing: str, rows: list[str]) -> str:
@@ -278,8 +289,9 @@ def end(repo: Path, capture: bool = False, clip: Path | None = None,
     missing = _missing_ocr(clip, contact_sheet)
     if missing and not no_ocr_ok:
         for m in missing:
-            print(f"og session: no OCR text for {m} (expected {m.name}.ocr.txt next to it, "
-                  "from screencast find_text).", file=sys.stderr)
+            print(f"og session: no usable OCR text for {m} (expected {m.name}.ocr.txt next to it, "
+                  "from screencast find_text, not empty and not older than the file).",
+                  file=sys.stderr)
         print("Refusing to publish desktop media without an OCR secret check; nothing written. "
               "Add the .ocr.txt file, or pass --no-ocr-ok if you have checked it yourself.",
               file=sys.stderr)

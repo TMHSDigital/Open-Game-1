@@ -305,6 +305,7 @@ def _scan_index_entries(names: list[str], root: Path,
             findings.append(bad)
             continue
         findings += _scan_blob(name, blob)
+        findings += scan_text(name, name)  # the path itself is published too
         if Path(name).suffix.lower() in IMAGE_SUFFIXES:
             for sc in (Path(name).with_suffix(".ocr.txt").as_posix(), name + ".ocr.txt"):
                 r = subprocess.run(["git", "show", ":" + sc], capture_output=True, cwd=root)
