@@ -4,6 +4,7 @@ Status: Accepted
 Date: 2026-11-22
 Issue: none
 Supersedes: none
+Amended by: [0014](0014-claude-runs-steam-development-uploads.md) (Claude Code now runs uploads to the `development` branch; the script no longer refuses them)
 
 ## Context
 

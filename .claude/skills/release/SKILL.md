@@ -10,7 +10,7 @@ Full reference: `docs/steam/BUILD-WORKFLOW.md`. History: `docs/steam/BUILDS.md`.
 
 ## Rules
 
-- Claude may run only: `dry-run`, `status`, `promote <ver>`, and the test script `tools/steam/test-release.ps1`.
+- Claude runs `dry-run`, `status`, `promote <ver>` and the test script `tools/steam/test-release.ps1`, and the development-branch uploads in the next rule. The only mode Claude never runs is `promoted`.
 - Claude runs `dev`, `upload-only` and `preview` itself, always through `tools/steam/release.ps1` and never by calling steamcmd directly or skipping a gate (decision 0014). Claude never runs `promoted` (the script refuses it inside Claude Code, exit 40) and never sets `default` live. If steamcmd asks for a password or a Steam Guard code, stop and ask the owner to log in to steamcmd; never handle the credentials.
 - Never pass the script's test-only switches (`-SkipGitGates`, `-CheckCommand`, `-LedgerPath`, `-RepoDir`, `-NoGitHub`). They exist for `tools/steam/test-release.ps1`; the script refuses them anywhere else (exit 40).
 - Never set the `default` branch live, and never suggest a command that does.
@@ -22,7 +22,7 @@ Full reference: `docs/steam/BUILD-WORKFLOW.md`. History: `docs/steam/BUILDS.md`.
 1. Run `pwsh tools/steam/release.ps1 status` and report open setup items. If checklist step 7 is still open (no build yet), the first upload is `upload-only`, not `dev`.
 2. Run `pwsh tools/steam/release.ps1 dry-run`. It runs gates 4 to 10 for real, warns on gates 1 to 3 (branch, clean tree, pushed), packages a Shipping build and renders the VDFs. It does not bump the version.
 3. On a gate failure, read the exit code (`10 + n` is gate n) and fix that gate: commit or push, rebuild and retest, clean the secret or asset finding (gate 7 scans every tracked file with `og secrets --tracked` and the `-Notes` text), or tell the owner which env var names are missing.
-4. When the dry run passes and the tree is committed and pushed, run it (the owner may also run it in their own terminal):
+4. When the dry run passes and the tree is committed and pushed, run it yourself; do not hand the command to the owner (the owner may still run it in their own terminal if they choose):
 
    ```powershell
    pwsh tools/steam/release.ps1 dev

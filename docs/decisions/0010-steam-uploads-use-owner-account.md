@@ -4,6 +4,7 @@ Status: Accepted
 Date: 2026-11-22
 Issue: none
 Supersedes: none
+Amended by: [0014](0014-claude-runs-steam-development-uploads.md) (uploads to the `development` branch are no longer limited to the owner's terminal)
 
 ## Context
 

@@ -3,7 +3,7 @@ name: steam-steamcmd-helper
 description: steamcmd reference for Combat Simulator on Windows - commands, Steam Guard, troubleshooting, and the release.ps1 upload path. Claude explains steamcmd and never calls it directly; uploads go through release.ps1. Use when the user asks about steamcmd, SteamPipe uploads, or installing a dedicated server tool app.
 ---
 
-# steamcmd helper (Windows, owner-run)
+# steamcmd helper (Windows)
 
 Adapted from the Steam-Cursor-Plugin `steam-steamcmd-helper` skill. **Claude never calls `steamcmd` directly.** Claude may explain commands and output; uploads go only through `tools/steam/release.ps1` (see the `release` skill).
 
@@ -36,8 +36,8 @@ The only upload path is `tools/steam/release.ps1`, run by Claude or the owner (d
 
 ```powershell
 pwsh tools/steam/release.ps1 dry-run   # gates, package, stage, VDFs; no upload (Claude may run this)
-pwsh tools/steam/release.ps1 preview   # owner: steamcmd preview, nothing uploaded
-pwsh tools/steam/release.ps1 dev       # owner: upload, set live on development
+pwsh tools/steam/release.ps1 preview   # Claude or owner: steamcmd preview, nothing uploaded
+pwsh tools/steam/release.ps1 dev       # Claude or owner: upload, set live on development
 ```
 
 Never write or recommend a wrapper that calls `+run_app_build` directly: it would skip every gate and the ledger.

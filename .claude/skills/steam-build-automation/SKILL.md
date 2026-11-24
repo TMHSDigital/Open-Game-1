@@ -1,6 +1,6 @@
 ---
 name: steam-build-automation
-description: How Combat Simulator gets packaged and uploaded to Steam through SteamPipe with tools/steam/release.ps1 (numbered gates, Shipping package, fresh staging, VDFs rendered from steam/templates, development branch), branch strategy, and future CI. Claude runs dry runs; the owner runs real uploads. Use when preparing a Steam build, debugging a SteamPipe upload, or planning CI for builds.
+description: How Combat Simulator gets packaged and uploaded to Steam through SteamPipe with tools/steam/release.ps1 (numbered gates, Shipping package, fresh staging, VDFs rendered from steam/templates, development branch), branch strategy, and future CI. Claude runs dry runs and uploads to the development branch (decision 0014); the default branch stays with the owner. Use when preparing a Steam build, debugging a SteamPipe upload, or planning CI for builds.
 ---
 
 # Steam build automation (Combat Simulator)
@@ -11,9 +11,9 @@ Adapted from the Steam-Cursor-Plugin `steam-build-automation` skill, for Unreal 
 
 ```powershell
 pwsh tools/steam/release.ps1 dry-run       # Claude or owner: gates, package, stage, render VDFs, print the steamcmd line
-pwsh tools/steam/release.ps1 preview       # owner: steamcmd preview (logs and manifest, nothing uploaded)
-pwsh tools/steam/release.ps1 upload-only   # owner: first build, no branch set live
-pwsh tools/steam/release.ps1 dev           # owner: upload and set live on the development branch
+pwsh tools/steam/release.ps1 preview       # Claude or owner: steamcmd preview (logs and manifest, nothing uploaded)
+pwsh tools/steam/release.ps1 upload-only   # Claude or owner: first build, no branch set live
+pwsh tools/steam/release.ps1 dev           # Claude or owner: upload and set live on the development branch
 pwsh tools/steam/test-release.ps1          # tests the script with a fake build, fake steamcmd and a gh recorder
 ```
 

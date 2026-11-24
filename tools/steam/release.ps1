@@ -477,11 +477,11 @@ function Invoke-Upload {
         Write-Host ''
         Write-Host 'Dry run complete. Nothing was uploaded and ProjectVersion was not bumped.'
         Write-Host "The upload step would run: $steamLine"
-        Write-Host 'To release, run in your own terminal: pwsh tools/steam/release.ps1 dev'
+        Write-Host 'To release: pwsh tools/steam/release.ps1 dev'
         return
     }
 
-    # --- steamcmd (owner only) -----------------------------------------------------------------
+    # --- steamcmd (the owner's cached login; decisions 0010 and 0014) -----------------------------------------------------------------
     if (-not (Test-Path -LiteralPath $SteamCmd)) { Stop-Release 30 "steamcmd not found at $SteamCmd. Install it or set STEAMCMD_PATH." }
     # Unattended (Claude Code): never wait at a password prompt; a missing login is an error.
     $noPrompt = if ($env:CLAUDECODE) { @('+@NoPromptForPassword', '1') } else { @() }
