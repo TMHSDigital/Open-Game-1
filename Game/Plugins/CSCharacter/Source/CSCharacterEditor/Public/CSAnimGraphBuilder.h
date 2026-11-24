@@ -81,12 +81,13 @@ public:
 	/**
 	 * Rebuilds an animation Blueprint's AnimGraph as
 	 *   Poses[i] -> Blend Poses by int (active child = int variable PoseIndexVariable) -> Slot SlotName -> Output Pose
-	 * and compiles it. Every blend space's X input reads the float variable SpeedVariable. Both
-	 * variables must be members of the Blueprint's parent class. Each pose restarts when it becomes
+	 * and compiles it. Every blend space's X input reads the float variable SpeedVariable and its
+	 * Play Rate input the float variable PlayRateVariable. All three variables must be members of
+	 * the Blueprint's parent class. Each pose restarts when it becomes
 	 * active (so one-shot sequences play from their start) and blends in over its BlendInSeconds.
 	 * Everything else in the AnimGraph is removed, so a rerun gives the same graph.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "CS|Animation")
 	static FCSAnimBuildResult BuildLocomotionGraph(UAnimBlueprint* AnimBlueprint, const TArray<FCSPoseSource>& Poses,
-		FName PoseIndexVariable, FName SpeedVariable, FName SlotName);
+		FName PoseIndexVariable, FName SpeedVariable, FName PlayRateVariable, FName SlotName);
 };

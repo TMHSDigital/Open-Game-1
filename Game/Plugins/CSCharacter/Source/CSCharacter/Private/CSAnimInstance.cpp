@@ -48,6 +48,47 @@ ECSLocomotionState UCSAnimInstance::SelectGroundState(float Speed, bool bCrouchi
 	return ECSLocomotionState::Sprint;
 }
 
+float UCSAnimInstance::ComputeLocomotion(float InGroundSpeed, TConstArrayView<float> GaitSpeeds, TConstArrayView<FCSStrideSample> Stride,
+	float RateMin, float RateMax, float& OutAxis)
+{
+	const float Speed = FMath::IsFinite(InGroundSpeed) ? FMath::Max(InGroundSpeed, 0.f) : 0.f;
+
+	// Axis: piecewise linear through (0, 0), (GaitSpeeds[0], 1), (GaitSpeeds[1], 2), ...
+	OutAxis = float(GaitSpeeds.Num());
+	float Low = 0.f;
+	for (int32 Index = 0; Index < GaitSpeeds.Num(); ++Index)
+	{
+		const float High = GaitSpeeds[Index];
+		if (Speed <= High)
+		{
+			// Two gaits tuned to the same speed leave no span to blend across: take the upper one.
+			OutAxis = High - Low > KINDA_SMALL_NUMBER ? float(Index) + FMath::Clamp((Speed - Low) / (High - Low), 0.f, 1.f) : float(Index + 1);
+			break;
+		}
+		Low = High;
+	}
+
+	if (Stride.Num() < 2)
+	{
+		return 1.f;
+	}
+	const float Axis = FMath::Clamp(OutAxis, 0.f, float(Stride.Num() - 1));
+	const int32 Lower = FMath::Min(FMath::FloorToInt32(Axis), Stride.Num() - 2);
+	const float Upper = Axis - float(Lower);
+	const FCSStrideSample& A = Stride[Lower];
+	const FCSStrideSample& B = Stride[Lower + 1];
+	const float Seconds = (1.f - Upper) * A.Seconds + Upper * B.Seconds;
+	const float Natural = Seconds > KINDA_SMALL_NUMBER
+		? ((1.f - Upper) * A.StrideSpeed * A.Seconds + Upper * B.StrideSpeed * B.Seconds) / Seconds
+		: FMath::Lerp(A.StrideSpeed, B.StrideSpeed, Upper);
+	if (Natural <= 1.f)
+	{
+		return 1.f;
+	}
+	const float Lowest = FMath::Max(RateMin, 0.01f);
+	return FMath::Clamp(Speed / Natural, Lowest, FMath::Max(RateMax, Lowest));
+}
+
 void UCSAnimInstance::SetState(ECSLocomotionState NewState)
 {
 	if (NewState != State)
@@ -68,6 +109,8 @@ void UCSAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	{
 		// Editor preview or a non-character owner: hold the idle pose.
 		GroundSpeed = VerticalSpeed = 0.f;
+		LocomotionAxis = 0.f;
+		LocomotionPlayRate = 1.f;
 		bIsCrouching = bIsInAir = false;
 		SetState(ECSLocomotionState::Idle);
 		return;
@@ -89,7 +132,15 @@ void UCSAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 		Jog = CS->GetGaitSpeed(ECSGait::Jog);
 		Sprint = CS->GetGaitSpeed(ECSGait::Sprint);
 		Crouch = CS->GetGaitSpeed(ECSGait::Crouch);
+		Tuning = &CS->GetActiveTuning();
 	}
+
+	// Blend position and play rate from the speed actually moved, so the feet match the ground.
+	const float StandingGaits[] = {Walk, Jog, Sprint};
+	const float CrouchGaits[] = {Crouch};
+	LocomotionPlayRate = bIsCrouching
+		? ComputeLocomotion(GroundSpeed, CrouchGaits, CrouchStride, Tuning->LocomotionRateMin, Tuning->LocomotionRateMax, LocomotionAxis)
+		: ComputeLocomotion(GroundSpeed, StandingGaits, GroundStride, Tuning->LocomotionRateMin, Tuning->LocomotionRateMax, LocomotionAxis);
 
 	if (bIsInAir)
 	{

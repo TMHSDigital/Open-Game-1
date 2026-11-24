@@ -149,7 +149,7 @@ FCSAnimBuildResult UCSAnimGraphBuilder::SetBlendSpace1D(UBlendSpace* BlendSpace,
 }
 
 FCSAnimBuildResult UCSAnimGraphBuilder::BuildLocomotionGraph(UAnimBlueprint* AnimBlueprint, const TArray<FCSPoseSource>& Poses,
-	FName PoseIndexVariable, FName SpeedVariable, FName SlotName)
+	FName PoseIndexVariable, FName SpeedVariable, FName PlayRateVariable, FName SlotName)
 {
 	using namespace CSAnimGraphBuilderPrivate;
 	if (!AnimBlueprint || Poses.Num() == 0)
@@ -157,10 +157,11 @@ FCSAnimBuildResult UCSAnimGraphBuilder::BuildLocomotionGraph(UAnimBlueprint* Ani
 		return Fail(TEXT("Need an animation Blueprint and at least one pose."));
 	}
 	UClass* Parent = AnimBlueprint->ParentClass;
-	if (!Parent || !FindFProperty<FIntProperty>(Parent, PoseIndexVariable) || !FindFProperty<FFloatProperty>(Parent, SpeedVariable))
+	if (!Parent || !FindFProperty<FIntProperty>(Parent, PoseIndexVariable) || !FindFProperty<FFloatProperty>(Parent, SpeedVariable)
+		|| !FindFProperty<FFloatProperty>(Parent, PlayRateVariable))
 	{
-		return Fail(FString::Printf(TEXT("Parent class %s needs an int32 %s and a float %s."),
-			Parent ? *Parent->GetName() : TEXT("(none)"), *PoseIndexVariable.ToString(), *SpeedVariable.ToString()));
+		return Fail(FString::Printf(TEXT("Parent class %s needs an int32 %s and floats %s and %s."),
+			Parent ? *Parent->GetName() : TEXT("(none)"), *PoseIndexVariable.ToString(), *SpeedVariable.ToString(), *PlayRateVariable.ToString()));
 	}
 	UEdGraph* Graph = FindAnimGraph(AnimBlueprint);
 	if (!Graph)
@@ -264,6 +265,24 @@ FCSAnimBuildResult UCSAnimGraphBuilder::BuildLocomotionGraph(UAnimBlueprint* Ani
 			if (!SpeedOut || !XIn || !Schema->TryCreateConnection(SpeedOut, XIn))
 			{
 				return Fail(FString::Printf(TEXT("Could not drive %s's X axis from %s."), *AsBlendSpace->GetName(), *SpeedVariable.ToString()));
+			}
+			// Play Rate is an optional pin: show it, then drive it.
+			for (FOptionalPinFromProperty& Optional : Node->ShowPinForProperties)
+			{
+				if (Optional.PropertyName == TEXT("PlayRate"))
+				{
+					Optional.bShowPin = true;
+				}
+			}
+			Node->ReconstructNode();
+			UK2Node_VariableGet* GetRate = MakeGetter(*Graph, PlayRateVariable, X0 - 1400, Y + 110);
+			UEdGraphPin* RateOut = GetRate->FindPin(PlayRateVariable, EGPD_Output);
+			UEdGraphPin* RateIn = Node->FindPin(TEXT("PlayRate"), EGPD_Input);
+			// ReconstructNode replaced the pins: the X link made above is on the new X pin.
+			UEdGraphPin* XAfter = Node->FindPin(TEXT("X"), EGPD_Input);
+			if (!RateOut || !RateIn || !Schema->TryCreateConnection(RateOut, RateIn) || !XAfter || XAfter->LinkedTo.Num() != 1)
+			{
+				return Fail(FString::Printf(TEXT("Could not drive %s's play rate from %s."), *AsBlendSpace->GetName(), *PlayRateVariable.ToString()));
 			}
 			Player = Node;
 		}

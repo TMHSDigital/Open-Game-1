@@ -34,6 +34,21 @@ enum class ECSLocomotionPose : uint8
 	Land,
 };
 
+/** How far a locomotion clip travels: what turns a ground speed into a play rate. */
+USTRUCT(BlueprintType)
+struct FCSStrideSample
+{
+	GENERATED_BODY()
+
+	/** Ground speed the clip covers at play rate 1 on this character, cm/s. 0 for a clip that stays in place (idle). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "CS|Animation")
+	float StrideSpeed = 0.f;
+
+	/** Length of the clip, seconds. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "CS|Animation")
+	float Seconds = 1.f;
+};
+
 /**
  * Animation instance for a humanoid character: reads the owner's movement once per animation update
  * and picks a locomotion state. An animation Blueprint derived from this class plays the pose for
@@ -52,6 +67,12 @@ enum class ECSLocomotionPose : uint8
  *   then Fall; leaving it moving down (a ledge): Fall at once;
  * - touching down slower than half the walk speed: Land for LandSeconds, cut short as soon as the
  *   character moves faster than that; a faster touchdown goes straight to the ground state.
+ *
+ * Feet and ground: the Ground and Crouch blend spaces are laid out by gait, not by speed (X 0 idle,
+ * 1 walk, 2 jog, 3 sprint; crouch 0 idle, 1 walk), with every sample at rate 1. Each update
+ * LocomotionAxis is where the ground speed falls between the gait speeds in use, and
+ * LocomotionPlayRate is the ground speed divided by the speed the blended clips cover at rate 1
+ * (GroundStride, CrouchStride), so the feet match the ground whatever the gait speeds are tuned to.
  */
 UCLASS(Blueprintable)
 class CSCHARACTER_API UCSAnimInstance : public UAnimInstance
@@ -67,8 +88,36 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "CS|Animation")
 	float LandSeconds = 0.4f;
 
+	/**
+	 * Stride of each sample of the Ground blend space, in axis order: idle, walk, jog, sprint.
+	 * Filled on the animation Blueprint's class defaults by setup_animation.py. Empty: rate 1.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "CS|Animation")
+	TArray<FCSStrideSample> GroundStride;
+
+	/** Stride of each sample of the Crouch blend space: crouch idle, crouch walk. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "CS|Animation")
+	TArray<FCSStrideSample> CrouchStride;
+
 	ECSLocomotionState GetLocomotionState() const { return State; }
 	float GetGroundSpeed() const { return GroundSpeed; }
+	float GetLocomotionAxis() const { return LocomotionAxis; }
+	float GetLocomotionPlayRate() const { return LocomotionPlayRate; }
+
+	/**
+	 * Blend position and play rate for a ground speed.
+	 * GaitSpeeds are the speeds at axis 1, 2, ... (axis 0 is standing still); Stride has one entry
+	 * per axis position, starting at 0. OutAxis runs linearly between neighbouring gait speeds and
+	 * stops at the last. The return value is GroundSpeed divided by the speed the two neighbouring
+	 * clips cover together at rate 1, clamped to [RateMin, RateMax]; 1 when that speed is zero
+	 * (standing still) or Stride is too short.
+	 *
+	 * The blended speed: a blend space plays its samples in step by normalised time, so with weight
+	 * a on the upper clip one blended cycle takes (1-a) T0 + a T1 seconds and covers
+	 * (1-a) v0 T0 + a v1 T1 centimetres (v stride speed, T clip length).
+	 */
+	static float ComputeLocomotion(float InGroundSpeed, TConstArrayView<float> GaitSpeeds, TConstArrayView<FCSStrideSample> Stride,
+		float RateMin, float RateMax, float& OutAxis);
 
 	/** The AnimGraph pose a state plays. */
 	static ECSLocomotionPose PoseForState(ECSLocomotionState InState);
@@ -82,6 +131,14 @@ protected:
 	/** Horizontal speed, cm/s. Drives the Ground and Crouch blend spaces. */
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "CS|Animation")
 	float GroundSpeed = 0.f;
+
+	/** Position on the Ground or Crouch blend space axis: 0 idle, 1 walk, 2 jog, 3 sprint (crouch: 0 idle, 1 walk). */
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "CS|Animation")
+	float LocomotionAxis = 0.f;
+
+	/** Play rate of the Ground and Crouch blend spaces (see ComputeLocomotion). */
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "CS|Animation")
+	float LocomotionPlayRate = 1.f;
 
 	/** Vertical speed, cm/s, up positive. */
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "CS|Animation")

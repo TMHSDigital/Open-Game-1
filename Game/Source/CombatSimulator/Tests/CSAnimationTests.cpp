@@ -13,14 +13,17 @@
 #include "Animation/AnimBlueprint.h"
 #include "Animation/AnimBlueprintGeneratedClass.h"
 #include "Animation/AnimSequence.h"
+#include "Animation/BlendSpace.h"
 #include "Components/BoxComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "CSAnimInstance.h"
 #include "CSCharacter.h"
+#include "CSMovementTuning.h"
 #include "Engine/SkeletalMesh.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Tests/AutomationCommon.h"
+#include "UObject/StrongObjectPtr.h"
 
 namespace CSAnimationTests
 {
@@ -223,6 +226,118 @@ bool FCSAnimationLocomotionStatesReachableTest::RunTest(const FString& Parameter
 	TestEqual(TEXT("Sprint uses the ground pose"), UCSAnimInstance::PoseForState(ECSLocomotionState::Sprint), ECSLocomotionPose::Ground);
 	TestEqual(TEXT("Crouch walk uses the crouch pose"), UCSAnimInstance::PoseForState(ECSLocomotionState::CrouchWalk), ECSLocomotionPose::Crouch);
 	TestEqual(TEXT("Fall uses the fall pose"), UCSAnimInstance::PoseForState(ECSLocomotionState::Fall), ECSLocomotionPose::Fall);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSAnimationStrideTableFilledTest, "CombatSimulator.CS.Animation.StrideTableFilled",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FCSAnimationStrideTableFilledTest::RunTest(const FString& Parameters)
+{
+	using namespace CSAnimationTests;
+	const UAnimBlueprint* Blueprint = LoadObject<UAnimBlueprint>(nullptr, AnimBlueprintPath);
+	const UClass* Class = Blueprint ? Blueprint->GeneratedClass.Get() : nullptr;
+	const UCSAnimInstance* Defaults = Class ? Cast<UCSAnimInstance>(Class->GetDefaultObject()) : nullptr;
+	if (!TestNotNull(FString(TEXT("ABP_BaseCharacter derives from UCSAnimInstance")) + Regenerate, Defaults))
+	{
+		return false;
+	}
+	auto Check = [this](const TCHAR* Name, const TArray<FCSStrideSample>& Table, int32 Count)
+	{
+		if (!TestEqual(FString::Printf(TEXT("%s has one entry per blend sample%s"), Name, Regenerate), Table.Num(), Count))
+		{
+			return;
+		}
+		TestEqual(FString::Printf(TEXT("%s: the idle clip stays in place"), Name), Table[0].StrideSpeed, 0.f);
+		for (int32 Index = 0; Index < Table.Num(); ++Index)
+		{
+			TestTrue(FString::Printf(TEXT("%s[%d] has a clip length"), Name, Index), Table[Index].Seconds > 0.1f);
+			if (Index > 0)
+			{
+				// A human stride: between a slow shuffle and a flat-out sprint.
+				TestTrue(FString::Printf(TEXT("%s[%d] has a believable stride speed (%.0f cm/s)"), Name, Index, Table[Index].StrideSpeed),
+					Table[Index].StrideSpeed > 30.f && Table[Index].StrideSpeed < 1500.f);
+			}
+		}
+	};
+	Check(TEXT("GroundStride"), Defaults->GroundStride, 4);
+	Check(TEXT("CrouchStride"), Defaults->CrouchStride, 2);
+	if (Defaults->GroundStride.Num() == 4)
+	{
+		TestTrue(TEXT("Walk, jog and sprint clips cover more ground in that order"),
+			Defaults->GroundStride[1].StrideSpeed < Defaults->GroundStride[2].StrideSpeed && Defaults->GroundStride[2].StrideSpeed < Defaults->GroundStride[3].StrideSpeed);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSAnimationBlendSamplesUnscaledTest, "CombatSimulator.CS.Animation.BlendSamplesUnscaled",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FCSAnimationBlendSamplesUnscaledTest::RunTest(const FString& Parameters)
+{
+	using namespace CSAnimationTests;
+	struct FSpace { const TCHAR* Path; int32 Samples; };
+	const FSpace Spaces[] = {
+		{TEXT("/Game/Characters/Base/BS_BaseCharacter_Ground.BS_BaseCharacter_Ground"), 4},
+		{TEXT("/Game/Characters/Base/BS_BaseCharacter_Crouch.BS_BaseCharacter_Crouch"), 2},
+	};
+	for (const FSpace& Space : Spaces)
+	{
+		const UBlendSpace* BlendSpace = LoadObject<UBlendSpace>(nullptr, Space.Path);
+		if (!TestNotNull(FString(Space.Path) + Regenerate, BlendSpace))
+		{
+			continue;
+		}
+		const TArray<FBlendSample>& Samples = BlendSpace->GetBlendSamples();
+		if (!TestEqual(FString::Printf(TEXT("%s: sample count%s"), Space.Path, Regenerate), Samples.Num(), Space.Samples))
+		{
+			continue;
+		}
+		// One sample on each whole number of the gait axis, each at rate 1: the play rate is worked out at run time.
+		TArray<float> Positions;
+		for (const FBlendSample& Sample : Samples)
+		{
+			Positions.Add(float(Sample.SampleValue.X));
+			TestEqual(FString::Printf(TEXT("%s: %s plays at rate 1%s"), Space.Path, *GetNameSafe(Sample.Animation), Regenerate), Sample.RateScale, 1.f);
+		}
+		Positions.Sort();
+		for (int32 Index = 0; Index < Positions.Num(); ++Index)
+		{
+			TestEqual(FString::Printf(TEXT("%s: a sample sits at gait %d%s"), Space.Path, Index, Regenerate), Positions[Index], float(Index));
+		}
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSAnimationFeetMatchGroundAfterSpeedChangeTest, "CombatSimulator.CS.Animation.FeetMatchGroundAfterSpeedChange",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FCSAnimationFeetMatchGroundAfterSpeedChangeTest::RunTest(const FString& Parameters)
+{
+	using namespace CSAnimationTests;
+	FAnimSim Sim;
+	if (!Sim.Init(*this) || !TestNotNull(FString(TEXT("ABP_BaseCharacter instance on the character")) + Regenerate, Sim.Anim()))
+	{
+		return false;
+	}
+	const UCSAnimInstance* Anim = Sim.Anim();
+	if (!TestEqual(FString(TEXT("The stride table is filled")) + Regenerate, Anim->GroundStride.Num(), 4))
+	{
+		return false;
+	}
+	// A jog speed the clips were never baked for, as a slider on the tuning tab would set it.
+	TStrongObjectPtr<UCSMovementTuning> Tuning(NewObject<UCSMovementTuning>(GetTransientPackage()));
+	for (const float JogSpeed : {300.f, 500.f})
+	{
+		Tuning->JogSpeed = JogSpeed;
+		Sim.Character->Tuning = Tuning.Get();
+		Sim.Character->ApplyTuning();
+		Sim.Character->SetGait(ECSGait::Jog);
+		Sim.Run(FVector(1.f, 0.f, 0.f), 3.f);
+		const float Speed = Sim.Speed2D();
+		TestNearlyEqual(FString::Printf(TEXT("Jogs at the tuned %.0f cm/s"), JogSpeed), Speed, JogSpeed, 5.f);
+		TestNearlyEqual(FString::Printf(TEXT("At %.0f cm/s the blend sits on the jog clip"), JogSpeed), Anim->GetLocomotionAxis(), 2.f, 0.05f);
+		const float FootSpeed = Anim->GetLocomotionPlayRate() * Anim->GroundStride[2].StrideSpeed;
+		TestTrue(FString::Printf(TEXT("At %.0f cm/s the feet cover the ground speed (feet %.0f, ground %.0f)"), JogSpeed, FootSpeed, Speed),
+			FMath::Abs(FootSpeed - Speed) <= 0.02f * Speed);
+	}
 	return true;
 }
 

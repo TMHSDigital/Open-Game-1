@@ -31,14 +31,18 @@ target's retarget pose auto-aligned to the source's. The pack's mannequin is in 
 base character in an A-pose (Art/Characters/Base/NOTES.md); the alignment turns the base
 character's retarget pose into the T-pose so the arms are not off by 55 degrees. Both meshes face +Y.
 
-Blend spaces: samples sit at the gait speeds of DA_MovementTuning (walk 180, jog 380, sprint 620,
-crouch 160 cm/s when this was written), so each gait shows its own clip. Each moving sample's
-RateScale is gait speed / the clip's stride speed on the base character (the clip's root-motion
-speed in the pack's root-motion file, scaled by the pelvis height ratio, which is how the retargeter
-scales the pelvis), so the feet do not slide. Rerun after changing gait speeds in the tuning asset.
+Blend spaces: laid out by gait, not by speed. Ground has idle, walk, jog and sprint at X 0, 1, 2, 3;
+Crouch has crouch idle and crouch walk at X 0 and 1. Every sample plays at rate 1. At run time
+UCSAnimInstance works out where the ground speed falls between the gait speeds in use
+(LocomotionAxis) and the play rate that makes the feet match the ground (LocomotionPlayRate), from
+each clip's stride speed and length. This script writes those to GroundStride and CrouchStride on
+the animation Blueprint's class defaults. A clip's stride speed is its root-motion speed in the
+pack's root-motion file, scaled by the pelvis height ratio (how the retargeter scales the pelvis).
+Changing gait speeds in the tuning asset, or in a running build, needs no rerun.
 
 ABP_BaseCharacter's AnimGraph: the pose for UCSAnimInstance::PoseIndex (POSES below, in
-ECSLocomotionPose order) -> Slot DefaultSlot -> Output Pose; the blend spaces read GroundSpeed.
+ECSLocomotionPose order) -> Slot DefaultSlot -> Output Pose; the blend spaces read LocomotionAxis
+and LocomotionPlayRate.
 
 Safe to rerun: clips are reimported and retargeted over the old ones, the IK Rigs and retargeter
 are rebuilt, the blend spaces refilled and the AnimGraph rebuilt.
@@ -337,7 +341,7 @@ def make_blend_space(name, skeleton, axis_max, samples):
     factory.set_editor_property("target_skeleton", skeleton)
     bs = load_or_create(name, unreal.BlendSpace1D, factory)
     entries = [unreal.CSBlendSample(animation=seq, position=pos, rate_scale=rate) for seq, pos, rate in samples]
-    result = unreal.CSAnimGraphBuilder.set_blend_space1d(bs, "Speed", axis_max, entries)
+    result = unreal.CSAnimGraphBuilder.set_blend_space1d(bs, "Gait", axis_max, entries)
     if not result.success:
         fail(result.message)
     log(result.message + ": " + ", ".join("%s at %.0f x%.2f" % (s.get_name(), p, r) for s, p, r in samples))
@@ -351,13 +355,24 @@ def make_anim_blueprint(skeleton, assets):
     factory.set_editor_property("parent_class", unreal.CSAnimInstance)
     abp = load_or_create(ABP, unreal.AnimBlueprint, factory)
     poses = [unreal.CSPoseSource(asset=assets[a], loop=loop, blend_in_seconds=blend) for a, loop, blend in POSES]
-    result = unreal.CSAnimGraphBuilder.build_locomotion_graph(abp, poses, "PoseIndex", "GroundSpeed", "DefaultSlot")
+    result = unreal.CSAnimGraphBuilder.build_locomotion_graph(
+        abp, poses, "PoseIndex", "LocomotionAxis", "LocomotionPlayRate", "DefaultSlot")
     if not result.success:
         fail(result.message)
     for line in result.message.splitlines():
         log(line)
     save(abp)
     return abp
+
+
+def set_stride_tables(abp, ground, crouch):
+    """Writes (stride speed cm/s, clip seconds) per blend sample to the Blueprint's class defaults."""
+    defaults = unreal.get_default_object(abp.generated_class())
+    for prop, rows in (("ground_stride", ground), ("crouch_stride", crouch)):
+        defaults.set_editor_property(prop, [unreal.CSStrideSample(stride_speed=speed, seconds=seconds) for speed, seconds in rows])
+        log("%s: %s" % (prop, ", ".join("%.0f cm/s over %.2f s" % row for row in rows)))
+    abp.modify()
+    save(abp)
 
 
 def main():
@@ -368,7 +383,7 @@ def main():
     if tuning is None:
         fail("missing %s; run import_base_character.py first" % TUNING)
     walk, jog, sprint, crouch = (tuning.get_editor_property(p) for p in ("walk_speed", "jog_speed", "sprint_speed", "crouch_speed"))
-    log("gait speeds from %s: walk %.0f, jog %.0f, sprint %.0f, crouch %.0f cm/s" % (TUNING, walk, jog, sprint, crouch))
+    log("gait speeds in %s (for the log only): walk %.0f, jog %.0f, sprint %.0f, crouch %.0f cm/s" % (TUNING, walk, jog, sprint, crouch))
 
     source_mesh = import_pack()
     source_rig, source_ctrl, _ = make_ik_rig(SOURCE_IK_RIG, source_mesh)
@@ -391,28 +406,32 @@ def main():
     clips = retarget_clips(rtg, source_mesh, base_mesh)
 
     strides = stride_speeds_cm_s(glb_path("UAL1_Standard_RM.glb"))
-    def rate(clip, speed):
+    def stride(clip, speed=None):
+        """(stride speed on the base character, clip length); speed is the gait speed, for the log."""
+        seconds = clips[clip].get_play_length()
+        if seconds <= 0.0:
+            fail("clip %s has no length" % clip)
+        if speed is None:
+            return (0.0, seconds)
         natural = strides.get(clip, 0.0) * scale
         if natural <= 0.0:
             fail("no root-motion stride speed for " + clip)
-        log("  %s: stride %.0f cm/s on the base character, plays x%.2f at %.0f cm/s" % (clip, natural, speed / natural, speed))
-        return speed / natural
+        log("  %s: stride %.0f cm/s on the base character over %.2f s, plays x%.2f at %.0f cm/s"
+            % (clip, natural, seconds, speed / natural, speed))
+        return (natural, seconds)
 
+    ground_clips = [("Idle_Loop", None), ("Walk_Loop", walk), ("Jog_Fwd_Loop", jog), ("Sprint_Loop", sprint)]
+    crouch_clips = [("Crouch_Idle_Loop", None), ("Crouch_Fwd_Loop", crouch)]
     skeleton = base_mesh.get_editor_property("skeleton")
-    ground = make_blend_space(BS_GROUND, skeleton, sprint, [
-        (clips["Idle_Loop"], 0.0, 1.0),
-        (clips["Walk_Loop"], walk, rate("Walk_Loop", walk)),
-        (clips["Jog_Fwd_Loop"], jog, rate("Jog_Fwd_Loop", jog)),
-        (clips["Sprint_Loop"], sprint, rate("Sprint_Loop", sprint)),
-    ])
-    crouch_bs = make_blend_space(BS_CROUCH, skeleton, crouch, [
-        (clips["Crouch_Idle_Loop"], 0.0, 1.0),
-        (clips["Crouch_Fwd_Loop"], crouch, rate("Crouch_Fwd_Loop", crouch)),
-    ])
+    ground = make_blend_space(BS_GROUND, skeleton, float(len(ground_clips) - 1),
+                              [(clips[c], float(i), 1.0) for i, (c, _) in enumerate(ground_clips)])
+    crouch_bs = make_blend_space(BS_CROUCH, skeleton, float(len(crouch_clips) - 1),
+                                 [(clips[c], float(i), 1.0) for i, (c, _) in enumerate(crouch_clips)])
 
     assets = {BS_GROUND: ground, BS_CROUCH: crouch_bs}
     assets.update(clips)
-    make_anim_blueprint(skeleton, assets)
+    abp = make_anim_blueprint(skeleton, assets)
+    set_stride_tables(abp, [stride(c, s) for c, s in ground_clips], [stride(c, s) for c, s in crouch_clips])
 
     for folder in (PACK, BASE):
         if not unreal.EditorAssetLibrary.save_directory(folder, only_if_is_dirty=True, recursive=True):
