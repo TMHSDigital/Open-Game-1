@@ -182,9 +182,15 @@ public:
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CS|Input")
 	TSoftObjectPtr<UInputAction> MoveAction;
 
-	/** Axis2D, degrees this frame: X yaw right, Y pitch up. */
+	/** Mouse look. Axis2D, degrees this frame: X yaw right, Y pitch up. Scaled by the mouse look scale. */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CS|Input")
 	TSoftObjectPtr<UInputAction> LookAction;
+	/**
+	 * Gamepad look, the same values as LookAction. A separate action so the stick has its own
+	 * sensitivity (the stick look scale).
+	 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CS|Input")
+	TSoftObjectPtr<UInputAction> LookStickAction;
 
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CS|Input")
 	TSoftObjectPtr<UInputAction> JumpAction;
@@ -224,6 +230,18 @@ public:
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CS|Input")
 	TSoftObjectPtr<UInputAction> DebugMapSwitchAction;
 
+	/**
+	 * The player's look settings: mouse and stick look are multiplied by these (X yaw, Y pitch; a
+	 * negative Y inverts the pitch). (1, 1) leaves the mapping context's own scale, which is the
+	 * tested base speed. Set by the game from its settings; the plugin stores nothing.
+	 */
+	void SetLookScale(FVector2D MouseScale, FVector2D StickScale);
+	FVector2D GetMouseLookScale() const { return MouseLookScale; }
+	FVector2D GetStickLookScale() const { return StickLookScale; }
+
+	/** A look value from the mouse or the stick with its look scale applied: what turns the view. */
+	FVector2D ScaleLook(const FVector2D& Degrees, bool bFromStick) const;
+
 	/** Binds every configured action (an unset one is skipped with a warning). Public so tests can bind a component directly. */
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 	virtual void NotifyControllerChanged() override;
@@ -252,6 +270,7 @@ private:
 
 	void OnMove(const FInputActionValue& Value);
 	void OnLook(const FInputActionValue& Value);
+	void OnLookStick(const FInputActionValue& Value);
 	void OnJumpStarted();
 	void OnJumpCompleted();
 	void OnSprintStarted();
@@ -302,6 +321,9 @@ private:
 	UCSMovementTuning* MakeTuningCopy();
 	/** Makes Values the active tuning and pushes it into the movement component. */
 	void CommitTuning(UCSMovementTuning* Values);
+
+	FVector2D MouseLookScale = FVector2D(1.0, 1.0);
+	FVector2D StickLookScale = FVector2D(1.0, 1.0);
 
 	bool bSprintHeld = false;
 	bool bWalkHeld = false;

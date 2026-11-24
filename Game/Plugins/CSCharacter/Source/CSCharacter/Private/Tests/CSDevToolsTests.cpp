@@ -45,6 +45,7 @@ namespace CSDevToolsTests
 		{
 			Make(TEXT("Move"), EInputActionValueType::Axis2D, Character.MoveAction);
 			Make(TEXT("Look"), EInputActionValueType::Axis2D, Character.LookAction);
+			Make(TEXT("LookStick"), EInputActionValueType::Axis2D, Character.LookStickAction);
 			Make(TEXT("Jump"), EInputActionValueType::Boolean, Character.JumpAction);
 			Make(TEXT("Sprint"), EInputActionValueType::Boolean, Character.SprintAction);
 			Make(TEXT("Crouch"), EInputActionValueType::Boolean, Character.CrouchAction);

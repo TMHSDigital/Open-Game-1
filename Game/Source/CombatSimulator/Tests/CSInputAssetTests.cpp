@@ -27,13 +27,16 @@ namespace CSInputAssetTests
 		TSoftObjectPtr<UInputAction> ACSCharacter::* Slot;
 	};
 
-	// The project's fixed key layout; gamepad: sticks, L3 sprint, face buttons.
+	// The project's fixed key layout; gamepad: sticks, L3 sprint, face buttons. An empty keyboard list
+	// or an invalid gamepad key means the action has none on that device.
 	TArray<FExpectedAction> ExpectedActions()
 	{
 		using T = EInputActionValueType;
 		return {
 			{TEXT("IA_Move"), T::Axis2D, {EKeys::W, EKeys::A, EKeys::S, EKeys::D}, EKeys::Gamepad_Left2D, &ACSCharacter::MoveAction},
-			{TEXT("IA_Look"), T::Axis2D, {EKeys::Mouse2D}, EKeys::Gamepad_Right2D, &ACSCharacter::LookAction},
+			// Look is split by device: each has its own sensitivity setting.
+			{TEXT("IA_Look"), T::Axis2D, {EKeys::Mouse2D}, EKeys::Invalid, &ACSCharacter::LookAction},
+			{TEXT("IA_LookStick"), T::Axis2D, {}, EKeys::Gamepad_Right2D, &ACSCharacter::LookStickAction},
 			{TEXT("IA_Jump"), T::Boolean, {EKeys::SpaceBar}, EKeys::Gamepad_FaceButton_Bottom, &ACSCharacter::JumpAction},
 			{TEXT("IA_Sprint"), T::Boolean, {EKeys::LeftShift}, EKeys::Gamepad_LeftThumbstick, &ACSCharacter::SprintAction},
 			{TEXT("IA_Crouch"), T::Boolean, {EKeys::LeftControl}, EKeys::Gamepad_FaceButton_Right, &ACSCharacter::CrouchAction},
@@ -83,13 +86,16 @@ bool FCSDevToolsInputContextHasAllActionsTest::RunTest(const FString& Parameters
 			}
 		}
 		const int32 Gamepad = Keys.FilterByPredicate([](const FKey& Key) { return Key.IsGamepadKey(); }).Num();
-		TestTrue(FString::Printf(TEXT("%s has a keyboard or mouse key"), Expected.Name), Keys.Num() - Gamepad >= 1);
-		TestTrue(FString::Printf(TEXT("%s has a gamepad key"), Expected.Name), Gamepad >= 1);
+		TestEqual(FString::Printf(TEXT("%s keyboard and mouse keys"), Expected.Name), Keys.Num() - Gamepad, Expected.KeyboardMouse.Num());
+		TestEqual(FString::Printf(TEXT("%s gamepad keys"), Expected.Name), Gamepad, Expected.Gamepad.IsValid() ? 1 : 0);
 		for (const FKey& Key : Expected.KeyboardMouse)
 		{
 			TestTrue(FString::Printf(TEXT("%s is on %s"), Expected.Name, *Key.ToString()), Keys.Contains(Key));
 		}
-		TestTrue(FString::Printf(TEXT("%s is on %s"), Expected.Name, *Expected.Gamepad.ToString()), Keys.Contains(Expected.Gamepad));
+		if (Expected.Gamepad.IsValid())
+		{
+			TestTrue(FString::Printf(TEXT("%s is on %s"), Expected.Name, *Expected.Gamepad.ToString()), Keys.Contains(Expected.Gamepad));
+		}
 	}
 
 	// Modifiers that make the values mean what ACSCharacter expects.

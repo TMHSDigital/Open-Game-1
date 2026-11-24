@@ -15,6 +15,7 @@
 #include "CSDevTools.h"
 #include "../CSGameMode.h"
 #include "CSMovementTuning.h"
+#include "CSPlayTestRig.h"
 #include "Editor.h"
 #include "EnhancedInputSubsystems.h"
 #include "Engine/LocalPlayer.h"
@@ -34,27 +35,14 @@
 
 namespace CSMapTests
 {
+	// PlaneMap, GymMap, PlayWorld, PlayerCharacter, StartPlay and EndPlay: the shared play rig.
+	using namespace CSPlayRig;
+
 	constexpr EAutomationTestFlags TestFlags = EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter;
 
-	const TCHAR* PlaneMap = TEXT("/Game/Maps/L_Plane");
-	const TCHAR* GymMap = TEXT("/Game/Maps/L_MovementGym");
 	const TCHAR* TuningPath = TEXT("/Game/Characters/Base/DA_MovementTuning.DA_MovementTuning");
 	const TCHAR* MeshPath = TEXT("/Game/Characters/Base/SK_BaseCharacter.SK_BaseCharacter");
 	const TCHAR* Regenerate = TEXT(" (run Game/Content/Python/create_movement_maps.py, see its docstring)");
-
-	// Real seconds to wait for PIE to start and the player to spawn before giving up.
-	constexpr double StartTimeoutSeconds = 120.0;
-
-	UWorld* PlayWorld()
-	{
-		return GEditor ? GEditor->PlayWorld.Get() : nullptr;
-	}
-
-	ACSCharacter* PlayerCharacter(UWorld* World)
-	{
-		APlayerController* PC = World ? World->GetFirstPlayerController() : nullptr;
-		return PC ? Cast<ACSCharacter>(PC->GetPawn()) : nullptr;
-	}
 
 	AActor* FindTagged(UWorld* World, FName Tag)
 	{
@@ -66,44 +54,6 @@ namespace CSMapTests
 			}
 		}
 		return nullptr;
-	}
-
-	/**
-	 * Opens Map in the editor and plays it in PIE, then waits until the player's pawn exists and the
-	 * world has run SettleSeconds of game time. Errors (and stops waiting) after StartTimeoutSeconds.
-	 */
-	void StartPlay(FAutomationTestBase* Test, const FString& Map, float SettleSeconds)
-	{
-		if (!FPackageName::DoesPackageExist(Map))
-		{
-			Test->AddError(FString::Printf(TEXT("%s does not exist%s"), *Map, Regenerate));
-		}
-		AutomationOpenMap(Map);
-		ADD_LATENT_AUTOMATION_COMMAND(FStartPIECommand(false));
-		const double Start = FPlatformTime::Seconds();
-		ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([Test, Start, SettleSeconds, Map]()
-		{
-			UWorld* World = PlayWorld();
-			APlayerController* PC = World ? World->GetFirstPlayerController() : nullptr;
-			if (PC && PC->GetPawn() && World->GetTimeSeconds() >= SettleSeconds)
-			{
-				return true;
-			}
-			if (FPlatformTime::Seconds() - Start > StartTimeoutSeconds)
-			{
-				Test->AddError(FString::Printf(TEXT("%s: no player pawn after %.0f s of PIE (play world %s, controller %s)"),
-					*Map, StartTimeoutSeconds, World ? TEXT("yes") : TEXT("no"), PC ? TEXT("yes") : TEXT("no")));
-				return true;
-			}
-			return false;
-		}));
-	}
-
-	void EndPlay()
-	{
-		ADD_LATENT_AUTOMATION_COMMAND(FEndPlayMapCommand());
-		// One more frame so the play world is torn down before the next test opens a map.
-		ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(0.5f));
 	}
 
 	/** Distance from the capsule bottom to the world's floor at z = 0 (positive above). */

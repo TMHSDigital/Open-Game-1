@@ -357,6 +357,10 @@ void ACSCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 	{
 		Input->BindAction(A, ETriggerEvent::Triggered, this, &ACSCharacter::OnLook);
 	}
+	if (UInputAction* A = Load(LookStickAction, TEXT("LookStickAction")))
+	{
+		Input->BindAction(A, ETriggerEvent::Triggered, this, &ACSCharacter::OnLookStick);
+	}
 	if (UInputAction* A = Load(JumpAction, TEXT("JumpAction")))
 	{
 		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnJumpStarted);
@@ -417,9 +421,27 @@ void ACSCharacter::OnMove(const FInputActionValue& Value)
 	AddMovementInput(Basis.GetUnitAxis(EAxis::Y), Axis.X);
 }
 
+void ACSCharacter::SetLookScale(FVector2D MouseScale, FVector2D StickScale)
+{
+	MouseLookScale = MouseScale;
+	StickLookScale = StickScale;
+}
+
+FVector2D ACSCharacter::ScaleLook(const FVector2D& Degrees, bool bFromStick) const
+{
+	return Degrees * (bFromStick ? StickLookScale : MouseLookScale);
+}
+
 void ACSCharacter::OnLook(const FInputActionValue& Value)
 {
-	const FVector2D Axis = Value.Get<FVector2D>();
+	const FVector2D Axis = ScaleLook(Value.Get<FVector2D>(), false);
+	AddControllerYawInput(Axis.X);
+	AddControllerPitchInput(Axis.Y);
+}
+
+void ACSCharacter::OnLookStick(const FInputActionValue& Value)
+{
+	const FVector2D Axis = ScaleLook(Value.Get<FVector2D>(), true);
 	AddControllerYawInput(Axis.X);
 	AddControllerPitchInput(Axis.Y);
 }

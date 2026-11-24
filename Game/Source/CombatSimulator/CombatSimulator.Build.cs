@@ -17,6 +17,13 @@ public class CombatSimulator : ModuleRules
 			"CSCharacter"  // Game/Plugins/CSCharacter: ACSCharacter, UCSMovementTuning
 		});
 
+		// The pause screen (UI/): Slate widgets, and the clipboard for "Copy values".
+		PrivateDependencyModuleNames.AddRange(new string[] {
+			"Slate",
+			"SlateCore",
+			"ApplicationCore"
+		});
+
 		// The map tests play the real maps in PIE and read the packaging settings (CSMapTests.cpp).
 		// Editor builds only: a packaged game never links these.
 		if (Target.bBuildEditor)

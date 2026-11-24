@@ -3,6 +3,7 @@
 #include "CSCharacter.h"
 #include "CSDevTools.h"
 #include "CSMovementTuning.h"
+#include "CSPlayerController.h"
 #include "CombatSimulator.h"
 #include "Engine/World.h"
 #include "GameFramework/HUD.h"
@@ -13,6 +14,8 @@
 ACSGameMode::ACSGameMode()
 {
 	DefaultPawnClass = ACSCharacter::StaticClass();
+	// Pause, the pause screen and the player's look settings.
+	PlayerControllerClass = ACSPlayerController::StaticClass();
 	// The plain HUD: the feel overlay and the reload line draw through AHUD::OnHUDPostRender.
 	HUDClass = AHUD::StaticClass();
 	// Tick checks the players' pawns against RespawnKillZ.

@@ -1,8 +1,9 @@
 """Creates the Enhanced Input assets for the CS character in /Game/Input/.
 
 Makes or refreshes:
-  IA_Move, IA_Look                Axis2D actions
-  IA_Jump, IA_Sprint, IA_Crouch, IA_Walk, IA_ToggleCamera,
+  IA_Move, IA_Look, IA_LookStick  Axis2D actions (look is split by device so the mouse and the stick
+                                  each have their own sensitivity setting)
+  IA_Jump, IA_Sprint, IA_Crouch, IA_Walk, IA_ToggleCamera, IA_Pause,
   IA_DebugOverlay, IA_DebugRagdoll, IA_DebugPush, IA_DebugReload, IA_DebugMapSwitch
                                   Boolean actions (no triggers: pressed is Started, released is
                                   Completed; ACSCharacter treats Sprint and Walk as held and Crouch
@@ -10,7 +11,8 @@ Makes or refreshes:
   IMC_Character                   the mapping context, keyboard and mouse plus gamepad (KEYS below)
 
 ACSCharacter reads these through the [/Script/CSCharacter.CSCharacter] section of
-Game/Config/DefaultGame.ini. The assets are owned by this script: a rerun rebuilds every mapping,
+Game/Config/DefaultGame.ini; IA_Pause belongs to the game's player controller
+([/Script/CombatSimulator.CSPlayerController]) and is the only action that triggers while paused. The assets are owned by this script: a rerun rebuilds every mapping,
 so change keys here, not in the editor.
 
 Value conventions (ACSCharacter): Move is X right, Y forward. Look is degrees this frame, X yaw
@@ -37,15 +39,20 @@ STICK_DEG_PER_SECOND = (180.0, 120.0)
 AXIS2D = unreal.InputActionValueType.AXIS2D
 BOOLEAN = unreal.InputActionValueType.BOOLEAN
 
+# Actions that still trigger while the game is paused.
+PAUSED_ACTIONS = ("IA_Pause",)
+
 # Action name -> value type.
 ACTIONS = {
     "IA_Move": AXIS2D,
     "IA_Look": AXIS2D,
+    "IA_LookStick": AXIS2D,
     "IA_Jump": BOOLEAN,
     "IA_Sprint": BOOLEAN,
     "IA_Crouch": BOOLEAN,
     "IA_Walk": BOOLEAN,
     "IA_ToggleCamera": BOOLEAN,
+    "IA_Pause": BOOLEAN,
     "IA_DebugOverlay": BOOLEAN,
     "IA_DebugRagdoll": BOOLEAN,
     "IA_DebugPush": BOOLEAN,
@@ -62,7 +69,7 @@ KEYS = [
     ("IA_Move", "D", []),
     ("IA_Move", "Gamepad_Left2D", ["deadzone"]),
     ("IA_Look", "Mouse2D", ["mouse_scale"]),
-    ("IA_Look", "Gamepad_Right2D", ["deadzone", "stick_scale", "per_second"]),
+    ("IA_LookStick", "Gamepad_Right2D", ["deadzone", "stick_scale", "per_second"]),
     ("IA_Jump", "SpaceBar", []),
     ("IA_Jump", "Gamepad_FaceButton_Bottom", []),
     ("IA_Sprint", "LeftShift", []),
@@ -73,6 +80,10 @@ KEYS = [
     ("IA_Walk", "Gamepad_LeftShoulder", []),
     ("IA_ToggleCamera", "V", []),
     ("IA_ToggleCamera", "Gamepad_RightThumbstick", []),
+    # Pause screen. Tab as well: Escape ends Play in the editor.
+    ("IA_Pause", "Escape", []),
+    ("IA_Pause", "Tab", []),
+    ("IA_Pause", "Gamepad_Special_Right", []),
     ("IA_DebugOverlay", "F1", []),
     ("IA_DebugOverlay", "Gamepad_Special_Left", []),
     ("IA_DebugRagdoll", "R", []),
@@ -144,6 +155,7 @@ def main():
     for name, value_type in ACTIONS.items():
         action = load_or_create(name, unreal.InputAction, unreal.InputAction_Factory())
         action.set_editor_property("value_type", value_type)
+        action.set_editor_property("trigger_when_paused", name in PAUSED_ACTIONS)
         actions[name] = action
 
     context = load_or_create(CONTEXT_NAME, unreal.InputMappingContext, unreal.InputMappingContext_Factory())
