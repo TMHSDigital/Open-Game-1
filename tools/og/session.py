@@ -194,7 +194,8 @@ def _commits(repo: Path, start_sha: str) -> list[tuple[str, str]]:
 def _decisions(messages: list[str]) -> list[str]:
     found: list[str] = []
     for msg in messages:
-        for m in re.finditer(r"\bOD-(\d{3})\b|\bADR[ -]?(\d{4})\b", msg):
+        # "ADR 0012", "ADR-0012" and "decision 0014" all name a decision record.
+        for m in re.finditer(r"\bOD-(\d{3})\b|\b(?:ADR|decision)[ -]?(\d{4})\b", msg, re.I):
             tag = f"OD-{m.group(1)}" if m.group(1) else f"ADR-{m.group(2)}"
             if tag not in found:
                 found.append(tag)

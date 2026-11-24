@@ -180,7 +180,13 @@ def _read_doc(repo: Path) -> str:
 
 def _write_doc(repo: Path, open_rows: list[OpenDecision],
                resolved: list[ResolvedDecision], slug: str | None) -> None:
-    md = _replace_table(_read_doc(repo), "## Open", render_open_table(open_rows, slug))
+    md = _read_doc(repo)
+    if slug is None:
+        # The origin could not be read here: keep the links the document already has rather
+        # than rewriting every Issue cell to a bare number.
+        known = re.search(r"https://github\.com/([^/\s]+/[^/\s]+)/issues/\d+", md)
+        slug = known.group(1) if known else None
+    md = _replace_table(md, "## Open", render_open_table(open_rows, slug))
     md = _replace_table(md, "## Resolved", render_resolved_table(resolved, slug))
     (repo / OPEN_DOC).write_text(md, encoding="utf-8", newline="\n")
 

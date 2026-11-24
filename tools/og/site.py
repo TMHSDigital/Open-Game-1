@@ -69,6 +69,7 @@ class _Site:
     def __init__(self, repo: Path, out: Path, site_dir: Path):
         self.repo, self.out, self.site_dir = repo, out, site_dir
         self.docs = repo / "docs"
+        self.skipped: list[str] = []  # devlog files left out because their front matter is bad
 
     def fix_links(self, body: str, src_dir: str) -> str:
         """Rewrite relative links to .md files in a rendered page one level below the site root.
@@ -119,10 +120,15 @@ class _Site:
             meta, body = parse_front(p.read_text("utf-8"))
             if not meta.get("id") or not _DATE.match(str(meta.get("date") or "")):
                 print(f"og site: skipping {p.name}: missing id or date", file=sys.stderr)
+                self.skipped.append(p.name)
                 continue
             if not _SAFE_ID.fullmatch(str(meta["id"])):
                 print(f"og site: skipping {p.name}: unsafe id", file=sys.stderr)
+                self.skipped.append(p.name)
                 continue
+            for key in ("decisions", "cameras"):
+                if isinstance(meta.get(key), str):  # `decisions: OD-001` written without brackets
+                    meta[key] = [meta[key]] if meta[key] else []
             if meta.get("clip") and not _HTTP.match(str(meta["clip"])):
                 print(f"og site: {p.name}: ignoring non-http clip link", file=sys.stderr)
                 meta["clip"] = None
@@ -268,11 +274,22 @@ class _Site:
                 shutil.copyfile(p, dest)
 
 
-def build(repo: Path, out: Path, site_dir: Path | None = None) -> None:
+SITE_MARKER = ".og-site"
+
+
+def build(repo: Path, out: Path, site_dir: Path | None = None) -> list[str]:
+    """Render the site into out and return the devlog files that were skipped as malformed.
+
+    out is deleted first, so it must be empty, missing, or a previous build (it then holds the
+    SITE_MARKER file). Anything else, such as docs/ or the repository itself, is refused."""
     s = _Site(Path(repo), Path(out), Path(site_dir or SITE_DIR))
     if s.out.exists():
+        if not s.out.is_dir() or (any(s.out.iterdir()) and not (s.out / SITE_MARKER).is_file()):
+            raise SystemExit(f"og site build: refusing to delete {s.out}: it is not empty and "
+                             "was not written by a previous site build.")
         shutil.rmtree(s.out)
     s.out.mkdir(parents=True)
+    (s.out / SITE_MARKER).write_text("written by og site build\n", "utf-8")
     s.assets()
     s.devlog()
     s.gallery()
@@ -282,6 +299,7 @@ def build(repo: Path, out: Path, site_dir: Path | None = None) -> None:
     if broken:
         raise SystemExit("og site build: broken relative link(s), nothing should be deployed:\n"
                          + "\n".join(f"  {page}: {link}" for page, link in broken))
+    return s.skipped
 
 
 def broken_links(out: Path) -> list[tuple[str, str]]:
@@ -306,8 +324,13 @@ def _repo_root() -> Path:
 
 
 def _run_build(args) -> int:
-    build(_repo_root(), args.out)
+    skipped = build(_repo_root(), args.out)
     print(f"Wrote {args.out}")
+    if skipped:
+        print(f"og site build: {len(skipped)} devlog entr(y/ies) left out because of bad front "
+              f"matter: {', '.join(skipped)}. Fix them; the site must not deploy without them.",
+              file=sys.stderr)
+        return 1
     return 0
 
 

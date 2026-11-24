@@ -21,11 +21,15 @@ def _gh(args: list[str]) -> str:
 def repo_slug(repo: Path) -> str | None:
     """`owner/name` from the repo's own origin URL (read from .git/config), else None."""
     cfg = Path(repo) / ".git" / "config"
-    if not cfg.is_file():
+    if cfg.is_file():
+        cmd = ["git", "config", "--file", str(cfg), "--get", "remote.origin.url"]
+    elif (Path(repo) / ".git").is_file():
+        # A git worktree: .git is a file that points at the real repository.
+        cmd = ["git", "-C", str(repo), "config", "--get", "remote.origin.url"]
+    else:
         return None
     try:
-        r = subprocess.run(["git", "config", "--file", str(cfg), "--get", "remote.origin.url"],
-                           capture_output=True, text=True, encoding="utf-8")
+        r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
     except OSError:
         return None
     m = re.search(r"github\.com[:/]([^/\s]+/[^/\s]+?)(?:\.git)?\s*$", r.stdout.strip())

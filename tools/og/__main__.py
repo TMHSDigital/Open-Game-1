@@ -1,5 +1,6 @@
 """Entry point: python -m og <command>."""
 import argparse
+import subprocess
 import sys
 
 from og import assets, decisions, secrets, session, site
@@ -65,7 +66,16 @@ def main(argv=None) -> int:
     site.add_parser(sub)
     _add_check_parser(sub)
     args = parser.parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except (RuntimeError, OSError, subprocess.CalledProcessError, UnicodeError) as e:
+        # One line instead of a traceback, and one meaning for the exit code: 2 is "og could not
+        # do what was asked" in every subcommand. Nothing is treated as a pass.
+        detail = (getattr(e, "stderr", None) or "")
+        detail = detail.decode("utf-8", "replace") if isinstance(detail, bytes) else detail
+        print(f"og {args.command}: error: {e}" + (f" ({detail.strip()})" if detail.strip() else ""),
+              file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":
