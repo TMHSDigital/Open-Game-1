@@ -201,6 +201,23 @@ function New-TempLedger([string[]]$Rows) {
 try {
     # --- Unit checks on pure functions (dot-sourced: functions only) ---------------------------
     . $release
+
+    # --- tools/ue/env.ps1: machine paths come from the environment, then from .env (issue 45) ---
+    $envScript = Join-Path $realRoot 'tools\ue\env.ps1'
+    $envFile = Join-Path $tmp 'paths.env'
+    Set-Content -LiteralPath $envFile -Value @('STEAM_APPID=1234560', 'UE_ROOT = "D:\Engines\UE_5.8"', 'CS_PACKAGE_DIR=')  # og-secrets: allow (fake test ID)
+    $savedUe = $env:UE_ROOT
+    try {
+        $env:UE_ROOT = $null
+        $fromFile = & pwsh -NoProfile -Command ". '$envScript'; Get-LocalSetting 'UE_ROOT' '$envFile'"
+        $emptyKey = & pwsh -NoProfile -Command ". '$envScript'; [string](Get-LocalSetting 'CS_PACKAGE_DIR' '$envFile')"
+        $env:UE_ROOT = Join-Path $tmp 'FromEnvironment'
+        $fromEnv = & pwsh -NoProfile -Command ". '$envScript'; Get-LocalSetting 'UE_ROOT' '$envFile'"
+    }
+    finally { $env:UE_ROOT = $savedUe }
+    Check 'env.ps1 reads UE_ROOT from a .env file when the variable is not set' ("$fromFile" -eq 'D:\Engines\UE_5.8') "$fromFile"
+    Check 'env.ps1: an empty .env value counts as not set' (-not "$emptyKey") "$emptyKey"
+    Check 'env.ps1: the environment variable wins over .env' ("$fromEnv" -eq (Join-Path $tmp 'FromEnvironment')) "$fromEnv"
     Check 'Next version bumps the build number' ((Get-NextVersion '0.1.0') -eq '0.1.1')
     Check 'Next version keeps the milestone' ((Get-NextVersion '0.3.17') -eq '0.3.18')
     $threw = $false; try { Get-NextVersion '1.2' | Out-Null } catch { $threw = $true }

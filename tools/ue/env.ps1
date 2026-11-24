@@ -3,7 +3,8 @@
 # Other scripts dot-source this file (". $PSScriptRoot\env.ps1") so they share the same variables.
 # Run it directly (pwsh tools/ue/env.ps1) to print the configuration and check that the engine exists.
 #
-# Overrides (no need to edit this file):
+# Overrides (no need to edit this file), as environment variables or as lines in the repo's
+# gitignored .env file (the environment variable wins):
 #   UE_ROOT         engine location (default E:\UE_5.8)
 #   CS_PACKAGE_DIR  packaged build output (default E:\CombatSimulatorBuilds\Windows; must end in \Windows)
 
@@ -13,8 +14,26 @@ $ErrorActionPreference = 'Stop'
 $DefaultUeRoot     = 'E:\UE_5.8'
 $DefaultPackageDir = 'E:\CombatSimulatorBuilds\Windows'
 
-$UeRoot      = if ($env:UE_ROOT) { $env:UE_ROOT } else { $DefaultUeRoot }
 $RepoRoot    = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+
+# A machine setting by name: the environment variable if set, else that key's line in a .env file
+# (default: the repo's), else nothing. Only the named key is read and nothing is printed.
+function Get-LocalSetting([string]$Name, [string]$EnvFile = (Join-Path $RepoRoot '.env')) {
+    $value = [Environment]::GetEnvironmentVariable($Name)
+    if ($value) { return $value }
+    if (Test-Path -LiteralPath $EnvFile) {
+        foreach ($line in Get-Content -LiteralPath $EnvFile) {
+            if ($line -match "^\s*$([regex]::Escape($Name))\s*=\s*(.*?)\s*$") {
+                $value = $Matches[1].Trim('"', "'")
+                if ($value) { return $value }
+            }
+        }
+    }
+    $null
+}
+
+$UeRoot      = Get-LocalSetting 'UE_ROOT'
+if (-not $UeRoot) { $UeRoot = $DefaultUeRoot }
 $ProjectName = 'CombatSimulator'
 # The Unreal project lives in Game/, not at the repo root.
 $GameDir     = Join-Path $RepoRoot 'Game'
@@ -29,7 +48,8 @@ $EditorCmd = Join-Path $UeRoot 'Engine\Binaries\Win64\UnrealEditor-Cmd.exe'
 
 $McpUrl      = 'http://127.0.0.1:8000/mcp'
 # Packaged builds go outside the repo: they are large and never committed.
-$PackageDir  = if ($env:CS_PACKAGE_DIR) { $env:CS_PACKAGE_DIR } else { $DefaultPackageDir }
+$PackageDir  = Get-LocalSetting 'CS_PACKAGE_DIR'
+if (-not $PackageDir) { $PackageDir = $DefaultPackageDir }
 $TestReports = Join-Path $GameDir 'Saved\TestReports'
 $LogsDir     = Join-Path $GameDir 'Saved\Logs'
 
