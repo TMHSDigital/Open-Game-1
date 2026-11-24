@@ -27,7 +27,9 @@ PRAGMA_PATHS = ("tools/tests/", "tools/og/secrets.py", "tools/steam/test-release
 LOCAL_VALUE_KEYS = ("STEAM_APPID", "STEAM_DEPOT_WIN", "STEAM_BUILD_ACCOUNT")
 EXCERPT_MAX = 120
 
-EMAIL_RE = re.compile(r"(?P<s>[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})")
+# The local part is bounded (64 is the limit in the mail standard): without the bound a long
+# unbroken token with no @ makes the search quadratic.
+EMAIL_RE = re.compile(r"(?P<s>[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})")
 ALLOWED_EMAILS = (
     re.compile(r"@users\.noreply\.github\.com$", re.I),
     re.compile(r"^noreply@anthropic\.com$", re.I),
@@ -209,13 +211,15 @@ def _decode(data: bytes) -> str:
     if data.startswith((b"\xff\xfe", b"\xfe\xff")):
         return data.decode("utf-16", "replace")
     if b"\0" in data:
-        nulls = [i for i, b in enumerate(data) if b == 0]
-        odd = sum(1 for i in nulls if i % 2)
-        even = len(nulls) - odd
-        if len(nulls) > len(data) // 4:
-            if odd >= 0.9 * len(nulls):
+        # Counted with bytes.count on slices (C speed), not a Python loop over every byte:
+        # large binary assets go through here on every commit.
+        even = data[0::2].count(0)
+        odd = data[1::2].count(0)
+        nulls = even + odd
+        if nulls > len(data) // 4:
+            if odd >= 0.9 * nulls:
                 return data.decode("utf-16-le", "replace")
-            if even >= 0.9 * len(nulls):
+            if even >= 0.9 * nulls:
                 return data.decode("utf-16-be", "replace")
         data = data.replace(b"\0", b"")
     return data.decode("utf-8", "replace")
@@ -286,6 +290,41 @@ def _index_blob(name: str, root: Path):
     return r.stdout, None
 
 
+def _index_blobs(names: list[str], root: Path) -> dict[str, bytes | None]:
+    """Index content of many paths from one `git cat-file --batch` process, instead of one
+    `git show` per file. A path maps to None when the index has no such blob. Paths that
+    cannot be sent on one line are left out, and so is everything if git fails: the caller
+    then asks for those one at a time, which also produces the error finding."""
+    ok = [n for n in dict.fromkeys(names) if "\n" not in n]
+    if not ok:
+        return {}
+    try:
+        r = subprocess.run(["git", "cat-file", "--batch"], cwd=root, capture_output=True,
+                           input="".join(f":{n}\n" for n in ok).encode("utf-8"))
+    except OSError:
+        return {}
+    if r.returncode != 0:
+        return {}
+    out, pos, blobs = r.stdout, 0, {}
+    for name in ok:
+        eol = out.find(b"\n", pos)
+        if eol < 0:
+            break
+        head = out[pos:eol].split(b" ")
+        pos = eol + 1
+        if len(head) != 3 or not head[2].isdigit():
+            blobs[name] = None  # "<name> missing" and the like
+            continue
+        size = int(head[2])
+        blobs[name] = out[pos:pos + size]
+        pos += size + 1
+    return blobs
+
+
+def _sidecar_names(name: str) -> list[str]:
+    return [Path(name).with_suffix(".ocr.txt").as_posix(), name + ".ocr.txt"]
+
+
 def _scan_index_entries(names: list[str], root: Path,
                         lfs_pointers_ok: bool = False) -> list[Finding]:
     """Scan index content for each path: LFS pointers resolve to verified working-tree
@@ -294,8 +333,13 @@ def _scan_index_entries(names: list[str], root: Path,
     With lfs_pointers_ok, an LFS pointer is scanned as the pointer text itself (for CI checkouts
     without LFS content; the pre-commit hook already scanned the verified content)."""
     findings: list[Finding] = []
+    images = [n for n in names if Path(n).suffix.lower() in IMAGE_SUFFIXES]
+    blobs = _index_blobs(names + [sc for n in images for sc in _sidecar_names(n)], root)
     for name in names:
-        blob, bad = _index_blob(name, root)
+        if blobs.get(name) is not None:
+            blob, bad = blobs[name], None
+        else:
+            blob, bad = _index_blob(name, root)
         if bad is None and blob.startswith(LFS_POINTER):
             if lfs_pointers_ok:
                 findings += scan_text(_decode(blob), name)
@@ -307,10 +351,14 @@ def _scan_index_entries(names: list[str], root: Path,
         findings += _scan_blob(name, blob)
         findings += scan_text(name, name)  # the path itself is published too
         if Path(name).suffix.lower() in IMAGE_SUFFIXES:
-            for sc in (Path(name).with_suffix(".ocr.txt").as_posix(), name + ".ocr.txt"):
-                r = subprocess.run(["git", "show", ":" + sc], capture_output=True, cwd=root)
-                if r.returncode == 0:
-                    sidecar = r.stdout
+            for sc in _sidecar_names(name):
+                if sc in blobs:
+                    staged = blobs[sc]
+                else:  # not answered by the batch: ask git for this one path
+                    r = subprocess.run(["git", "show", ":" + sc], capture_output=True, cwd=root)
+                    staged = r.stdout if r.returncode == 0 else None
+                if staged is not None:
+                    sidecar = staged
                 elif (root / sc).is_file():
                     sidecar = (root / sc).read_bytes()
                 else:

@@ -186,9 +186,14 @@ def _resolve_start(repo: Path, today: datetime.date) -> tuple[dict, str | None]:
 def _commits(repo: Path, start_sha: str) -> list[tuple[str, str]]:
     """(oneline, full message) for commits in start..HEAD."""
     rng = "HEAD" if start_sha == EMPTY_TREE else f"{start_sha}..HEAD"
-    shas = _git(repo, "log", "--reverse", "--format=%H", rng, check=False).split()
-    return [(_git(repo, "log", "-1", "--oneline", s), _git(repo, "log", "-1", "--format=%B", s))
-            for s in shas]
+    # One git process for the whole range: short hash and subject, then the full message.
+    out = _git(repo, "log", "--reverse", "--format=%h %s%x1f%B%x1e", rng, check=False)
+    commits = []
+    for record in out.split("\x1e"):
+        oneline, sep, body = record.strip("\n").partition("\x1f")
+        if sep:
+            commits.append((oneline.strip(), body.strip()))
+    return commits
 
 
 def _decisions(messages: list[str]) -> list[str]:

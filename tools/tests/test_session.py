@@ -477,3 +477,14 @@ def test_merge_index_matches_exact_image_path():
     row = "| 2026-11-22 | cam | docs/devlog/media/a/cam.webp | x |"
     assert row in _merge_index(existing, [row])
     assert _merge_index(existing + row + "\n", [row]).count(row) == 1
+
+
+def test_commits_lists_the_range_in_order_with_full_messages(repo):
+    start = git(repo, "rev-parse", "HEAD")
+    for n in (1, 2):
+        (repo / f"f{n}.txt").write_text(str(n), "utf-8")
+        git(repo, "add", "-A")
+        git(repo, "commit", "-q", "-m", f"feat: change {n}\n\nBody line {n}.\n\nTrailer: {n}")
+    commits = session._commits(repo, start)
+    assert [c[0].split(" ", 1)[1] for c in commits] == ["feat: change 1", "feat: change 2"]
+    assert commits[1][1] == "feat: change 2\n\nBody line 2.\n\nTrailer: 2"

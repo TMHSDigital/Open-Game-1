@@ -448,3 +448,26 @@ def test_local_values_are_flagged_in_any_form(monkeypatch):
     monkeypatch.setattr(secrets, "_local_rx", None)
     assert [f.rule for f in found] == ["steam-local-value"]
     assert "localacct" not in found[0].excerpt_redacted
+
+
+def test_long_unbroken_token_is_scanned_quickly():
+    import time
+    start = time.perf_counter()
+    assert scan_text("x" * 200_000, "blob.txt") == []
+    assert time.perf_counter() - start < 5
+    long_local = "a" * 100 + "@" + "gmail.com"
+    assert [f.rule for f in scan_text(long_local, "x.md")] == ["private-email"]
+
+
+def test_batched_index_read_matches_git_show(tmp_path):
+    from og import secrets
+    git(tmp_path, "init", "-q", "-b", "main")
+    (tmp_path / "a b.txt").write_bytes(b"first\nfile\n")
+    (tmp_path / "empty.txt").write_bytes(b"")
+    (tmp_path / "bin.dat").write_bytes(bytes(range(256)) * 3)
+    git(tmp_path, "add", "-A")
+    names = ["a b.txt", "empty.txt", "bin.dat", "not-there.txt"]
+    blobs = secrets._index_blobs(names, tmp_path)
+    assert blobs["not-there.txt"] is None
+    for name in names[:3]:
+        assert blobs[name] == secrets._index_blob(name, tmp_path)[0]
