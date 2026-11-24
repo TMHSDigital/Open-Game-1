@@ -35,8 +35,8 @@ namespace
 		return Row;
 	}
 
-	/** Value clamped to the row (and rounded to its step when asked); the default when it is not a finite number. */
-	float Clean(const FCSSettingRow& Row, float Value, bool bRoundToStep)
+	/** What Update stores: the value clamped to the row and rounded to its step; the default when it is not a finite number. */
+	float Clean(const FCSSettingRow& Row, float Value)
 	{
 		if (!FMath::IsFinite(Value))
 		{
@@ -46,8 +46,18 @@ namespace
 		{
 			return Value >= 0.5f ? 1.f : 0.f;
 		}
-		const float Stepped = bRoundToStep ? Row.Min + FMath::RoundToFloat((Value - Row.Min) / Row.Step) * Row.Step : Value;
+		const float Stepped = Row.Min + FMath::RoundToFloat((Value - Row.Min) / Row.Step) * Row.Step;
 		return FMath::Clamp(Stepped, Row.Min, Row.Max);
+	}
+
+	/**
+	 * What a value read from the ini becomes: itself when it is a finite number inside the row's range,
+	 * otherwise the default. Not clamped: text in the ini reads as 0, and clamping that would give the
+	 * slowest look speed instead of the normal one.
+	 */
+	float Loaded(const FCSSettingRow& Row, float Value)
+	{
+		return FMath::IsFinite(Value) && Value >= Row.Min && Value <= Row.Max ? Value : Row.Default;
 	}
 }
 
@@ -124,7 +134,7 @@ bool UCSGameSettings::Update(FName Key, float Value)
 	{
 		return false;
 	}
-	const float Cleaned = Clean(*Row, Value, true);
+	const float Cleaned = Clean(*Row, Value);
 	if (FMath::IsNearlyEqual(Cleaned, GetValue(Key), 1.e-4f))
 	{
 		return true;
@@ -165,11 +175,11 @@ void UCSGameSettings::Sanitize()
 	for (const FCSSettingRow& Row : Rows())
 	{
 		const float Value = GetValue(Row.Key);
-		const float Cleaned = Clean(Row, Value, false);
+		const float Cleaned = Loaded(Row, Value);
 		// NaN never compares equal, so a value that is not a number is always replaced.
 		if (!(Cleaned == Value))
 		{
-			UE_LOG(LogCombatSimulator, Warning, TEXT("Settings: %s was %g, outside its range; using %g."), *Row.Key.ToString(), Value, Cleaned);
+			UE_LOG(LogCombatSimulator, Warning, TEXT("Settings: %s was %g, outside its range; using the default %g."), *Row.Key.ToString(), Value, Cleaned);
 			SetField(Row.Key, Cleaned);
 		}
 	}

@@ -26,7 +26,7 @@ struct FCSSettingRow
  * is built from Rows, so a new setting is one field, one row and one consumer.
  *
  * A missing ini means the defaults; a value that is out of range or not a number (a hand-edited ini)
- * is clamped or put back to its default by Sanitize when the settings are first read.
+ * is put back to its default by Sanitize when the settings are first read.
  *
  * Applied by ACSPlayerController::ApplySettings (look scale on the character).
  */
@@ -57,7 +57,7 @@ public:
 	/** Every setting back to its default; saved and announced once if anything changed. */
 	void ResetAll();
 
-	/** Clamps every field to its row; a value that is not a finite number becomes the default. */
+	/** Checks every field against its row: a value outside the range, or not a finite number, becomes the default. */
 	void Sanitize();
 
 	/** A value changed. */

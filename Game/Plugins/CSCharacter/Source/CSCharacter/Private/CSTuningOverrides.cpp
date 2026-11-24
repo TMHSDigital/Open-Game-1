@@ -140,6 +140,11 @@ bool FCSTuningOverrideFileStore::Load(FString& OutJson)
 	return IFileManager::Get().FileExists(*Path) && FFileHelper::LoadFileToString(OutJson, *Path);
 }
 
+bool FCSTuningOverrideFileStore::Exists() const
+{
+	return IFileManager::Get().FileExists(*GetPath());
+}
+
 bool FCSTuningOverrideFileStore::Save(const FString& Json)
 {
 	// SaveStringToFile creates the folder. Written without a byte order mark so any editor reads it.

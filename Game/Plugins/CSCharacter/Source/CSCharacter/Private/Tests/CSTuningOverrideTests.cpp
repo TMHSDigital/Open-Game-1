@@ -27,13 +27,20 @@ namespace CSTuningOverrideTests
 		FString Text;
 		bool bHasText = false;
 		bool bFailSave = false;
+		/** Something is stored but reading it fails (a locked file). */
+		bool bUnreadable = false;
 		int32 Saves = 0;
 
 		virtual bool Load(FString& OutJson) override
 		{
+			if (bUnreadable)
+			{
+				return false;
+			}
 			OutJson = Text;
 			return bHasText;
 		}
+		virtual bool Exists() const override { return bHasText; }
 		virtual bool Save(const FString& Json) override
 		{
 			if (bFailSave)
@@ -280,6 +287,69 @@ bool FCSTuningOverridesSurviveF5Test::RunTest(const FString& Parameters)
 	AddExpectedMessagePlain(TEXT("rejected, "), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, 1);
 	TestFalse(TEXT("A reload whose result is invalid is rejected"), DevTools->RequestReload());
 	TestEqual(TEXT("The last good values stay"), Sim.Character->GetActiveTuning().SprintSpeed, 620.f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSTuningOverridesUnreadableFileIsReportedTest, "CombatSimulator.CS.Tuning.OverridesUnreadableFileIsReported", CSTuningOverrideTests::TestFlags)
+bool FCSTuningOverridesUnreadableFileIsReportedTest::RunTest(const FString& Parameters)
+{
+	// A file that is there but cannot be read (locked by another program) is not "no changes".
+	CSTuningOverrideTests::FScopedStore Scoped;
+	TStrongObjectPtr<UCSMovementTuning> Tuning(CSTuningOverrideTests::NewTuning());
+	CSTuningOverrideTests::FMoveSim Sim;
+	if (!Sim.Init(*this, 1.f / 60.f, Tuning.Get()))
+	{
+		return false;
+	}
+	UCSDevTools* DevTools = Sim.Character->GetDevTools();
+	Scoped.Store.Put(TEXT("{\"version\":1,\"values\":{\"JogSpeed\":450}}"));
+	TestTrue(TEXT("The readable file loads"), DevTools->LoadOverrides());
+	TestEqual(TEXT("Its change is in play"), Sim.Character->GetActiveTuning().JogSpeed, 450.f);
+
+	Scoped.Store.bUnreadable = true;
+	AddExpectedMessagePlain(TEXT("could not be read"), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, 1);
+	TestFalse(TEXT("An unreadable file is a failure"), DevTools->LoadOverrides());
+	TestTrue(TEXT("The message says it could not be read"), DevTools->GetLastReloadMessage().Contains(TEXT("could not be read")));
+	TestFalse(TEXT("It is shown as a problem"), DevTools->WasLastReloadAccepted());
+	TestEqual(TEXT("The last good values stay in play"), Sim.Character->GetActiveTuning().JogSpeed, 450.f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSTuningOverridesKeptAfterFailedSaveTest, "CombatSimulator.CS.Tuning.OverridesKeptAfterFailedSave", CSTuningOverrideTests::TestFlags)
+bool FCSTuningOverridesKeptAfterFailedSaveTest::RunTest(const FString& Parameters)
+{
+	// Changes that could not be saved stay in use for the rest of the run: a reload, or a new
+	// character reading the store, must not fall back to the older file.
+	CSTuningOverrideTests::FScopedStore Scoped;
+	TStrongObjectPtr<UCSMovementTuning> Tuning(CSTuningOverrideTests::NewTuning());
+	CSTuningOverrideTests::FMoveSim Sim;
+	if (!Sim.Init(*this, 1.f / 60.f, Tuning.Get()))
+	{
+		return false;
+	}
+	UCSDevTools* DevTools = Sim.Character->GetDevTools();
+	Scoped.Store.Put(TEXT("{\"version\":1,\"values\":{\"JogSpeed\":400}}"));
+	TestTrue(TEXT("The older file loads"), DevTools->LoadOverrides());
+
+	Scoped.Store.bFailSave = true;
+	FCSTuningOverrides Overrides;
+	Overrides.Values.Add(TEXT("JogSpeed"), 450.f);
+	FString Reason;
+	AddExpectedMessagePlain(TEXT("could not be saved"), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, 1);
+	TestTrue(TEXT("The change applies though the save fails"), DevTools->SetOverrides(Overrides, true, Reason));
+	TestTrue(TEXT("The store still holds the older value"), Scoped.Store.Text.Contains(TEXT("400")));
+
+	TestTrue(TEXT("Reading the store again (a new character, F5)"), DevTools->LoadOverrides());
+	TestEqual(TEXT("Keeps the unsaved change, not the older file"), Sim.Character->GetActiveTuning().JogSpeed, 450.f);
+
+	// Once a save works, the store is the truth again.
+	Scoped.Store.bFailSave = false;
+	Overrides.Values.Add(TEXT("JogSpeed"), 460.f);
+	TestTrue(TEXT("A later change saves"), DevTools->SetOverrides(Overrides, true, Reason));
+	TestTrue(TEXT("The store holds it"), Scoped.Store.Text.Contains(TEXT("460")));
+	Scoped.Store.Put(TEXT("{\"version\":1,\"values\":{\"JogSpeed\":470}}"));
+	TestTrue(TEXT("Reading the store"), DevTools->LoadOverrides());
+	TestEqual(TEXT("Now follows the store"), Sim.Character->GetActiveTuning().JogSpeed, 470.f);
 	return true;
 }
 

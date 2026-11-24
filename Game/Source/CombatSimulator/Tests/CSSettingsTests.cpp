@@ -41,6 +41,7 @@ namespace CSSettingsTests
 			OutJson = Text;
 			return !Text.IsEmpty();
 		}
+		virtual bool Exists() const override { return !Text.IsEmpty(); }
 		virtual bool Save(const FString& Json) override
 		{
 			Text = Json;
@@ -102,17 +103,24 @@ bool FCSSettingsSanitizeBadValuesTest::RunTest(const FString& Parameters)
 	const TStrongObjectPtr<UCSGameSettings> Settings = Fresh();
 	Settings->MouseSensitivity = std::numeric_limits<float>::quiet_NaN();
 	Settings->StickSensitivity = 1000.f;
-	// Three values are put right below, each with one warning.
-	AddExpectedMessagePlain(TEXT("outside its range"), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, 3);
+	// Four values are put right below, each with one warning.
+	AddExpectedMessagePlain(TEXT("outside its range"), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, 4);
 	Settings->Sanitize();
 	TestEqual(TEXT("Not a number becomes the default"), Settings->MouseSensitivity, 1.f);
-	TestEqual(TEXT("Too large stops at 5"), Settings->StickSensitivity, 5.f);
+	TestEqual(TEXT("Too large becomes the default"), Settings->StickSensitivity, 1.f);
 
-	Settings->MouseSensitivity = -1.f;
+	// Text in the ini ("MouseSensitivity=abc") reads as 0: that must not become the slowest look speed.
+	Settings->MouseSensitivity = 0.f;
 	Settings->StickSensitivity = 1.03f;
 	Settings->Sanitize();
-	TestEqual(TEXT("Negative stops at 0.1"), Settings->MouseSensitivity, 0.1f);
+	TestEqual(TEXT("Zero (text in the ini) becomes the default, not the minimum"), Settings->MouseSensitivity, 1.f);
 	TestEqual(TEXT("A value in range is left as typed"), Settings->StickSensitivity, 1.03f);
+
+	Settings->MouseSensitivity = -1.f;
+	Settings->StickSensitivity = 0.1f;
+	Settings->Sanitize();
+	TestEqual(TEXT("Negative becomes the default"), Settings->MouseSensitivity, 1.f);
+	TestEqual(TEXT("The lowest allowed value is kept"), Settings->StickSensitivity, 0.1f);
 	return true;
 }
 

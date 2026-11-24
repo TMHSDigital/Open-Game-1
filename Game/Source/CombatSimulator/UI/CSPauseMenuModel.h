@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "InputCoreTypes.h"
 
 class UInputMappingContext;
 
@@ -21,6 +22,30 @@ struct FCSKeyRow
 	FString Keys;
 	/** A dev key (the action's name starts IA_Debug): listed only with dev tools on. */
 	bool bDev = false;
+};
+
+/**
+ * Decides when a key closes the pause screen.
+ *
+ * The keys that close the screen are also the pause action's keys. If the screen closed on key down,
+ * the same key, still held and repeating, would reach the game as a new press and open the screen
+ * again. So the screen swallows every key down of a closing key (repeats too) and closes on the
+ * release, and only for a press that began while the screen was up: the release of the press that
+ * opened the screen does nothing.
+ */
+struct COMBATSIMULATOR_API FCSPauseKeyLatch
+{
+	/** Escape, Tab, gamepad Start and the right face button. */
+	static bool IsCloseKey(const FKey& Key);
+
+	/** A closing key went down on the screen. A first press arms the latch; a repeat does not. */
+	void KeyDown(const FKey& Key, bool bIsRepeat);
+
+	/** A key was released. True when it ends a press that began on the screen: close now. */
+	bool KeyUp(const FKey& Key);
+
+private:
+	FKey Armed;
 };
 
 /**

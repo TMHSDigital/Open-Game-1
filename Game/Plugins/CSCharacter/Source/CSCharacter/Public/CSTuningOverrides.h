@@ -52,8 +52,10 @@ class CSCHARACTER_API ICSTuningOverrideStore
 {
 public:
 	virtual ~ICSTuningOverrideStore() = default;
-	/** False when nothing is stored. */
+	/** False when nothing is stored, or when what is stored could not be read (then Exists is true). */
 	virtual bool Load(FString& OutJson) = 0;
+	/** Something is stored, readable or not. */
+	virtual bool Exists() const = 0;
 	/** False when the text could not be written. */
 	virtual bool Save(const FString& Json) = 0;
 	/** Removes what is stored. False when it could not be removed. */
@@ -68,6 +70,7 @@ class CSCHARACTER_API FCSTuningOverrideFileStore : public ICSTuningOverrideStore
 public:
 	static FString GetPath();
 	virtual bool Load(FString& OutJson) override;
+	virtual bool Exists() const override;
 	virtual bool Save(const FString& Json) override;
 	virtual bool Clear() override;
 	virtual FString Describe() const override { return GetPath(); }

@@ -185,16 +185,18 @@ FReply SCSPauseScreen::Resume()
 
 FReply SCSPauseScreen::OnPreviewKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent)
 {
-	// Seen before any focused control, so these keys always work. They are also the pause action's
-	// keys; handling them here keeps them from reaching the game as a second press.
+	// Seen before any focused control, so these keys always work.
 	const FKey Key = InKeyEvent.GetKey();
+	if (FCSPauseKeyLatch::IsCloseKey(Key))
+	{
+		// Swallowed here, repeats included, so a held key never reaches the game as a new press of
+		// the pause action. The screen closes when the key is released (OnKeyUp).
+		CloseLatch.KeyDown(Key, InKeyEvent.IsRepeat());
+		return FReply::Handled();
+	}
 	if (InKeyEvent.IsRepeat())
 	{
 		return FReply::Unhandled();
-	}
-	if (Key == EKeys::Escape || Key == EKeys::Tab || Key == EKeys::Gamepad_Special_Right || Key == EKeys::Gamepad_FaceButton_Right)
-	{
-		return Resume();
 	}
 	if (Key == EKeys::PageUp || Key == EKeys::Gamepad_LeftShoulder)
 	{
@@ -205,6 +207,17 @@ FReply SCSPauseScreen::OnPreviewKeyDown(const FGeometry& MyGeometry, const FKeyE
 	{
 		StepTab(1);
 		return FReply::Handled();
+	}
+	return FReply::Unhandled();
+}
+
+FReply SCSPauseScreen::OnKeyUp(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent)
+{
+	// Only a press that began on the screen closes it. The release of the press that opened the
+	// screen is left for the game, which needs to see that key come up.
+	if (CloseLatch.KeyUp(InKeyEvent.GetKey()))
+	{
+		return Resume();
 	}
 	return FReply::Unhandled();
 }

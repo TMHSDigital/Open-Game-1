@@ -3,6 +3,29 @@
 #include "InputAction.h"
 #include "InputMappingContext.h"
 
+bool FCSPauseKeyLatch::IsCloseKey(const FKey& Key)
+{
+	return Key == EKeys::Escape || Key == EKeys::Tab || Key == EKeys::Gamepad_Special_Right || Key == EKeys::Gamepad_FaceButton_Right;
+}
+
+void FCSPauseKeyLatch::KeyDown(const FKey& Key, bool bIsRepeat)
+{
+	if (!bIsRepeat && IsCloseKey(Key))
+	{
+		Armed = Key;
+	}
+}
+
+bool FCSPauseKeyLatch::KeyUp(const FKey& Key)
+{
+	if (Armed.IsValid() && Key == Armed)
+	{
+		Armed = FKey();
+		return true;
+	}
+	return false;
+}
+
 TArray<ECSPauseTab> FCSPauseMenuModel::Tabs(bool bDevTools)
 {
 	TArray<ECSPauseTab> Out;

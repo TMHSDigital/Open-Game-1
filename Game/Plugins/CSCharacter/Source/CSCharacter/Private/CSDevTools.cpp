@@ -125,10 +125,15 @@ namespace
 {
 	ICSTuningOverrideStore* TestOverrideStore = nullptr;
 
+	// Changes that are in play but could not be saved. They are kept here so a new character (a
+	// respawn, a map change) or an F5 does not fall back to an older file: "in use until the game closes".
+	TOptional<FCSTuningOverrides> UnsavedOverrides;
+
 	/** What automation runs get when a test set no store: nothing stored, writes dropped. */
 	struct FNullOverrideStore : ICSTuningOverrideStore
 	{
 		virtual bool Load(FString& OutJson) override { return false; }
+		virtual bool Exists() const override { return false; }
 		virtual bool Save(const FString& Json) override { return true; }
 		virtual bool Clear() override { return true; }
 		virtual FString Describe() const override { return TEXT("no store (automation run)"); }
@@ -152,15 +157,30 @@ ICSTuningOverrideStore& UCSDevTools::GetOverrideStore()
 void UCSDevTools::SetOverrideStoreForTests(ICSTuningOverrideStore* Store)
 {
 	TestOverrideStore = Store;
+	UnsavedOverrides.Reset();
 }
 
 bool UCSDevTools::ReadStore(FCSTuningOverrides& OutOverrides, bool& bOutFound, FString& OutReason) const
 {
 	OutOverrides = FCSTuningOverrides();
+	if (UnsavedOverrides.IsSet())
+	{
+		// Newer than anything in the store, which refused them.
+		OutOverrides = UnsavedOverrides.GetValue();
+		bOutFound = true;
+		return true;
+	}
 	FString Json;
 	bOutFound = GetOverrideStore().Load(Json);
 	if (!bOutFound)
 	{
+		if (GetOverrideStore().Exists())
+		{
+			// Say so: treating a locked file as "no changes" would silently drop them.
+			bOutFound = true;
+			OutReason = TEXT("the saved changes are there but could not be read");
+			return false;
+		}
 		return true;
 	}
 	if (!OutOverrides.Parse(Json, OutReason))
@@ -223,8 +243,13 @@ bool UCSDevTools::SetOverrides(const FCSTuningOverrides& Overrides, bool bSave, 
 	{
 		ICSTuningOverrideStore& Store = GetOverrideStore();
 		const bool bStored = Wanted.Values.Num() > 0 ? Store.Save(Wanted.ToJson()) : Store.Clear();
-		if (!bStored)
+		if (bStored)
 		{
+			UnsavedOverrides.Reset();
+		}
+		else
+		{
+			UnsavedOverrides = Wanted;
 			OutReason = FString::Printf(TEXT("the tuning changes could not be saved to %s; they stay in use until the game closes"), *Store.Describe());
 			const FString Message = FString::Printf(TEXT("%s: %s."), *Character->GetName(), *OutReason);
 			UE_LOG(LogCSCharacter, Warning, TEXT("%s"), *Message);

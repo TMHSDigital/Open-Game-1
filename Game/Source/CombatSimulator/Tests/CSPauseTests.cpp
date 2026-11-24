@@ -38,6 +38,7 @@ namespace CSPauseTests
 			OutJson = Text;
 			return !Text.IsEmpty();
 		}
+		virtual bool Exists() const override { return !Text.IsEmpty(); }
 		virtual bool Save(const FString& Json) override
 		{
 			if (bFailSave)
@@ -101,7 +102,8 @@ bool FCSPauseParseNumberTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("1,5 reads as 1.5"), Value, 1.5f);
 	TestTrue(TEXT("Spaces and a sign"), SCSValueRow::ParseNumber(TEXT("  -20 "), Value));
 	TestEqual(TEXT("-20"), Value, -20.f);
-	for (const TCHAR* Bad : {TEXT(""), TEXT("   "), TEXT("abc"), TEXT("nan"), TEXT("inf"), TEXT("1e99"), TEXT("12px"), TEXT("1.2.3"), TEXT("99999999999999999999")})
+	for (const TCHAR* Bad : {TEXT(""), TEXT("   "), TEXT("abc"), TEXT("nan"), TEXT("inf"), TEXT("1e99"), TEXT("12px"), TEXT("1.2.3"), TEXT("99999999999999999999"),
+		TEXT("-"), TEXT("."), TEXT("+"), TEXT("-."), TEXT(",")})
 	{
 		Value = 7.f;
 		TestFalse(FString::Printf(TEXT("\"%s\" is not a number"), Bad), SCSValueRow::ParseNumber(Bad, Value));
@@ -110,6 +112,38 @@ bool FCSPauseParseNumberTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Whole steps show no decimals"), SCSValueRow::FormatNumber(380.f, 5.f), FString(TEXT("380")));
 	TestEqual(TEXT("Tenth steps show one"), SCSValueRow::FormatNumber(8.5f, 0.5f), FString(TEXT("8.5")));
 	TestEqual(TEXT("Hundredth steps show two"), SCSValueRow::FormatNumber(0.35f, 0.01f), FString(TEXT("0.35")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSPauseCloseKeyActsOnReleaseTest, "CombatSimulator.CS.Pause.CloseKeyActsOnRelease", CSPauseTests::TestFlags)
+bool FCSPauseCloseKeyActsOnReleaseTest::RunTest(const FString& Parameters)
+{
+	for (const FKey& Key : {EKeys::Escape, EKeys::Tab, EKeys::Gamepad_Special_Right, EKeys::Gamepad_FaceButton_Right})
+	{
+		TestTrue(FString::Printf(TEXT("%s closes the screen"), *Key.ToString()), FCSPauseKeyLatch::IsCloseKey(Key));
+	}
+	TestFalse(TEXT("Other keys do not"), FCSPauseKeyLatch::IsCloseKey(EKeys::W) || FCSPauseKeyLatch::IsCloseKey(EKeys::Enter));
+
+	// The press that opened the screen is still held: its repeats and its release do nothing.
+	FCSPauseKeyLatch Latch;
+	Latch.KeyDown(EKeys::Escape, true);
+	Latch.KeyDown(EKeys::Escape, true);
+	TestFalse(TEXT("The release of the opening press does not close"), Latch.KeyUp(EKeys::Escape));
+
+	// A new press closes, on its release and once, however long it is held.
+	Latch.KeyDown(EKeys::Escape, false);
+	Latch.KeyDown(EKeys::Escape, true);
+	Latch.KeyDown(EKeys::Escape, true);
+	TestTrue(TEXT("A press that began on the screen closes on release"), Latch.KeyUp(EKeys::Escape));
+	TestFalse(TEXT("Only once"), Latch.KeyUp(EKeys::Escape));
+
+	// The release must be of the key that was pressed.
+	Latch.KeyDown(EKeys::Tab, false);
+	TestFalse(TEXT("The release of another key does not close"), Latch.KeyUp(EKeys::Escape));
+	TestTrue(TEXT("Its own release does"), Latch.KeyUp(EKeys::Tab));
+
+	Latch.KeyDown(EKeys::W, false);
+	TestFalse(TEXT("A key that is not a closing key never closes"), Latch.KeyUp(EKeys::W));
 	return true;
 }
 

@@ -13,7 +13,9 @@ bool SCSValueRow::ParseNumber(const FString& Text, float& OutValue)
 {
 	FString Clean = Text.TrimStartAndEnd().Replace(TEXT(","), TEXT("."));
 	// IsNumeric accepts digits with one optional sign and one decimal point: no letters, no exponent.
-	if (Clean.IsEmpty() || !FCString::IsNumeric(*Clean))
+	// It also accepts "-", "." and "+" on their own, which are not numbers.
+	const bool bHasDigit = Clean.FindLastCharByPredicate([](TCHAR C) { return FChar::IsDigit(C); }) != INDEX_NONE;
+	if (!bHasDigit || !FCString::IsNumeric(*Clean))
 	{
 		return false;
 	}
