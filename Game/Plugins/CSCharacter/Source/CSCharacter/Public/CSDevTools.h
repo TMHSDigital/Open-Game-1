@@ -86,6 +86,13 @@ public:
 	UFUNCTION(BlueprintPure, Category = "CS|Dev tools")
 	bool AreEnabled() const;
 
+	/**
+	 * True when a tuning reload may run: bDevTools on the character's source tuning (the asset, or
+	 * the class defaults when none is set), not on the applied copy. Reading the source is what
+	 * lets a reload turn dev tools back on after a reload turned them off.
+	 */
+	bool IsReloadAllowed() const;
+
 	/** F1. Shows or hides the feel overlay; does nothing with dev tools off. */
 	UFUNCTION(BlueprintCallable, Category = "CS|Dev tools")
 	void ToggleOverlay();

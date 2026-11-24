@@ -337,7 +337,7 @@ void ACSCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnToggleCameraStarted);
 	}
 	// Dev keys are always bound; UCSDevTools decides at press time whether they do anything, so a
-	// reload can turn bDevTools on or off.
+	// reload can turn bDevTools on or off (the reload key itself reads the source tuning).
 	if (UInputAction* A = Load(DebugOverlayAction, TEXT("DebugOverlayAction")))
 	{
 		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnDebugOverlayStarted);

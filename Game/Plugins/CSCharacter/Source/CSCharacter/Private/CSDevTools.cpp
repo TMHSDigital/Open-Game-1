@@ -89,7 +89,7 @@ bool UCSDevTools::ReloadTuning(ACSCharacter& Character, FString& OutMessage)
 bool UCSDevTools::RequestReload()
 {
 	ACSCharacter* Character = GetCharacter();
-	if (!Character || !AreEnabled())
+	if (!Character || !IsReloadAllowed())
 	{
 		return false;
 	}
@@ -139,7 +139,7 @@ int32 UCSDevTools::ReloadTuningInWorld(UWorld* World, TArray<FString>& OutMessag
 	{
 		ACSCharacter* Character = *It;
 		const UCSDevTools* DevTools = Character->GetDevTools();
-		if (!DevTools || !DevTools->AreEnabled())
+		if (!DevTools || !DevTools->IsReloadAllowed())
 		{
 			FString Message = FString::Printf(TEXT("%s: dev tools are off (bDevTools), tuning not reloaded."), *Character->GetName());
 			UE_LOG(LogCSCharacter, Log, TEXT("%s"), *Message);
@@ -160,6 +160,17 @@ bool UCSDevTools::AreEnabled() const
 {
 	const ACSCharacter* Character = GetCharacter();
 	return Character && Character->GetActiveTuning().bDevTools;
+}
+
+bool UCSDevTools::IsReloadAllowed() const
+{
+	const ACSCharacter* Character = GetCharacter();
+	if (!Character)
+	{
+		return false;
+	}
+	const UCSMovementTuning* Source = Character->Tuning ? Character->Tuning.Get() : GetDefault<UCSMovementTuning>();
+	return Source->bDevTools;
 }
 
 bool UCSDevTools::IsOverlayVisible() const

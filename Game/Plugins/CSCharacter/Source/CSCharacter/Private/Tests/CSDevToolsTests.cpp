@@ -205,6 +205,47 @@ bool FCSDevToolsReloadRejectsBadValuesTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSDevToolsReloadTurnsBackOnTest, "CombatSimulator.CS.DevTools.ReloadTurnsDevToolsBackOn", CSDevToolsTests::TestFlags)
+bool FCSDevToolsReloadTurnsBackOnTest::RunTest(const FString& Parameters)
+{
+	UCSMovementTuning* Tuning = NewTuning();
+	Tuning->bDevTools = true;
+	FMoveSim Sim;
+	if (!Sim.Init(*this, 1.f / 60.f, Tuning))
+	{
+		return false;
+	}
+	ACSCharacter* Character = Sim.Character;
+	UCSDevTools* DevTools = Character->GetDevTools();
+	if (!TestNotNull(TEXT("Character has dev tools"), DevTools))
+	{
+		return false;
+	}
+
+	// A reload that turns dev tools off is accepted and takes effect.
+	Tuning->bDevTools = false;
+	TestFalse(TEXT("With the asset off, a reload is refused"), DevTools->RequestReload());
+	TestTrue(TEXT("The applied copy is still on until a reload runs"), DevTools->AreEnabled());
+	TArray<FString> Messages;
+	FString Message;
+	TestTrue(TEXT("Applying the off tuning directly works"), UCSDevTools::ReloadTuning(*Character, Message));
+	TestFalse(TEXT("Dev tools are now off"), DevTools->AreEnabled());
+
+	// Turning the asset back on and reloading must bring them back, by key and by command.
+	Tuning->bDevTools = true;
+	Tuning->JogSpeed = 395.f;
+	TestTrue(TEXT("F5 path reloads once the asset is on again"), DevTools->RequestReload());
+	TestTrue(TEXT("Dev tools are back on"), DevTools->AreEnabled());
+	TestNearlyEqual(TEXT("The reload applied the asset"), Character->GetActiveTuning().JogSpeed, 395.f, 0.01f);
+
+	Tuning->bDevTools = false;
+	UCSDevTools::ReloadTuning(*Character, Message);
+	Tuning->bDevTools = true;
+	TestEqual(TEXT("cs.Tuning.Reload also turns them back on"), UCSDevTools::ReloadTuningInWorld(Sim.World.GetTestWorld(), Messages), 1);
+	TestTrue(TEXT("Dev tools are on after the command"), DevTools->AreEnabled());
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSDevToolsOffDisablesKeysTest, "CombatSimulator.CS.DevTools.DevToolsOffDisablesKeys", CSDevToolsTests::TestFlags)
 bool FCSDevToolsOffDisablesKeysTest::RunTest(const FString& Parameters)
 {
