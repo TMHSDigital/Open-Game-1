@@ -27,7 +27,7 @@ PRAGMA_PATHS = ("tools/tests/", "tools/og/secrets.py", "tools/steam/test-release
 LOCAL_VALUE_KEYS = ("STEAM_APPID", "STEAM_DEPOT_WIN", "STEAM_BUILD_ACCOUNT")
 EXCERPT_MAX = 120
 
-EMAIL_RE = re.compile(r"(?P<s>[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)")
+EMAIL_RE = re.compile(r"(?P<s>[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})")
 ALLOWED_EMAILS = (
     re.compile(r"@users\.noreply\.github\.com$", re.I),
     re.compile(r"^noreply@anthropic\.com$", re.I),

@@ -434,6 +434,7 @@ def test_flags_leak_shapes_outside_assignments(line):
     "BuildID 26879552 is live on development",
     "the depot holds 2 files",
     "see steam://open/console",
+    "npx -y @scope/some-tool@0.54.0",
 ])
 def test_public_and_ordinary_steam_text_is_not_flagged(line):
     assert scan_text(line, "docs/x.md") == [], line

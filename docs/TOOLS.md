@@ -1,6 +1,6 @@
 # Tools
 
-The outside tools this project uses, how to install them, the environment variable names they read, which routines use them (see [WORKFLOWS.md](WORKFLOWS.md)), and what they cannot do yet. Values never go in the repo: names only, real values live in `.env` or in your own MCP config (`.mcp.json` is gitignored; `.mcp.json.example` is the committed template).
+The outside tools this project uses, how to install them, the environment variable names they read, which routines use them (see [WORKFLOWS.md](WORKFLOWS.md)), and what they cannot do yet. Values never go in the repo: names only, real values live in `.env` or in your own MCP config (`.mcp.json` is gitignored; `.mcp.json.example` is the committed template). The template pins each server to an exact version or commit, so a session never runs code that nobody chose; move a pin on purpose, after looking at what changed.
 
 Licensing note: the owner's tool repos below are CC-BY-NC-ND-4.0 (the Blender-Developer-Tools snippets and templates are MIT). Game code may copy from MIT snippets and templates only; everything else is used as a tool, not copied into the game.
 
