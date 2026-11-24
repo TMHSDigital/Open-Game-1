@@ -4,7 +4,7 @@
 
 **A moddable physics sandbox for Steam, built in public with Unreal Engine 5.8.**
 
-Every design decision, every work session and every Steam build is recorded in this repository as it happens, and published to a devlog that anyone can follow. The game does not exist yet. The workshop it will be built in does.
+Every design decision, every work session and every Steam build is recorded in this repository as it happens, and published to a devlog that anyone can follow. The game is at its very start: one faceless character that walks, runs, jumps and falls over on an empty plane.
 
 <br />
 
@@ -20,9 +20,9 @@ Every design decision, every work session and every Steam build is recorded in t
 
 <br />
 
-<img src="docs/devlog/media/2026-11-22-01/stage-overview.webp" width="640" alt="The empty capture stage: a flat grey floor under a blue sky, a one-metre reference cube and a ten-metre ruler." />
+<img src="docs/devlog/media/2026-11-22-03/tp-owner-shoulder.webp" width="640" alt="A plain white faceless character seen from behind, standing on a flat grey grid plane under a blue sky." />
 
-<sub>Session 0: the empty capture stage. The same fixed cameras photograph it every session, so the <a href="https://tmhsdigital.github.io/Open-Game-1/gallery.html">gallery</a> becomes a time-lapse of the game taking shape.</sub>
+<sub>Session 2: the base character on the start plane. The same fixed cameras photograph the game every session, so the <a href="https://tmhsdigital.github.io/Open-Game-1/gallery.html">gallery</a> becomes a time-lapse of the game taking shape.</sub>
 
 [Status](#status) · [Follow along](#follow-along) · [How it is built](#how-it-is-built) · [Open questions](#open-questions) · [Repository map](#repository-map) · [License](#license)
 
@@ -34,9 +34,9 @@ Every design decision, every work session and every Steam build is recorded in t
 |---|---|
 | **Phase** | Pre-production. The framework is finished; the base character and its movement are built and being tuned. No gameplay yet. |
 | **Engine** | Unreal Engine 5.8, C++ project in [`Game/`](Game/): a blank plane with one character, a movement gym and a capture stage |
-| **Next decision** | [OD-001: what does a player do in the first 10 minutes?](https://github.com/TMHSDigital/Open-Game-1/issues/1) |
-| **Steam** | Build 0.1.1 is live on the private development branch; nothing is on the public default branch yet ([setup checklist](docs/steam/SETUP-CHECKLIST.md), [build history](https://tmhsdigital.github.io/Open-Game-1/builds.html)) |
-| **Latest devlog** | [Session 0: framework](docs/devlog/2026-11-22-01-session-0-framework.md) |
+| **Current goal** | [Decision 0011](docs/decisions/0011-start-with-a-blank-plane-and-one-base-character-movement-fee.md): a blank plane and one base character, movement feel first |
+| **Steam** | Build 0.1.2 is live on the private development branch; the game is not publicly available yet ([setup checklist](docs/steam/SETUP-CHECKLIST.md), [build history](https://tmhsdigital.github.io/Open-Game-1/builds.html)) |
+| **Latest devlog** | [Session 2: base character and movement feel](docs/devlog/2026-11-22-03-session-2-base-character-and-movement-fe.md) |
 
 ## Follow along
 
@@ -93,7 +93,6 @@ The game's design is being worked out in the open. The current questions, each w
 
 | | Question |
 |---|---|
-| [OD-001](https://github.com/TMHSDigital/Open-Game-1/issues/1) | Core loop: what does a player do in the first 10 minutes? |
 | [OD-003](https://github.com/TMHSDigital/Open-Game-1/issues/3) | Modding technology: content plugins, a scripting layer, or both |
 | [OD-005](https://github.com/TMHSDigital/Open-Game-1/issues/5) | Multiplayer: none, local or online |
 | [OD-006](https://github.com/TMHSDigital/Open-Game-1/issues/6) | Art direction |
@@ -103,7 +102,8 @@ The game's design is being worked out in the open. The current questions, each w
 ## Repository map
 
 ```
-Game/             Unreal Engine 5.8 project (C++ module CombatSimulator, dev-only CSCapture module)
+Game/             Unreal Engine 5.8 project (C++ module CombatSimulator, CSCharacter plugin, dev-only CSCapture module)
+Art/              Blender sources (the base character is built by script)
 docs/decisions/   Numbered decision records
 docs/devlog/      Session entries and their images
 docs/captures/    Fixed-camera definitions and capture index
