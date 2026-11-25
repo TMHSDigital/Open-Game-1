@@ -19,7 +19,7 @@ pwsh tools/ue/playtest.ps1 -List                   # scenario names
 Run it in the background; it prints the summary path at the end. Exit 1 means the game did not play to the end.
 
 - **Editor target:** the editor binaries must be built from the current source (`tools/ue/build.ps1`), or the script refuses to start.
-- **Desktop:** it must be unlocked, because the window is captured from the screen. If the machine is locked the recording is black or shows the lock screen; say so instead of reviewing it.
+- **Desktop:** it must be unlocked, because the window is captured from the screen. If the machine is locked the recording is black or shows the lock screen; say so instead of reviewing it. The script makes the game window topmost while it records, so other windows do not cover it; a frame showing anything other than the game still means something went wrong, and it must not be shared.
 
 ## Scenarios
 

@@ -77,7 +77,7 @@ Play keys: WASD and mouse, Space jump (from a crouch it stands up and jumps), Le
 The game plays itself through scripted scenarios on a recording. Nothing is sent from outside, so the result does not depend on window focus or guessed distances. Skill: `playtest`.
 
 1. Build the editor (`pwsh tools/ue/build.ps1`), or package one (`tools/ue/package.ps1`) for `-Target Packaged`.
-2. `pwsh tools/ue/playtest.ps1 [-Scenario punch,stance] [-Target Packaged]`. Leave the game window uncovered and the desktop unlocked: the window's area of the screen is recorded.
+2. `pwsh tools/ue/playtest.ps1 [-Scenario punch,stance] [-Target Packaged]`. Keep the desktop unlocked: the window's area of the screen is recorded. The script keeps the game window on top while it records, so a notification or another window does not end up in the recording.
 3. The game (`UCSPlaytestRunner`, started with `-CSPlaytest=`) drives the player, frames the whole body with a review camera, writes the segment label on screen and logs timed events, then quits.
 4. The script cuts a clip and an 8-frame contact sheet per segment into `_scratch/playtest/<time>-<scenario>/`, which is gitignored. It also writes `summary.md` with the game's numbers: punches landed, facing error, top speed, when a body went down and got up.
 5. Review `summary.md`, `overview.png` and the sheets. Sample the clips frame by frame for a single motion.

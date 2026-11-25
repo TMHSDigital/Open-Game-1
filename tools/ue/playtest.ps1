@@ -69,6 +69,7 @@ Add-Type -Namespace CSPlaytest -Name Win -MemberDefinition @'
 [DllImport("user32.dll")] public static extern bool ShowWindow(System.IntPtr h, int c);
 [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, System.UIntPtr extra);
 [DllImport("user32.dll")] public static extern bool IsIconic(System.IntPtr h);
+[DllImport("user32.dll")] public static extern bool SetWindowPos(System.IntPtr h, System.IntPtr after, int x, int y, int cx, int cy, uint flags);
 [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
 [DllImport("user32.dll")] public static extern bool GetClientRect(System.IntPtr h, out RECT r);
 [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X; public int Y; }
@@ -122,6 +123,10 @@ Write-Host "Window '$title'"
 [CSPlaytest.Win]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero); [CSPlaytest.Win]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero)
 [CSPlaytest.Win]::ShowWindow($hwnd, 9) | Out-Null
 [CSPlaytest.Win]::SetForegroundWindow($hwnd) | Out-Null
+# Topmost while it records: anything that opens over it (a notification, another window) would
+# be recorded in its place. The window closes with the game, so nothing is left topmost.
+# SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE; HWND_TOPMOST is -1.
+[CSPlaytest.Win]::SetWindowPos($hwnd, [IntPtr](-1), 0, 0, 0, 0, 0x0013) | Out-Null
 
 # ---------------------------------------------------------------- record
 # The game's client area, taken from the screen: gdigrab's own window capture (title=) gets black
@@ -193,6 +198,16 @@ foreach ($e in $events | Where-Object { $_.event -eq 'segment' }) {
         Clip   = ''
         Sheet  = ''
     })
+}
+
+# ---------------------------------------------------------------- the recording ends with the game
+# The recording runs on for a moment after the game quits and takes whatever was behind its window
+# (a terminal, other apps). It is cut at the game's last event, so only the game is kept.
+$lastT = (($events | Select-Object -Last 1).utc_ms / 1000.0) - $videoStart
+if ($lastT -gt 1) {
+    $trimmed = Join-Path $OutDir 'recording-trimmed.mp4'
+    Invoke-Ffmpeg @('-y', '-i', $Recording, '-t', $lastT.ToString('0.###', [Globalization.CultureInfo]::InvariantCulture), '-c', 'copy', $trimmed)
+    Move-Item -LiteralPath $trimmed -Destination $Recording -Force
 }
 
 # ---------------------------------------------------------------- clips and sheets

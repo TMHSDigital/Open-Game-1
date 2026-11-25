@@ -367,7 +367,11 @@ def spawn_dummy(marker, x, y, yaw, folder="Dummy"):
     # The capsule is 90 cm half height; at z 92 it starts just above the floor and settles onto it.
     dummy = spawn(cls, "Dummy", unreal.Vector(x, y, 92.0), unreal.Rotator(roll=0, pitch=0, yaw=yaw), folder)
     dummy.set_editor_property("tags", [unreal.Name("Dummy")])
-    spawn_text("Dummy_Label", "Dummy spot", (x, y - 110, 5), yaw=-90, size=25, folder=folder)
+    # Flat on the floor in front of the marker, toward the player start: the text material is two-sided,
+    # so an upright label reads mirrored from behind, and the camera often circles the dummy. Seen from
+    # above, text is at worst turned, never mirrored.
+    label = spawn_text("Dummy_Label", "Dummy spot", (x - 100, y, 0.5), yaw=180, size=25, folder=folder)
+    label.set_actor_rotation(unreal.Rotator(roll=0, pitch=90, yaw=180), False)
     return dummy
 
 
