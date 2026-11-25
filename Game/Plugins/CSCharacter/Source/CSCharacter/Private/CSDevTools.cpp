@@ -1,5 +1,6 @@
 #include "CSDevTools.h"
 
+#include "CSHitBall.h"
 #include "CSCharacterLog.h"
 #include "CSMovementTuning.h"
 #include "CSPhysicsBodyComponent.h"
@@ -415,6 +416,58 @@ bool UCSDevTools::RequestPush()
 	return true;
 }
 
+ACSHitBall* UCSDevTools::RequestThrow()
+{
+	ACSCharacter* Character = GetCharacter();
+	if (!Character || !AreEnabled())
+	{
+		return nullptr;
+	}
+	const UCSMovementTuning& T = Character->GetActiveTuning();
+	FVector Direction = Character->GetBaseAimRotation().Vector().GetSafeNormal();
+	if (Direction.IsNearlyZero())
+	{
+		Direction = Character->GetActorForwardVector();
+	}
+	// From the chest, far enough out to start clear of the character's own body.
+	const FVector From = Character->GetActorLocation() + FVector(0.f, 0.f, 40.f) + Direction * 80.f;
+	return ACSHitBall::Throw(GetWorld(), Character, From, Direction, T.DevBallMass, T.DevBallSpeed);
+}
+
+bool UCSDevTools::RequestReset()
+{
+	if (!AreEnabled())
+	{
+		return false;
+	}
+	if (!OnResetRequested.IsBound())
+	{
+		UE_LOG(LogCSCharacter, Log, TEXT("%s: reset requested, but nothing handles it (the game binds OnResetRequested)."), *GetNameSafe(GetOwner()));
+	}
+	OnResetRequested.Broadcast();
+	return true;
+}
+
+FString UCSDevTools::DescribeLastContact(const ACSCharacter* Character, const TCHAR* Who)
+{
+	const UCSPhysicsBodyComponent* Body = Character ? Character->GetPhysicsBody() : nullptr;
+	const UWorld* World = Character ? Character->GetWorld() : nullptr;
+	if (!Body || !World || Body->GetLastContact().Time < 0.0)
+	{
+		return FString::Printf(TEXT("Hit %-6s none yet"), Who);
+	}
+	const FCSContactRecord& Contact = Body->GetLastContact();
+	const TCHAR* Result = TEXT("ignored");
+	switch (Contact.Result)
+	{
+	case ECSContactResult::Stagger: Result = TEXT("stagger"); break;
+	case ECSContactResult::Ragdoll: Result = TEXT("ragdoll"); break;
+	default: break;
+	}
+	return FString::Printf(TEXT("Hit %-6s %s  %.0f cm/s  %s  %.1f s ago"), Who, *Contact.Bone.ToString(), Contact.VelocityChange, Result,
+		World->GetTimeSeconds() - Contact.Time);
+}
+
 bool UCSDevTools::RequestMapSwitch()
 {
 	if (!AreEnabled())
@@ -510,6 +563,26 @@ namespace
 		return Version;
 	}
 
+	/** The character closest to Character, other than itself: the dummy the overlay reports on. */
+	const ACSCharacter* FindNearestOtherCharacter(const ACSCharacter* Character)
+	{
+		const ACSCharacter* Best = nullptr;
+		double BestDistance = TNumericLimits<double>::Max();
+		if (const UWorld* World = Character ? Character->GetWorld() : nullptr)
+		{
+			for (TActorIterator<ACSCharacter> It(World); It; ++It)
+			{
+				const double Distance = FVector::DistSquared(It->GetActorLocation(), Character->GetActorLocation());
+				if (*It != Character && Distance < BestDistance)
+				{
+					BestDistance = Distance;
+					Best = *It;
+				}
+			}
+		}
+		return Best;
+	}
+
 	const TCHAR* BodyStateName(const ACSCharacter* Character)
 	{
 		const UCSPhysicsBodyComponent* Body = Character ? Character->GetPhysicsBody() : nullptr;
@@ -541,7 +614,9 @@ FString UCSDevTools::GetOverlayText() const
 		TEXT("Body      %s\n")
 		TEXT("Build     %s\n")
 		TEXT("Values    %s\n")
-		TEXT("Keys      F1 overlay  F2 map  F5 reload tuning  R ragdoll  P push  V camera"),
+		TEXT("%s\n")
+		TEXT("%s\n")
+		TEXT("Keys      F1 overlay  F2 map  F5 reload tuning  R ragdoll  P push  T throw ball  Backspace reset  V camera"),
 		Sample.Speed,
 		Sample.Acceleration,
 		Sample.VerticalSpeed,
@@ -551,7 +626,9 @@ FString UCSDevTools::GetOverlayText() const
 		Sample.Camera.IsNone() ? TEXT("n/a") : *Sample.Camera.ToString(),
 		BodyStateName(GetCharacter()),
 		*ProjectVersionText(),
-		*GetTuningSourceText());
+		*GetTuningSourceText(),
+		*DescribeLastContact(GetCharacter(), TEXT("you")),
+		*DescribeLastContact(FindNearestOtherCharacter(GetCharacter()), TEXT("dummy")));
 }
 
 void UCSDevTools::DrawOverlay(AHUD* HUD, UCanvas* Canvas)

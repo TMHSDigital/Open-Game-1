@@ -12,6 +12,11 @@
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "CSCharacter.h"
+#include "CSBallLauncher.h"
+#include "CSHitBall.h"
+#include "CSPhysicsBodyComponent.h"
+#include "CSTuningOverrides.h"
+#include "../CSTargetDummy.h"
 #include "CSDevTools.h"
 #include "../CSGameMode.h"
 #include "CSMovementTuning.h"
@@ -490,6 +495,157 @@ bool FCSMapsGymSlopesTest::RunTest(const FString& Parameters)
 		return ++Run->CaseIndex >= Cases.Num();
 	}));
 
+	EndPlay();
+	return true;
+}
+
+namespace CSMapTests
+{
+	ACSTargetDummy* FindDummy(UWorld* World)
+	{
+		for (TActorIterator<ACSTargetDummy> It(World); It; ++It)
+		{
+			if (!It->IsActorBeingDestroyed())
+			{
+				return *It;
+			}
+		}
+		return nullptr;
+	}
+
+	/** State of the dummy and reset test, kept across frames. */
+	struct FResetRun
+	{
+		int32 Stage = 0;
+		double StageStart = 0.0;
+		TWeakObjectPtr<ACSTargetDummy> OldDummy;
+		TWeakObjectPtr<APawn> OldPawn;
+		TWeakObjectPtr<AActor> Box;
+		FVector DummyHome = FVector::ZeroVector;
+		FVector BoxHome = FVector::ZeroVector;
+	};
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSMapsPlaneHasADummyTest, "CombatSimulator.CS.Maps.PlaneHasADummy", CSMapTests::TestFlags)
+bool FCSMapsPlaneHasADummyTest::RunTest(const FString& Parameters)
+{
+	using namespace CSMapTests;
+	StartPlay(this, PlaneMap, 1.5f);
+	ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([this]()
+	{
+		UWorld* World = PlayWorld();
+		ACSTargetDummy* Dummy = FindDummy(World);
+		if (!TestNotNull(FString(TEXT("L_Plane has a target dummy")) + Regenerate, Dummy))
+		{
+			return true;
+		}
+		const ACSCharacter* Player = PlayerCharacter(World);
+		TestTrue(TEXT("It is tagged Dummy"), Dummy->ActorHasTag(TEXT("Dummy")));
+		TestNull(TEXT("Nothing controls it"), Dummy->GetController());
+		TestTrue(TEXT("It stands on the floor"), Dummy->GetCharacterMovement()->IsMovingOnGround());
+		TestTrue(TEXT("It has a physics body"), Dummy->GetPhysicsBody()->HasPhysicsBody());
+		TestTrue(TEXT("It uses the game's tuning asset"), Dummy->Tuning != nullptr && Player && Dummy->Tuning == Player->Tuning);
+		if (Player)
+		{
+			const float Distance = FVector::Dist2D(Dummy->GetActorLocation(), Player->GetActorLocation());
+			TestTrue(FString::Printf(TEXT("It is a few metres from the player (%.0f cm)"), Distance), Distance > 200.f && Distance < 1500.f);
+		}
+		return true;
+	}));
+	EndPlay();
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSMapsGymDummyLauncherAndResetTest, "CombatSimulator.CS.Maps.GymDummyLauncherAndReset", CSMapTests::TestFlags)
+bool FCSMapsGymDummyLauncherAndResetTest::RunTest(const FString& Parameters)
+{
+	using namespace CSMapTests;
+	StartPlay(this, GymMap, 1.5f);
+	TSharedRef<FResetRun> Run = MakeShared<FResetRun>();
+
+	// 0: check what is placed, change the player's tuning, knock things about, reset.
+	// 1: wait for the new dummy and the new player, then check everything is back.
+	ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([this, Run]()
+	{
+		UWorld* World = PlayWorld();
+		ACSGameMode* Mode = World ? Cast<ACSGameMode>(World->GetAuthGameMode()) : nullptr;
+		ACSCharacter* Player = PlayerCharacter(World);
+		if (!World || !Mode)
+		{
+			AddError(TEXT("No play world or ACSGameMode"));
+			return true;
+		}
+		const double Now = World->GetTimeSeconds();
+		if (Run->Stage == 0)
+		{
+			ACSTargetDummy* Dummy = FindDummy(World);
+			AActor* Launcher = FindTagged(World, TEXT("Launcher"));
+			AActor* Box = FindTagged(World, TEXT("PhysicsBox"));
+			if (!TestNotNull(FString(TEXT("The gym has a target dummy")) + Regenerate, Dummy)
+				|| !TestNotNull(FString(TEXT("The gym has a ball launcher")) + Regenerate, Cast<ACSBallLauncher>(Launcher))
+				|| !TestNotNull(TEXT("The gym has physics boxes"), Box) || !TestNotNull(TEXT("Player character"), Player))
+			{
+				return true;
+			}
+			TestNull(TEXT("Nothing controls the dummy"), Dummy->GetController());
+			TestTrue(TEXT("The dummy stands on the floor"), Dummy->GetCharacterMovement()->IsMovingOnGround());
+			TestNull(TEXT("Nobody stands on the launcher's square at the start"), Cast<ACSBallLauncher>(Launcher)->FindTarget());
+
+			// The dummy runs on the player's tuning changes.
+			FCSTuningOverrides Overrides;
+			Overrides.Values.Add(TEXT("RagdollImpulseThreshold"), 650.f);
+			FString Reason;
+			TestTrue(TEXT("The player's tuning changes"), Player->GetDevTools()->SetOverrides(Overrides, false, Reason));
+			TestEqual(TEXT("The dummy follows it"), Dummy->GetActiveTuning().RagdollImpulseThreshold, 650.f);
+
+			// Knock the dummy down, shove a box, throw a ball.
+			Run->OldDummy = Dummy;
+			Run->OldPawn = Player;
+			Run->Box = Box;
+			Run->DummyHome = Dummy->GetHomeTransform().GetLocation();
+			Run->BoxHome = Box->GetActorLocation();
+			Dummy->GetPhysicsBody()->EnterRagdoll();
+			TestTrue(TEXT("The dummy can be knocked down"), Dummy->IsRagdolled());
+			Box->SetActorLocation(Run->BoxHome + FVector(300.f, 200.f, 150.f), false, nullptr, ETeleportType::TeleportPhysics);
+			TestNotNull(TEXT("The throw key makes a ball"), Player->GetDevTools()->RequestThrow());
+
+			TestTrue(TEXT("The reset key is accepted"), Player->GetDevTools()->RequestReset());
+			Run->Stage = 1;
+			Run->StageStart = Now;
+			return false;
+		}
+
+		ACSTargetDummy* Dummy = FindDummy(World);
+		const bool bNewDummy = Dummy && Dummy != Run->OldDummy.Get() && Dummy->HasActorBegunPlay();
+		const bool bNewPlayer = Player && Player != Run->OldPawn.Get();
+		if (bNewDummy && bNewPlayer && Now - Run->StageStart > 1.0)
+		{
+			TestTrue(TEXT("The new dummy is on its spot"), FVector::Dist2D(Dummy->GetActorLocation(), Run->DummyHome) < 30.f);
+			TestFalse(TEXT("The new dummy is standing"), Dummy->IsRagdolled());
+			TestTrue(TEXT("It is tagged Dummy"), Dummy->ActorHasTag(TEXT("Dummy")));
+			TestNull(TEXT("Nothing controls it"), Dummy->GetController());
+			if (AActor* Box = Run->Box.Get())
+			{
+				const float Off = FVector::Dist(Box->GetActorLocation(), Run->BoxHome);
+				TestTrue(FString::Printf(TEXT("The box is back where it started (%.1f cm off)"), Off), Off < 10.f);
+			}
+			int32 Balls = 0;
+			for (TActorIterator<ACSHitBall> It(World); It; ++It)
+			{
+				Balls += It->IsActorBeingDestroyed() ? 0 : 1;
+			}
+			TestEqual(TEXT("No balls are left"), Balls, 0);
+			TActorIterator<APlayerStart> Start(World);
+			TestTrue(TEXT("The player is back at the PlayerStart"), bool(Start) && FVector::Dist2D(Player->GetActorLocation(), Start->GetActorLocation()) < 100.f);
+			return true;
+		}
+		if (Now - Run->StageStart > 10.0)
+		{
+			AddError(FString::Printf(TEXT("Reset did not finish in 10 s (new dummy %d, new player %d)"), int32(bNewDummy), int32(bNewPlayer)));
+			return true;
+		}
+		return false;
+	}));
 	EndPlay();
 	return true;
 }

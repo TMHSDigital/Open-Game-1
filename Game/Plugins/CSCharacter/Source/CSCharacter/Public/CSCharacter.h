@@ -20,6 +20,7 @@ class USkeletalMesh;
 struct FInputActionValue;
 
 DECLARE_MULTICAST_DELEGATE(FCSToggleCameraRequested);
+DECLARE_MULTICAST_DELEGATE(FCSTuningApplied);
 DECLARE_MULTICAST_DELEGATE_OneParam(FCSRagdollStateChanged, bool /* bRagdolled */);
 
 /** Movement gait. Jog is the default; walk and sprint are held, crouch is toggled (see ResolveGait). */
@@ -103,6 +104,9 @@ public:
 
 	/** The values the build was packaged with: Tuning, or the class defaults when it is unset. */
 	const UCSMovementTuning& GetPackagedTuning() const;
+
+	/** The active tuning was replaced (ApplyTuning, TryApplyTuning, a reload). */
+	FCSTuningApplied OnTuningApplied;
 
 	/** The changes on top of the packaged tuning that are in use (empty: none). */
 	const FCSTuningOverrides& GetTuningOverrides() const { return TuningOverrides; }
@@ -229,6 +233,12 @@ public:
 	/** Dev tool: switch map (UCSDevTools::RequestMapSwitch; the game picks the map). */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CS|Input")
 	TSoftObjectPtr<UInputAction> DebugMapSwitchAction;
+	/** Dev tool: throw a ball where the view points (UCSDevTools::RequestThrow). */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CS|Input")
+	TSoftObjectPtr<UInputAction> DebugThrowAction;
+	/** Dev tool: put the player, the dummies and the props back (UCSDevTools::RequestReset; the game does it). */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CS|Input")
+	TSoftObjectPtr<UInputAction> DebugResetAction;
 
 	/**
 	 * The player's look settings: mouse and stick look are multiplied by these (X yaw, Y pitch; a
@@ -284,6 +294,8 @@ private:
 	void OnDebugPushStarted();
 	void OnDebugReloadStarted();
 	void OnDebugMapSwitchStarted();
+	void OnDebugThrowStarted();
+	void OnDebugResetStarted();
 
 	UPROPERTY(VisibleAnywhere, Category = "CS|Dev tools")
 	TObjectPtr<UCSDevTools> DevTools;

@@ -69,4 +69,44 @@ bool FCSBodyWithoutPhysicsBodyIsHarmlessTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSBodyContactVelocityChangeTest, "CombatSimulator.CS.Body.ContactVelocityChange", CSPhysicsBodyPluginTests::TestFlags)
+bool FCSBodyContactVelocityChangeTest::RunTest(const FString& Parameters)
+{
+	const FVector Toward(1.f, 0.f, 0.f);
+	// 10 kg at 10 m/s straight at an 80 kg character: 10 * 1000 / 80 = 125 cm/s.
+	FVector Change = UCSPhysicsBodyComponent::ComputeContactVelocityChange(FVector(1000.f, 0.f, 0.f), 10.f, Toward, 80.f, 150.f, 1.f, 1500.f);
+	TestNearlyEqual(TEXT("Momentum over the mass of the character"), float(Change.Size()), 125.f, 0.01f);
+	TestTrue(TEXT("Along the motion of the other body"), Change.X > 0.f && FMath::IsNearlyZero(Change.Y) && FMath::IsNearlyZero(Change.Z));
+
+	Change = UCSPhysicsBodyComponent::ComputeContactVelocityChange(FVector(1000.f, 0.f, 0.f), 10.f, Toward, 80.f, 150.f, 2.f, 1500.f);
+	TestNearlyEqual(TEXT("The scale multiplies it"), float(Change.Size()), 250.f, 0.01f);
+
+	Change = UCSPhysicsBodyComponent::ComputeContactVelocityChange(FVector(3000.f, 0.f, 0.f), 100.f, Toward, 80.f, 150.f, 1.f, 1500.f);
+	TestNearlyEqual(TEXT("Never more than the limit"), float(Change.Size()), 1500.f, 0.01f);
+
+	// A glancing body: only its speed toward the character counts, but the push follows its motion.
+	const FVector Glancing = FVector(500.f, 866.f, 0.f);
+	Change = UCSPhysicsBodyComponent::ComputeContactVelocityChange(Glancing, 10.f, Toward, 80.f, 150.f, 1.f, 1500.f);
+	TestNearlyEqual(TEXT("A glancing hit counts its approach speed"), float(Change.Size()), 62.5f, 0.05f);
+	TestTrue(TEXT("And pushes along its motion"), FVector::DotProduct(Change.GetSafeNormal(), Glancing.GetSafeNormal()) > 0.999);
+
+	auto IsNothing = [&](const TCHAR* What, const FVector& Velocity, float Mass, float OurMass, float Scale)
+	{
+		TestTrue(What, UCSPhysicsBodyComponent::ComputeContactVelocityChange(Velocity, Mass, Toward, OurMass, 150.f, Scale, 1500.f).IsNearlyZero());
+	};
+	IsNothing(TEXT("Slower than the minimum speed: nothing"), FVector(149.f, 0.f, 0.f), 1000.f, 80.f, 1.f);
+	IsNothing(TEXT("At rest (the character walked into it): nothing"), FVector::ZeroVector, 1000.f, 80.f, 1.f);
+	IsNothing(TEXT("Moving away: nothing"), FVector(-1000.f, 0.f, 0.f), 10.f, 80.f, 1.f);
+	IsNothing(TEXT("Sliding past: nothing"), FVector(0.f, 1000.f, 0.f), 10.f, 80.f, 1.f);
+	IsNothing(TEXT("No mass: nothing"), FVector(1000.f, 0.f, 0.f), 0.f, 80.f, 1.f);
+	IsNothing(TEXT("A character with no mass: nothing"), FVector(1000.f, 0.f, 0.f), 10.f, 0.f, 1.f);
+	IsNothing(TEXT("Scale 0 turns contact hits off"), FVector(1000.f, 0.f, 0.f), 10.f, 80.f, 0.f);
+	IsNothing(TEXT("A velocity that is not a number: nothing"), FVector(std::numeric_limits<float>::quiet_NaN(), 0.f, 0.f), 10.f, 80.f, 1.f);
+
+	// No direction to the contact (the two are at the same point): the whole speed counts.
+	Change = UCSPhysicsBodyComponent::ComputeContactVelocityChange(FVector(0.f, 1000.f, 0.f), 8.f, FVector::ZeroVector, 80.f, 150.f, 1.f, 1500.f);
+	TestNearlyEqual(TEXT("Without a direction the whole speed counts"), float(Change.Size()), 100.f, 0.01f);
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

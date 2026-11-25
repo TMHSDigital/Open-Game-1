@@ -2,6 +2,10 @@
 
 #include "CSCharacter.h"
 #include "CSDevTools.h"
+#include "CSHitBall.h"
+#include "CSTargetDummy.h"
+#include "EngineUtils.h"
+#include "GameFramework/Character.h"
 #include "CSMovementTuning.h"
 #include "CSPlayerController.h"
 #include "CombatSimulator.h"
@@ -57,6 +61,16 @@ APawn* ACSGameMode::SpawnDefaultPawnAtTransform_Implementation(AController* NewP
 	if (UCSDevTools* DevTools = Character ? Character->GetDevTools() : nullptr)
 	{
 		DevTools->OnMapSwitchRequested.AddUObject(this, &ACSGameMode::HandleMapSwitchRequested);
+		DevTools->OnResetRequested.AddUObject(this, &ACSGameMode::HandleResetRequested);
+	}
+	if (Character && NewPlayer && NewPlayer->IsPlayerController())
+	{
+		// The dummies run on whatever the player runs on, from now and after every change.
+		Character->OnTuningApplied.AddWeakLambda(this, [this, WeakCharacter = TWeakObjectPtr<ACSCharacter>(Character)]
+		{
+			SyncDummies(WeakCharacter.Get());
+		});
+		SyncDummies(Character);
 	}
 	return Pawn;
 }
@@ -65,6 +79,16 @@ void ACSGameMode::BeginPlay()
 {
 	Super::BeginPlay();
 	WorldTickStartHandle = FWorldDelegates::OnWorldTickStart.AddUObject(this, &ACSGameMode::HandleWorldTickStart);
+
+	// Remember where the physics props start, for ResetPlayground.
+	for (TActorIterator<AActor> It(GetWorld()); It; ++It)
+	{
+		const UPrimitiveComponent* Root = Cast<UPrimitiveComponent>(It->GetRootComponent());
+		if (Root && Root->IsSimulatingPhysics() && !It->IsA<ACharacter>() && !It->IsA<ACSHitBall>())
+		{
+			PropHomes.Add(*It, It->GetActorTransform());
+		}
+	}
 }
 
 void ACSGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -72,6 +96,8 @@ void ACSGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	FWorldDelegates::OnWorldTickStart.Remove(WorldTickStartHandle);
 	WorldTickStartHandle.Reset();
 	PendingRespawns.Reset();
+	PendingDummies.Reset();
+	PropHomes.Reset();
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -106,9 +132,34 @@ void ACSGameMode::HandlePawnDestroyed(AActor* DestroyedActor)
 
 void ACSGameMode::HandleWorldTickStart(UWorld* World, ELevelTick TickType, float DeltaSeconds)
 {
-	if (World != GetWorld() || PendingRespawns.IsEmpty())
+	if (World != GetWorld() || (PendingRespawns.IsEmpty() && PendingDummies.IsEmpty()))
 	{
 		return;
+	}
+	// Dummies first, so the players' tuning reaches them when the players spawn below.
+	const TArray<FDummyRespawn> Dummies = MoveTemp(PendingDummies);
+	PendingDummies.Reset();
+	for (const FDummyRespawn& Respawn : Dummies)
+	{
+		FActorSpawnParameters SpawnInfo;
+		SpawnInfo.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		SpawnInfo.bDeferConstruction = true;
+		ACSTargetDummy* Dummy = World->SpawnActor<ACSTargetDummy>(Respawn.Class, Respawn.Home, SpawnInfo);
+		if (!Dummy)
+		{
+			UE_LOG(LogCombatSimulator, Warning, TEXT("ACSGameMode: could not put a dummy back at %s"), *Respawn.Home.GetLocation().ToString());
+			continue;
+		}
+		Dummy->Tuning = Respawn.Tuning.Get();
+		Dummy->Tags = Respawn.Tags;
+		Dummy->FinishSpawning(Respawn.Home);
+	}
+	if (!Dummies.IsEmpty())
+	{
+		if (const APlayerController* PC = World->GetFirstPlayerController())
+		{
+			SyncDummies(Cast<ACSCharacter>(PC->GetPawn()));
+		}
 	}
 	const TArray<TWeakObjectPtr<AController>> Respawns = MoveTemp(PendingRespawns);
 	PendingRespawns.Reset();
@@ -158,6 +209,88 @@ FString ACSGameMode::SwitchMap()
 	LastMapSwitchTarget = Target;
 	UGameplayStatics::OpenLevel(this, FName(*Target));
 	return Target;
+}
+
+void ACSGameMode::SyncDummies(const ACSCharacter* Player)
+{
+	UWorld* World = GetWorld();
+	if (!Player || !World)
+	{
+		return;
+	}
+	for (TActorIterator<ACSTargetDummy> It(World); It; ++It)
+	{
+		if (!It->HasActorBegunPlay() || It->IsActorBeingDestroyed())
+		{
+			continue;
+		}
+		FString Reason;
+		if (!It->TryApplyTuning(Player->GetTuningOverrides(), Reason))
+		{
+			UE_LOG(LogCombatSimulator, Warning, TEXT("ACSGameMode: %s could not take the player's tuning changes: %s"), *It->GetName(), *Reason);
+		}
+	}
+}
+
+void ACSGameMode::ResetPlayground()
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+	const int32 Balls = ACSHitBall::RemoveAll(World);
+
+	int32 Props = 0;
+	for (const TPair<TWeakObjectPtr<AActor>, FTransform>& Home : PropHomes)
+	{
+		AActor* Prop = Home.Key.Get();
+		UPrimitiveComponent* Root = Prop ? Cast<UPrimitiveComponent>(Prop->GetRootComponent()) : nullptr;
+		if (!Root)
+		{
+			continue;
+		}
+		Prop->SetActorTransform(Home.Value, false, nullptr, ETeleportType::ResetPhysics);
+		Root->SetPhysicsLinearVelocity(FVector::ZeroVector);
+		Root->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+		++Props;
+	}
+
+	// A dummy may be mid-ragdoll or half way up: a fresh one on its spot is simpler and always right.
+	TArray<ACSTargetDummy*> Dummies;
+	for (TActorIterator<ACSTargetDummy> It(World); It; ++It)
+	{
+		if (!It->IsActorBeingDestroyed())
+		{
+			Dummies.Add(*It);
+		}
+	}
+	for (ACSTargetDummy* Dummy : Dummies)
+	{
+		FDummyRespawn Respawn;
+		Respawn.Class = Dummy->GetClass();
+		Respawn.Home = Dummy->GetHomeTransform();
+		Respawn.Tuning = Dummy->Tuning;
+		Respawn.Tags = Dummy->Tags;
+		PendingDummies.Add(MoveTemp(Respawn));
+		Dummy->Destroy();
+	}
+
+	// Destroying a player's character respawns the player at a PlayerStart (HandlePawnDestroyed).
+	for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
+	{
+		APlayerController* PC = It->Get();
+		if (APawn* Pawn = PC ? PC->GetPawn() : nullptr)
+		{
+			Pawn->Destroy();
+		}
+	}
+	UE_LOG(LogCombatSimulator, Log, TEXT("ACSGameMode: reset: %d prop(s) put back, %d dummy(ies) replaced, %d ball(s) removed"), Props, Dummies.Num(), Balls);
+}
+
+void ACSGameMode::HandleResetRequested()
+{
+	ResetPlayground();
 }
 
 void ACSGameMode::HandleMapSwitchRequested()

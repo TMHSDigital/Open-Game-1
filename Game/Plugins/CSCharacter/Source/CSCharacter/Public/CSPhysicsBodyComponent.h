@@ -26,6 +26,32 @@ enum class ECSBodyState : uint8
 	Recovering,
 };
 
+/** What a contact did to the character. */
+UENUM(BlueprintType)
+enum class ECSContactResult : uint8
+{
+	/** Not a hit: too slow, a repeat, the character's own ball, or nothing to hit. */
+	None,
+	/** A hit that changed nothing: the character was already ragdolled, or getting up and the hit was below the ragdoll threshold. */
+	Ignored,
+	Stagger,
+	Ragdoll,
+};
+
+/** The last contact hit on a character, for the feel overlay. */
+struct FCSContactRecord
+{
+	/** World time of the hit, seconds; negative before any. */
+	double Time = -1.0;
+	/** The body part that was struck. */
+	FName Bone;
+	/** Size of the hit: the velocity change it stood for, cm/s. */
+	float VelocityChange = 0.f;
+	ECSContactResult Result = ECSContactResult::None;
+	/** Name of what hit. */
+	FString Source;
+};
+
 DECLARE_MULTICAST_DELEGATE(FCSBodyRecovered);
 DECLARE_MULTICAST_DELEGATE_TwoParams(FCSBodyStateChanged, ECSBodyState /* Old */, ECSBodyState /* New */);
 
@@ -64,6 +90,17 @@ DECLARE_MULTICAST_DELEGATE_TwoParams(FCSBodyStateChanged, ECSBodyState /* Old */
  * RagdollRecoverSeconds. Then the bodies return to Normal, SetRagdolled(false) is called and
  * OnRecovered is broadcast.
  *
+ * Contact hits: anything that moves into the character hits it. The mesh and the capsule report
+ * their contacts (rigid body hits, and blocked moves of another character); ReceiveContact turns
+ * the other body's mass and its own speed toward the character into an impulse and passes it to
+ * ApplyImpulseAtBone, so a thrown ball, a tumbling box and a running character stagger or ragdoll
+ * by the same rules as any other hit. A ball passes through the capsule and strikes a body, so the
+ * bone is the one it touched; whatever the capsule stops (a box, another character) counts for the
+ * body nearest the contact. Only the other body's motion counts (taken from the frame before the
+ * contact, since the contact itself changes it), so walking into something at rest, standing on
+ * it or pushing it is not a hit. Tuning: MinContactSpeed, ContactImpulseScale, ContactImpulseMax,
+ * ContactRepeatSeconds.
+ *
  * Dev tools: R (UCSDevTools::OnRagdollRequested) toggles the ragdoll (from Ragdoll it starts the
  * recovery at once); P (OnPushRequested) pushes the chest along the view at DevPushSpeed.
  *
@@ -91,6 +128,30 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "CS|Body")
 	void ApplyImpulseAtBone(FName Bone, FVector Impulse);
+
+	/**
+	 * Something moving at OtherVelocity (cm/s, world) with OtherMass (kg) touched the character at
+	 * ImpactPoint, on Bone (None: the body nearest the point). Works out the hit and applies it; see
+	 * the class comment. OtherActor may be null. This is also the entry for hits that do not come
+	 * from the physics engine (an attack, a test).
+	 */
+	ECSContactResult ReceiveContact(AActor* OtherActor, FName Bone, const FVector& OtherVelocity, float OtherMass,
+		const FVector& OtherLocation, const FVector& ImpactPoint);
+
+	/**
+	 * The velocity change (cm/s, world) a contact gives a character of OurMass: the other body's speed
+	 * along TowardUs (unit vector from the other body to the contact), times its mass over OurMass,
+	 * times Scale, at most MaxVelocityChange, in the direction the other body moves. Zero when it
+	 * moves away, or toward the character slower than MinSpeed.
+	 */
+	static FVector ComputeContactVelocityChange(const FVector& OtherVelocity, float OtherMass, const FVector& TowardUs, float OurMass,
+		float MinSpeed, float Scale, float MaxVelocityChange);
+
+	/** The last contact hit (Result None and a negative Time before any). */
+	const FCSContactRecord& GetLastContact() const { return LastContact; }
+
+	/** The bone with a body nearest to a world point; None without a physics body. */
+	FName FindNearestBodyBone(const FVector& WorldPoint) const;
 
 	/** Goes full ragdoll now (also from Recovering). Does nothing when already in Ragdoll. */
 	UFUNCTION(BlueprintCallable, Category = "CS|Body")
@@ -215,6 +276,14 @@ private:
 
 	UFUNCTION()
 	void HandleLanded(const FHitResult& Hit);
+	UFUNCTION()
+	void HandleBodyHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
+	UFUNCTION()
+	void HandleCapsuleHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
+	/** A contact reported by the mesh or the capsule: looks up what the other body is and how it moved. */
+	void HandleContactEvent(AActor* OtherActor, UPrimitiveComponent* OtherComp, FName OurBone, const FVector& ImpactPoint);
+	/** Remembers how fast the bodies around the character move, for the contacts of the next frame. */
+	void TrackNearbyBodies();
 	void HandleRagdollRequested();
 	void HandlePushRequested(const FVector& Direction);
 
@@ -256,6 +325,13 @@ private:
 	/** The tuning object the ragdoll damping was last written from. */
 	TWeakObjectPtr<const UCSMovementTuning> RagdollTuning;
 	bool bWarnedNoBody = false;
+
+	FCSContactRecord LastContact;
+	/** When each actor last hit the character (world seconds), for ContactRepeatSeconds. */
+	TMap<TWeakObjectPtr<AActor>, double> ContactTimes;
+	/** Velocity of the moving bodies near the character, this frame and the frame before. */
+	TMap<TWeakObjectPtr<UPrimitiveComponent>, FVector> NearbyVelocities;
+	TMap<TWeakObjectPtr<UPrimitiveComponent>, FVector> PreviousNearbyVelocities;
 
 	/**
 	 * True from BeginPlay until the first tick in a later frame, when the character was spawned in

@@ -213,6 +213,7 @@ void ACSCharacter::CommitTuning(UCSMovementTuning* Values)
 	// A sprint starts its ramp from jog speed; Tick raises the cap from there.
 	Move->MaxWalkSpeed = GetGaitSpeed(Gait == ECSGait::Sprint ? ECSGait::Jog : Gait) * SlopeSpeedFactor;
 	Move->MaxWalkSpeedCrouched = T.CrouchSpeed * SlopeSpeedFactor;
+	OnTuningApplied.Broadcast();
 }
 
 void ACSCharacter::SetGait(ECSGait NewGait)
@@ -406,6 +407,14 @@ void ACSCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 	{
 		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnDebugMapSwitchStarted);
 	}
+	if (UInputAction* A = Load(DebugThrowAction, TEXT("DebugThrowAction")))
+	{
+		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnDebugThrowStarted);
+	}
+	if (UInputAction* A = Load(DebugResetAction, TEXT("DebugResetAction")))
+	{
+		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnDebugResetStarted);
+	}
 }
 
 void ACSCharacter::OnMove(const FInputActionValue& Value)
@@ -419,6 +428,16 @@ void ACSCharacter::OnMove(const FInputActionValue& Value)
 	const FRotationMatrix Basis(FRotator(0.f, GetControlRotation().Yaw, 0.f));
 	AddMovementInput(Basis.GetUnitAxis(EAxis::X), Axis.Y);
 	AddMovementInput(Basis.GetUnitAxis(EAxis::Y), Axis.X);
+}
+
+void ACSCharacter::OnDebugThrowStarted()
+{
+	DevTools->RequestThrow();
+}
+
+void ACSCharacter::OnDebugResetStarted()
+{
+	DevTools->RequestReset();
 }
 
 void ACSCharacter::SetLookScale(FVector2D MouseScale, FVector2D StickScale)

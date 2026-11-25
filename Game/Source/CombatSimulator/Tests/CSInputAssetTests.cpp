@@ -47,6 +47,9 @@ namespace CSInputAssetTests
 			{TEXT("IA_DebugPush"), T::Boolean, {EKeys::P}, EKeys::Gamepad_DPad_Up, &ACSCharacter::DebugPushAction},
 			{TEXT("IA_DebugReload"), T::Boolean, {EKeys::F5}, EKeys::Gamepad_DPad_Left, &ACSCharacter::DebugReloadAction},
 			{TEXT("IA_DebugMapSwitch"), T::Boolean, {EKeys::F2}, EKeys::Gamepad_DPad_Right, &ACSCharacter::DebugMapSwitchAction},
+			// Keyboard only: the D-pad is full.
+			{TEXT("IA_DebugThrow"), T::Boolean, {EKeys::T}, EKeys::Invalid, &ACSCharacter::DebugThrowAction},
+			{TEXT("IA_DebugReset"), T::Boolean, {EKeys::BackSpace}, EKeys::Invalid, &ACSCharacter::DebugResetAction},
 		};
 	}
 }

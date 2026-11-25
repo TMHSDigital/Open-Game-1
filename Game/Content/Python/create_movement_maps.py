@@ -52,6 +52,9 @@ GRID = MATERIAL_DIR + "/M_Grid"
 GRID_OBSTACLE = MATERIAL_DIR + "/MI_Grid_Obstacle"
 GRID_MARKER = MATERIAL_DIR + "/MI_Grid_Marker"
 CUBE = "/Engine/BasicShapes/Cube.Cube"  # 100 cm on each side, pivot at the centre
+DUMMY_CLASS = "/Script/CombatSimulator.CSTargetDummy"
+LAUNCHER_CLASS = "/Script/CSCharacter.CSBallLauncher"
+LAUNCHER_AT = (1300.0, -1500.0)
 
 PLANE_SIZE_CM = 100000.0  # 1 km square
 FLOOR_COLOR = (0.22, 0.22, 0.22)
@@ -355,6 +358,40 @@ def build_physics_boxes(obstacle):
     spawn_text("PhysicsBox_Label", "Physics boxes", (900, -500, 160), size=30)
 
 
+def spawn_dummy(marker, x, y, yaw, folder="Dummy"):
+    """A target dummy (ACSTargetDummy, tag Dummy) standing on a marked square, facing yaw."""
+    cls = unreal.load_class(None, DUMMY_CLASS)
+    if cls is None:
+        raise RuntimeError("Could not load " + DUMMY_CLASS + " (build the game module first)")
+    spawn_box("Dummy_Marker", (x, y, 0.2), (140, 140, 0.4), marker, folder=folder, tags=("DummyMarker",), collision=False)
+    # The capsule is 90 cm half height; at z 92 it starts just above the floor and settles onto it.
+    dummy = spawn(cls, "Dummy", unreal.Vector(x, y, 92.0), unreal.Rotator(roll=0, pitch=0, yaw=yaw), folder)
+    dummy.set_editor_property("tags", [unreal.Name("Dummy")])
+    spawn_text("Dummy_Label", "Dummy spot", (x, y - 110, 5), yaw=-90, size=25, folder=folder)
+    return dummy
+
+
+def build_launcher(marker):
+    """A ball launcher (ACSBallLauncher, tag Launcher) firing along -X at a marked square 8 m away.
+
+    It throws a ball every few seconds while a character stands on the square."""
+    cls = unreal.load_class(None, LAUNCHER_CLASS)
+    if cls is None:
+        raise RuntimeError("Could not load " + LAUNCHER_CLASS + " (build the CSCharacter plugin first)")
+    x, y = LAUNCHER_AT
+    launcher = spawn(cls, "BallLauncher", unreal.Vector(x, y, 0.0), unreal.Rotator(roll=0, pitch=0, yaw=180.0), "Gym/Launcher")
+    launcher.set_editor_property("tags", [unreal.Name("Launcher")])
+    distance = launcher.get_editor_property("stand_distance")
+    half = launcher.get_editor_property("stand_half_size")
+    stand_x = x - distance
+    spawn_box("Launcher_Stand", (stand_x, y, 0.2), (2 * half, 2 * half, 0.4), marker, folder="Gym/Launcher",
+              tags=("LauncherStand",), collision=False)
+    for side, edge_y in (("L", y - half), ("R", y + half)):
+        spawn_box("Launcher_Edge_" + side, (x - 0.5 * distance, edge_y, 0.2), (distance, 4, 0.4), marker,
+                  folder="Gym/Launcher", collision=False)
+    spawn_text("Launcher_Label", "Ball launcher: stand on the square", (stand_x - 60, y, 40), size=30, folder="Gym/Launcher")
+
+
 def delete_if_exists(path):
     assets = unreal.EditorAssetLibrary
     if assets.does_asset_exist(path) and not assets.delete_asset(path):
@@ -374,6 +411,8 @@ def build():
     new_map(PLANE_MAP)
     build_plane_and_sky(grid)
     spawn_player_start((0, 0), 0.0)
+    # A dummy a few metres ahead of the player, facing back at the start.
+    spawn_dummy(marker, 500.0, 200.0, 200.0)
     save_map(PLANE_MAP)
 
     new_map(GYM_MAP)
@@ -385,6 +424,9 @@ def build():
     build_gaps(obstacle)
     build_ledges(obstacle)
     build_physics_boxes(obstacle)
+    # In open floor between the start and the physics boxes, facing the start.
+    spawn_dummy(marker, 300.0, -450.0, 140.0, folder="Gym/Dummy")
+    build_launcher(marker)
     save_map(GYM_MAP)
 
 

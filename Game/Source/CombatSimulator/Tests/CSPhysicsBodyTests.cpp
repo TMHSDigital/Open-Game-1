@@ -16,6 +16,10 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "CSCameraRig.h"
 #include "CSCharacter.h"
+#include "CSBallLauncher.h"
+#include "CSDevTools.h"
+#include "CSHitBall.h"
+#include "EngineUtils.h"
 #include "CSDevTools.h"
 #include "CSMovementTuning.h"
 #include "CSPhysicsBodyComponent.h"
@@ -1205,6 +1209,249 @@ bool FCSBodySpawnMidFrameTest::RunTest(const FString& Parameters)
 	Body->ApplyImpulseAtBone(TEXT("spine_03"), FVector(Body->GetBodyMass() * 900.f, 0.f, 0.f));
 	Sim.Run(0.2f);
 	TestTrue(TEXT("A hit after a mid-frame spawn moves the body out of Normal"), Body->GetState() != ECSBodyState::Normal);
+	return true;
+}
+
+namespace CSPhysicsBodyTests
+{
+	/** A plain actor to stand for whatever hit the character. */
+	AActor* SpawnHitter(FBodySim& Sim, AActor* Owner = nullptr)
+	{
+		FActorSpawnParameters Params;
+		Params.Owner = Owner;
+		return Sim.World.GetTestWorld()->SpawnActor<AActor>(AActor::StaticClass(), FTransform::Identity, Params);
+	}
+
+	/** A contact on the chest from behind (+X), sized as a share of the ragdoll threshold. */
+	ECSContactResult ChestContact(FBodySim& Sim, float ShareOfThreshold, AActor* Other = nullptr, float Speed = 1000.f)
+	{
+		const UCSMovementTuning& T = *Sim.Tuning;
+		const FVector Chest = Sim.Mesh()->GetBoneLocation(TEXT("spine_03"));
+		const float Mass = Sim.PhysicsBody->GetBodyMass() * ShareOfThreshold * T.RagdollImpulseThreshold / (Speed * T.ContactImpulseScale);
+		return Sim.PhysicsBody->ReceiveContact(Other, TEXT("spine_03"), FVector(Speed, 0.f, 0.f), Mass, Chest - FVector(100.f, 0.f, 0.f), Chest);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSBodyContactStaggersAndRagdollsTest, "CombatSimulator.CS.Body.ContactStaggersAndRagdolls", CSPhysicsBodyTests::TestFlags)
+bool FCSBodyContactStaggersAndRagdollsTest::RunTest(const FString& Parameters)
+{
+	using namespace CSPhysicsBodyTests;
+	FBodySim Sim;
+	if (!Sim.Init(*this))
+	{
+		return false;
+	}
+	const UCSMovementTuning& T = *Sim.Tuning;
+	TestTrue(TEXT("No contact yet"), Sim.PhysicsBody->GetLastContact().Time < 0.0);
+
+	// A body of known mass and speed at the chest, below the ragdoll threshold: a stagger.
+	TestEqual(TEXT("Below the threshold staggers"), ChestContact(Sim, 0.6f), ECSContactResult::Stagger);
+	TestEqual(TEXT("State is Hit"), Sim.State(), ECSBodyState::Hit);
+	const FCSContactRecord First = Sim.PhysicsBody->GetLastContact();
+	TestEqual(TEXT("The contact is recorded on the chest"), First.Bone, FName(TEXT("spine_03")));
+	TestEqual(TEXT("As a stagger"), First.Result, ECSContactResult::Stagger);
+	TestNearlyEqual(TEXT("With its size"), First.VelocityChange, 0.6f * T.RagdollImpulseThreshold, 1.f);
+	TestTrue(TEXT("Back to Normal after the stagger"), Sim.RunUntil(3.f, [&Sim] { return Sim.State() == ECSBodyState::Normal; }));
+
+	// Above the threshold: a ragdoll.
+	TestEqual(TEXT("Above the threshold ragdolls"), ChestContact(Sim, 1.5f), ECSContactResult::Ragdoll);
+	TestEqual(TEXT("State is Ragdoll"), Sim.State(), ECSBodyState::Ragdoll);
+	TestEqual(TEXT("Recorded as a ragdoll"), Sim.PhysicsBody->GetLastContact().Result, ECSContactResult::Ragdoll);
+
+	// Already down: the physics engine moves the bodies; the contact adds nothing.
+	TestEqual(TEXT("A contact on a ragdoll changes nothing"), ChestContact(Sim, 1.5f), ECSContactResult::Ignored);
+	TestEqual(TEXT("Still Ragdoll"), Sim.State(), ECSBodyState::Ragdoll);
+
+	// The clamp: a huge body cannot give more than ContactImpulseMax.
+	FBodySim Other;
+	if (!Other.Init(*this))
+	{
+		return false;
+	}
+	ChestContact(Other, 100.f);
+	TestNearlyEqual(TEXT("A huge hit is clamped to ContactImpulseMax"), Other.PhysicsBody->GetLastContact().VelocityChange, Other.Tuning->ContactImpulseMax, 1.f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSBodyContactFiltersTest, "CombatSimulator.CS.Body.ContactFilters", CSPhysicsBodyTests::TestFlags)
+bool FCSBodyContactFiltersTest::RunTest(const FString& Parameters)
+{
+	using namespace CSPhysicsBodyTests;
+	FBodySim Sim;
+	if (!Sim.Init(*this))
+	{
+		return false;
+	}
+	const UCSMovementTuning& T = *Sim.Tuning;
+	const FVector Chest = Sim.Mesh()->GetBoneLocation(TEXT("spine_03"));
+	const FVector Behind = Chest - FVector(100.f, 0.f, 0.f);
+
+	// Slower than MinContactSpeed, however heavy: resting on the character, leaning, being pushed.
+	TestEqual(TEXT("A slow contact is not a hit"),
+		Sim.PhysicsBody->ReceiveContact(nullptr, TEXT("spine_03"), FVector(T.MinContactSpeed - 10.f, 0.f, 0.f), 5000.f, Behind, Chest), ECSContactResult::None);
+	// Something the character walked into: it is at rest, or moving away.
+	TestEqual(TEXT("A body at rest is not a hit"),
+		Sim.PhysicsBody->ReceiveContact(nullptr, TEXT("spine_03"), FVector::ZeroVector, 5000.f, Behind, Chest), ECSContactResult::None);
+	TestEqual(TEXT("A body moving away is not a hit"),
+		Sim.PhysicsBody->ReceiveContact(nullptr, TEXT("spine_03"), FVector(-1000.f, 0.f, 0.f), 50.f, Behind, Chest), ECSContactResult::None);
+	TestEqual(TEXT("None of them changed the state"), Sim.State(), ECSBodyState::Normal);
+	TestTrue(TEXT("Or were recorded"), Sim.PhysicsBody->GetLastContact().Time < 0.0);
+
+	// The ball a character threw never hits that character.
+	AActor* OwnBall = SpawnHitter(Sim, Sim.Character);
+	TestEqual(TEXT("Something the character threw is not a hit"), ChestContact(Sim, 0.6f, OwnBall), ECSContactResult::None);
+	TestEqual(TEXT("State still Normal"), Sim.State(), ECSBodyState::Normal);
+
+	// The same object cannot hit again at once.
+	AActor* Box = SpawnHitter(Sim);
+	TestEqual(TEXT("The first contact of an object hits"), ChestContact(Sim, 0.3f, Box), ECSContactResult::Stagger);
+	TestEqual(TEXT("The same object straight after does not"), ChestContact(Sim, 0.3f, Box), ECSContactResult::None);
+	AActor* AnotherBox = SpawnHitter(Sim);
+	TestEqual(TEXT("Another object does"), ChestContact(Sim, 0.3f, AnotherBox), ECSContactResult::Stagger);
+	Sim.Run(T.ContactRepeatSeconds + 0.1f);
+	TestEqual(TEXT("The first object can hit again after ContactRepeatSeconds"), ChestContact(Sim, 0.3f, Box), ECSContactResult::Stagger);
+
+	// No bone given (what the capsule reports): the body nearest the contact takes it.
+	FBodySim Head;
+	if (!Head.Init(*this))
+	{
+		return false;
+	}
+	const FVector HeadAt = Head.Mesh()->GetBoneLocation(TEXT("head"));
+	const float Mass = Head.PhysicsBody->GetBodyMass() * 0.3f;
+	TestEqual(TEXT("A contact with no bone still hits"),
+		Head.PhysicsBody->ReceiveContact(nullptr, NAME_None, FVector(Head.Tuning->RagdollImpulseThreshold, 0.f, 0.f), Mass, HeadAt - FVector(60.f, 0.f, 0.f), HeadAt + FVector(0.f, 0.f, 8.f)),
+		ECSContactResult::Stagger);
+	const FName Bone = Head.PhysicsBody->GetLastContact().Bone;
+	AddInfo(FString::Printf(TEXT("A contact above the head bone landed on %s"), *Bone.ToString()));
+	TestEqual(TEXT("It lands on the chain of the head"), Head.PhysicsBody->GetChainRoot(Bone), FName(TEXT("head")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSBodyThrownBallHitsABodyPartTest, "CombatSimulator.CS.Body.ThrownBallHitsABodyPart", CSPhysicsBodyTests::TestFlags)
+bool FCSBodyThrownBallHitsABodyPartTest::RunTest(const FString& Parameters)
+{
+	using namespace CSPhysicsBodyTests;
+	FBodySim Sim;
+	if (!Sim.Init(*this))
+	{
+		return false;
+	}
+	UWorld* World = Sim.World.GetTestWorld();
+	const FVector Chest = Sim.Mesh()->GetBoneLocation(TEXT("spine_03"));
+
+	// The ball of the character itself, thrown the way the T key throws it, flies off and never hits it.
+	ACSHitBall* Own = Sim.Character->GetDevTools()->RequestThrow();
+	if (!TestNotNull(TEXT("The throw key makes a ball"), Own))
+	{
+		return false;
+	}
+	TestEqual(TEXT("The thrower owns it"), Own->GetOwner(), static_cast<AActor*>(Sim.Character));
+	Sim.Run(0.5f);
+	TestTrue(TEXT("The thrower is not hit by its own ball"), Sim.PhysicsBody->GetLastContact().Time < 0.0);
+	TestTrue(TEXT("The ball left"), FVector::Dist(Own->GetActorLocation(), Sim.Character->GetActorLocation()) > 300.f);
+
+	// A ball from somewhere else, at the chest: it passes the capsule and strikes a body.
+	ACSHitBall* Ball = ACSHitBall::Throw(World, nullptr, Chest - FVector(300.f, 0.f, 0.f), FVector(1.f, 0.f, 0.f), 10.f, 2000.f);
+	if (!TestNotNull(TEXT("A ball is thrown at the chest"), Ball))
+	{
+		return false;
+	}
+	const bool bHit = Sim.RunUntil(1.5f, [&Sim] { return Sim.PhysicsBody->GetLastContact().Time >= 0.0; });
+	if (!TestTrue(TEXT("The ball hits the character"), bHit))
+	{
+		AddInfo(FString::Printf(TEXT("Ball now at %s moving %s; chest at %s; body state %d; mesh profile %s, notify %d"),
+			*Ball->GetActorLocation().ToString(), *Ball->GetBall()->GetPhysicsLinearVelocity().ToString(), *Chest.ToString(), int32(Sim.State()),
+			*Sim.Mesh()->GetCollisionProfileName().ToString(), int32(Sim.Mesh()->BodyInstance.bNotifyRigidBodyCollision)));
+		return false;
+	}
+	const FCSContactRecord& Contact = Sim.PhysicsBody->GetLastContact();
+	AddInfo(FString::Printf(TEXT("Ball hit %s for %.0f cm/s: %d"), *Contact.Bone.ToString(), Contact.VelocityChange, int32(Contact.Result)));
+	TestTrue(TEXT("On a body part"), Contact.Bone != NAME_None);
+	TestTrue(TEXT("On the trunk, where it was aimed"), Contact.Bone.ToString().StartsWith(TEXT("spine")) || Contact.Bone == TEXT("pelvis"));
+	TestTrue(TEXT("As a stagger or a ragdoll"), Contact.Result == ECSContactResult::Stagger || Contact.Result == ECSContactResult::Ragdoll);
+	// 10 kg at 2000 cm/s on this body, scale 1: the expected size, give or take the angle of the contact.
+	const float Expected = 10.f * 2000.f / Sim.PhysicsBody->GetBodyMass() * Sim.Tuning->ContactImpulseScale;
+	TestTrue(FString::Printf(TEXT("About the momentum of the ball over the mass of the body (%.0f, expected %.0f)"), Contact.VelocityChange, Expected),
+		Contact.VelocityChange > 0.5f * Expected && Contact.VelocityChange <= 1.05f * Expected);
+
+	// Never more than MaxBalls.
+	for (int32 i = 0; i < ACSHitBall::MaxBalls + 5; ++i)
+	{
+		ACSHitBall::Throw(World, nullptr, FVector(5000.f + 100.f * i, 5000.f, 200.f), FVector(0.f, 1.f, 0.f), 1.f, 100.f);
+	}
+	Sim.Step();
+	int32 Alive = 0;
+	for (TActorIterator<ACSHitBall> It(World); It; ++It)
+	{
+		Alive += It->IsActorBeingDestroyed() ? 0 : 1;
+	}
+	TestTrue(FString::Printf(TEXT("At most %d balls exist (%d)"), ACSHitBall::MaxBalls, Alive), Alive <= ACSHitBall::MaxBalls);
+	TestEqual(TEXT("RemoveAll removes them"), ACSHitBall::RemoveAll(World), Alive);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSBodyWalkingIntoARestingBoxIsNotAHitTest, "CombatSimulator.CS.Body.WalkingIntoARestingBoxIsNotAHit", CSPhysicsBodyTests::TestFlags)
+bool FCSBodyWalkingIntoARestingBoxIsNotAHitTest::RunTest(const FString& Parameters)
+{
+	using namespace CSPhysicsBodyTests;
+	FBodySim Sim;
+	if (!Sim.Init(*this))
+	{
+		return false;
+	}
+	// A 20 kg box resting on the floor two metres ahead; the character jogs into it and shoves it.
+	UBoxComponent* Box = Sim.AddBox(FVector(200.f, 0.f, 30.f), FVector(30.f, 30.f, 30.f));
+	Box->SetMobility(EComponentMobility::Movable);
+	Box->SetCollisionProfileName(TEXT("PhysicsActor"));
+	Box->SetSimulatePhysics(true);
+	Box->SetMassOverrideInKg(NAME_None, 20.f, true);
+	Sim.Run(0.5f);
+	const FVector BoxStart = Box->GetComponentLocation();
+	Sim.Run(3.f, FVector(1.f, 0.f, 0.f));
+	AddInfo(FString::Printf(TEXT("Character at x %.0f, box moved %.0f cm, state %d"), Sim.Character->GetActorLocation().X,
+		FVector::Dist(BoxStart, Box->GetComponentLocation()), int32(Sim.State())));
+	TestTrue(TEXT("The character reached the box"), Sim.Character->GetActorLocation().X > 100.f);
+	TestTrue(TEXT("Walking into a resting box is not a hit"), Sim.PhysicsBody->GetLastContact().Time < 0.0);
+	TestEqual(TEXT("The body stayed Normal"), Sim.State(), ECSBodyState::Normal);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSBodyLauncherFiresAtWhoStandsInFrontTest, "CombatSimulator.CS.Body.LauncherFiresAtWhoStandsInFront", CSPhysicsBodyTests::TestFlags)
+bool FCSBodyLauncherFiresAtWhoStandsInFrontTest::RunTest(const FString& Parameters)
+{
+	using namespace CSPhysicsBodyTests;
+	FBodySim Sim;
+	if (!Sim.Init(*this))
+	{
+		return false;
+	}
+	UWorld* World = Sim.World.GetTestWorld();
+	// Facing -X from x = 800: its stand box (800 cm in front) is where the character stands.
+	const FTransform At(FRotator(0.f, 180.f, 0.f), FVector(800.f, 0.f, 0.f));
+	ACSBallLauncher* Launcher = World->SpawnActor<ACSBallLauncher>(ACSBallLauncher::StaticClass(), At);
+	if (!TestNotNull(TEXT("Launcher"), Launcher))
+	{
+		return false;
+	}
+	Launcher->IntervalSeconds = 1.f;
+	const bool bFired = Sim.RunUntil(3.f, [Launcher] { return Launcher->GetFiredCount() > 0; });
+	TestTrue(TEXT("It fires at a character standing in front"), bFired);
+	const bool bHit = Sim.RunUntil(2.f, [&Sim] { return Sim.PhysicsBody->GetLastContact().Time >= 0.0; });
+	TestTrue(TEXT("And the ball hits it"), bHit);
+	if (bHit)
+	{
+		AddInfo(FString::Printf(TEXT("Launcher ball hit %s for %.0f cm/s"), *Sim.PhysicsBody->GetLastContact().Bone.ToString(), Sim.PhysicsBody->GetLastContact().VelocityChange));
+	}
+
+	// With nobody on the square it is idle.
+	Sim.Character->SetActorLocation(FVector(0.f, 3000.f, 120.f), false, nullptr, ETeleportType::TeleportPhysics);
+	Sim.Run(0.5f);
+	TestNull(TEXT("Nobody on the square: no target"), Launcher->FindTarget());
+	const int32 Before = Launcher->GetFiredCount();
+	Sim.Run(2.5f);
+	TestEqual(TEXT("Nobody on the square: it does not fire"), Launcher->GetFiredCount(), Before);
+	TestFalse(TEXT("FireOnce does nothing either"), Launcher->FireOnce());
 	return true;
 }
 

@@ -56,6 +56,8 @@ namespace CSDevToolsTests
 			Make(TEXT("DebugPush"), EInputActionValueType::Boolean, Character.DebugPushAction);
 			Make(TEXT("DebugReload"), EInputActionValueType::Boolean, Character.DebugReloadAction);
 			Make(TEXT("DebugMapSwitch"), EInputActionValueType::Boolean, Character.DebugMapSwitchAction);
+			Make(TEXT("DebugThrow"), EInputActionValueType::Boolean, Character.DebugThrowAction);
+			Make(TEXT("DebugReset"), EInputActionValueType::Boolean, Character.DebugResetAction);
 			Input.Reset(NewObject<UEnhancedInputComponent>(&Character));
 			Character.SetupPlayerInputComponent(Input.Get());
 		}

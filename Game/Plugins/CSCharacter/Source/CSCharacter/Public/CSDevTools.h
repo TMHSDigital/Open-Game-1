@@ -44,6 +44,9 @@ struct FCSFeelSample
 DECLARE_MULTICAST_DELEGATE(FCSRagdollRequested);
 DECLARE_MULTICAST_DELEGATE_OneParam(FCSPushRequested, const FVector& /* Direction, unit length */);
 DECLARE_MULTICAST_DELEGATE(FCSMapSwitchRequested);
+DECLARE_MULTICAST_DELEGATE(FCSResetRequested);
+
+class ACSHitBall;
 
 /**
  * Feel-testing tools for ACSCharacter: the ragdoll and push keys, the feel overlay, tuning reload
@@ -156,6 +159,19 @@ public:
 	bool RequestMapSwitch();
 
 	/**
+	 * T. Throws a ball (ACSHitBall, DevBallMass at DevBallSpeed) from the chest along the view; does
+	 * nothing with dev tools off. The ball never hits the character that threw it. Returns the ball.
+	 */
+	ACSHitBall* RequestThrow();
+
+	/**
+	 * Backspace. Broadcasts OnResetRequested (the game puts the player, the dummies and the props
+	 * back and removes the balls); does nothing with dev tools off. Returns whether it broadcast.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "CS|Dev tools")
+	bool RequestReset();
+
+	/**
 	 * F5. ReloadTuning on the owner; does nothing with dev tools off. The console (cs.Tuning.Reload)
 	 * is compiled out of Shipping builds, so this key is the reload there. Returns whether it reloaded.
 	 */
@@ -185,6 +201,11 @@ public:
 
 	/** Extension point: the game opens its next map here (the plugin has no map list). */
 	FCSMapSwitchRequested OnMapSwitchRequested;
+	/** Extension point: the game resets the player, the dummies and the props here. */
+	FCSResetRequested OnResetRequested;
+
+	/** One overlay line for a character's last contact hit: "Hit you  spine_03  320 cm/s  stagger  1.2 s ago". */
+	static FString DescribeLastContact(const ACSCharacter* Character, const TCHAR* Who);
 
 	/** The latest reading (updated every frame while the overlay is shown). */
 	const FCSFeelSample& GetFeelSample() const { return Sample; }

@@ -3,6 +3,7 @@
 #include "../CSGameSettings.h"
 #include "../CSPlayerController.h"
 #include "CSCharacter.h"
+#include "CSDevTools.h"
 #include "CSTuningPanelModel.h"
 #include "CSTuningRanges.h"
 #include "Framework/Application/SlateApplication.h"
@@ -304,6 +305,38 @@ TSharedRef<SWidget> SCSPauseScreen::BuildTuningTab()
 	List->AddSlot().Padding(0.f, 0.f, 0.f, 8.f)
 	[
 		Label(TEXT("Changes apply at once and are kept on this machine. The game is paused here: resume to feel a change."), 9, FaintColor)
+	];
+	// The two dev keys that have no gamepad button (T and Backspace): resume, then do it.
+	const TWeakObjectPtr<ACSPlayerController> WeakOwner = Owner;
+	auto DevButton = [WeakOwner](const TCHAR* Text, TFunction<void(UCSDevTools&)> Action)
+	{
+		return SNew(SButton)
+			.Text(FText::FromString(Text))
+			.OnClicked_Lambda([WeakOwner, Action]
+			{
+				if (ACSPlayerController* C = WeakOwner.Get())
+				{
+					ACSCharacter* Pawn = Cast<ACSCharacter>(C->GetPawn());
+					C->SetPauseScreenOpen(false);
+					if (UCSDevTools* DevTools = Pawn ? Pawn->GetDevTools() : nullptr)
+					{
+						Action(*DevTools);
+					}
+				}
+				return FReply::Handled();
+			});
+	};
+	List->AddSlot().Padding(0.f, 0.f, 0.f, 10.f)
+	[
+		SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot().AutoWidth().Padding(0.f, 0.f, 6.f, 0.f)
+		[
+			DevButton(TEXT("Throw a ball (T)"), [](UCSDevTools& DevTools) { DevTools.RequestThrow(); })
+		]
+		+ SHorizontalBox::Slot().AutoWidth()
+		[
+			DevButton(TEXT("Reset dummy, props and player (Backspace)"), [](UCSDevTools& DevTools) { DevTools.RequestReset(); })
+		]
 	];
 
 	// One collapsible section per group, in the table's order.

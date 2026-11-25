@@ -307,6 +307,39 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Body", meta = (UIMin = "1", UIMax = "4"))
 	float LocomotionRateMax = 2.f;
 
+	// ----- Contact hits (things that run into the character) -----
+
+	/**
+	 * A body that reaches the character slower than this, cm/s, does nothing: resting on it, leaning,
+	 * being pushed along. Only the other body's own speed toward the character counts, so walking
+	 * into something that stands still is never a hit.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Body", meta = (UIMin = "0", UIMax = "2000", Units = "cm/s"))
+	float MinContactSpeed = 150.f;
+
+	/**
+	 * Scales a contact hit. The hit is the velocity change the other body's momentum would give the
+	 * character (its mass times its speed toward the character, over the character's mass) times this.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Body", meta = (UIMin = "0", UIMax = "5"))
+	float ContactImpulseScale = 1.f;
+
+	/** The largest velocity change one contact hit may give, cm/s (compare RagdollImpulseThreshold). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Body", meta = (UIMin = "100", UIMax = "10000", Units = "cm/s"))
+	float ContactImpulseMax = 1500.f;
+
+	/** After a hit, the same object cannot hit the character again for this long, seconds. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Body", meta = (UIMin = "0.05", UIMax = "3", Units = "s"))
+	float ContactRepeatSeconds = 0.3f;
+
+	/** Mass of the dev ball (the throw key and the launcher), kg. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Body", meta = (UIMin = "0.5", UIMax = "100", Units = "kg"))
+	float DevBallMass = 8.f;
+
+	/** Speed the dev ball is thrown at, cm/s. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Body", meta = (UIMin = "100", UIMax = "5000", Units = "cm/s"))
+	float DevBallSpeed = 2000.f;
+
 	// ----- Dev tools -----
 
 	/** Ragdoll and push keys, debug overlay and the tuning reload command are active. On until launch. */

@@ -4,7 +4,8 @@ Makes or refreshes:
   IA_Move, IA_Look, IA_LookStick  Axis2D actions (look is split by device so the mouse and the stick
                                   each have their own sensitivity setting)
   IA_Jump, IA_Sprint, IA_Crouch, IA_Walk, IA_ToggleCamera, IA_Pause,
-  IA_DebugOverlay, IA_DebugRagdoll, IA_DebugPush, IA_DebugReload, IA_DebugMapSwitch
+  IA_DebugOverlay, IA_DebugRagdoll, IA_DebugPush, IA_DebugReload, IA_DebugMapSwitch,
+  IA_DebugThrow, IA_DebugReset
                                   Boolean actions (no triggers: pressed is Started, released is
                                   Completed; ACSCharacter treats Sprint and Walk as held and Crouch
                                   as a toggle)
@@ -58,6 +59,8 @@ ACTIONS = {
     "IA_DebugPush": BOOLEAN,
     "IA_DebugReload": BOOLEAN,
     "IA_DebugMapSwitch": BOOLEAN,
+    "IA_DebugThrow": BOOLEAN,
+    "IA_DebugReset": BOOLEAN,
 }
 
 # (action, key, modifiers). Modifiers are names handled by make_modifiers. Keyboard and mouse keys
@@ -96,6 +99,10 @@ KEYS = [
     # Map switch (the game mode's DevSwitchMaps: L_Plane and L_MovementGym). Gated by bDevTools.
     ("IA_DebugMapSwitch", "F2", []),
     ("IA_DebugMapSwitch", "Gamepad_DPad_Right", []),
+    # Throw a ball and reset the dummy, props and player. Keyboard only: the D-pad is full, and both
+    # are buttons on the pause screen's Tuning tab.
+    ("IA_DebugThrow", "T", []),
+    ("IA_DebugReset", "BackSpace", []),
 ]
 
 

@@ -82,6 +82,12 @@ namespace
 		{TEXT("DevPushSpeed"), TEXT("Body"), TEXT("cm/s"), 50.f, 3000.f, 10.f},
 		{TEXT("LocomotionRateMin"), TEXT("Body"), TEXT("x"), 0.25f, 1.f, 0.05f},
 		{TEXT("LocomotionRateMax"), TEXT("Body"), TEXT("x"), 1.f, 4.f, 0.05f},
+		{TEXT("MinContactSpeed"), TEXT("Body"), TEXT("cm/s"), 0.f, 2000.f, 10.f},
+		{TEXT("ContactImpulseScale"), TEXT("Body"), TEXT(""), 0.f, 5.f, 0.05f},
+		{TEXT("ContactImpulseMax"), TEXT("Body"), TEXT("cm/s"), 100.f, 10000.f, 50.f},
+		{TEXT("ContactRepeatSeconds"), TEXT("Body"), TEXT("s"), 0.05f, 3.f, 0.05f},
+		{TEXT("DevBallMass"), TEXT("Body"), TEXT("kg"), 0.5f, 100.f, 0.5f},
+		{TEXT("DevBallSpeed"), TEXT("Body"), TEXT("cm/s"), 100.f, 5000.f, 50.f},
 	};
 
 	/** "HitProfile.PositionStrength" -> "Hit Profile: Position Strength". */
