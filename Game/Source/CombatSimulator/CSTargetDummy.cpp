@@ -40,9 +40,11 @@ void ACSTargetDummy::BeginPlay()
 		{
 			if (UMaterialInstanceDynamic* Material = Body->CreateDynamicMaterialInstance(Index))
 			{
+				// DiffuseColor is the parameter of the imported base character material; the others
+				// cover a material made by hand later.
+				Material->SetVectorParameterValue(TEXT("DiffuseColor"), Tint);
 				Material->SetVectorParameterValue(TEXT("BaseColor"), Tint);
 				Material->SetVectorParameterValue(TEXT("Tint"), Tint);
-				Material->SetVectorParameterValue(TEXT("Color"), Tint);
 			}
 		}
 	}
