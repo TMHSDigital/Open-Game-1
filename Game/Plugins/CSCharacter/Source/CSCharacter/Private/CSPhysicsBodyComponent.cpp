@@ -1,4 +1,5 @@
 #include "CSPhysicsBodyComponent.h"
+#include "CSStrikeComponent.h"
 
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -924,7 +925,7 @@ FName UCSPhysicsBodyComponent::FindNearestBodyBone(const FVector& WorldPoint) co
 }
 
 ECSContactResult UCSPhysicsBodyComponent::ReceiveContact(AActor* OtherActor, FName Bone, const FVector& OtherVelocity, float OtherMass,
-	const FVector& OtherLocation, const FVector& ImpactPoint, float ExtraScale)
+	const FVector& OtherLocation, const FVector& ImpactPoint, float ExtraScale, bool bSkipRepeatGate)
 {
 	const ACSCharacter* Character = GetCharacter();
 	const UWorld* World = GetWorld();
@@ -939,7 +940,7 @@ ECSContactResult UCSPhysicsBodyComponent::ReceiveContact(AActor* OtherActor, FNa
 	}
 	const UCSMovementTuning& T = GetTuning();
 	const double Now = World->GetTimeSeconds();
-	if (OtherActor)
+	if (OtherActor && !bSkipRepeatGate)
 	{
 		if (const double* Last = ContactTimes.Find(OtherActor); Last && Now - *Last < T.ContactRepeatSeconds)
 		{
@@ -1047,6 +1048,12 @@ void UCSPhysicsBodyComponent::HandleContactEvent(AActor* OtherActor, UPrimitiveC
 	float Mass = 0.f;
 	float ExtraScale = 1.f;
 	const ACSCharacter* Other = Cast<ACSCharacter>(OtherActor);
+	if (Other && Other->GetStrike() && Other->GetStrike()->GetPhase() != ECSStrikePhase::None)
+	{
+		// It is throwing a punch: what its arm touches is the strike's to deliver
+		// (UCSStrikeComponent), not a whole character running into this one.
+		return;
+	}
 	if (Other && !Other->IsRagdolled())
 	{
 		// A standing character running into this one: its whole mass, scaled down (CharacterContactScale).

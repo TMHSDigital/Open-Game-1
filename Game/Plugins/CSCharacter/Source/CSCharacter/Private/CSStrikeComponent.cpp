@@ -15,6 +15,8 @@ UCSStrikeComponent::UCSStrikeComponent()
 	// Before physics: the velocity set here is what this frame's simulation runs with.
 	PrimaryComponentTick.bCanEverTick = true;
 	PrimaryComponentTick.TickGroup = TG_PrePhysics;
+	// Only while a strike is under way (SetPhase): every character has this component, dummies too.
+	PrimaryComponentTick.bStartWithTickEnabled = false;
 }
 
 ACSCharacter* UCSStrikeComponent::GetCharacter() const
@@ -74,6 +76,7 @@ void UCSStrikeComponent::SetPhase(ECSStrikePhase NewPhase)
 {
 	Phase = NewPhase;
 	PhaseSeconds = 0.f;
+	SetComponentTickEnabled(NewPhase != ECSStrikePhase::None);
 }
 
 FVector UCSStrikeComponent::GetAimDirection() const
@@ -152,6 +155,12 @@ void UCSStrikeComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 		return;
 	}
 	const UCSMovementTuning& T = GetTuning();
+	if (Phase == ECSStrikePhase::Strike)
+	{
+		// The path the fist travelled in the frame just simulated, before the phase can end: the
+		// last frame of a strike is the one at full reach.
+		Sweep();
+	}
 	PhaseSeconds += DeltaTime;
 	if (Phase == ECSStrikePhase::Windup && PhaseSeconds >= T.PunchWindupSeconds)
 	{
@@ -165,11 +174,6 @@ void UCSStrikeComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 	{
 		SetPhase(ECSStrikePhase::None);
 		return;
-	}
-	if (Phase == ECSStrikePhase::Strike)
-	{
-		// The path the fist travelled in the frame just simulated, before it is pushed on.
-		Sweep();
 	}
 	if (Phase == ECSStrikePhase::Windup || Phase == ECSStrikePhase::Strike)
 	{
@@ -228,8 +232,16 @@ void UCSStrikeComponent::Sweep()
 		return;
 	}
 	const FVector Hand = GetFistLocation();
-	const FVector From = bHasLastHand ? LastHandLocation : Hand;
+	const UCSMovementTuning& T = GetTuning();
 	const float DeltaTime = World->GetDeltaSeconds();
+	// Farther than the fist can go in a frame: the character was moved (a reset, a teleport). The
+	// gap is not a path the fist travelled, so it is neither swept nor measured.
+	const float Plausible = (T.PunchSpeed * 2.f + float(Character->GetVelocity().Size())) * DeltaTime + FistRadius + 30.f;
+	if (bHasLastHand && FVector::Dist(LastHandLocation, Hand) > Plausible)
+	{
+		bHasLastHand = false;
+	}
+	const FVector From = bHasLastHand ? LastHandLocation : Hand;
 	if (bHasLastHand && DeltaTime > UE_SMALL_NUMBER)
 	{
 		// Relative to the character, so running does not count as a fast fist.
@@ -251,9 +263,10 @@ void UCSStrikeComponent::Sweep()
 	const FVector To = From.Equals(Hand, 0.01f) ? Hand + StrikeAim * 0.1f : Hand;
 	World->SweepMultiByObjectType(Hits, From, To, FQuat::Identity, Objects, FCollisionShape::MakeSphere(FistRadius), Params);
 
-	const UCSMovementTuning& T = GetTuning();
-	// What arrives: the weight behind the fist at the fastest the fist has been, along the aim.
-	const FVector Velocity = StrikeAim * FMath::Max(PeakSpeed, T.PunchSpeed * 0.5f);
+	// What arrives: the weight behind the fist at the fastest the fist has been, along the aim. Held
+	// between half the driven speed and the most the drive can give, so one odd frame (a hitch, a
+	// joint snapping) cannot make the hit.
+	const FVector Velocity = StrikeAim * FMath::Clamp(PeakSpeed, T.PunchSpeed * 0.5f, T.PunchSpeed + T.PunchLean);
 	for (const FHitResult& Hit : Hits)
 	{
 		AActor* Other = Hit.GetActor();
@@ -272,19 +285,32 @@ void UCSStrikeComponent::Sweep()
 			UCSPhysicsBodyComponent* Physics = Victim->GetPhysicsBody();
 			const FName Bone = Component == Victim->GetMesh() ? Hit.BoneName : NAME_None;
 			const ECSContactResult Result = Physics
-				? Physics->ReceiveContact(Character, Bone, Velocity, T.PunchMass, Point - StrikeAim * 30.f, Point)
+				? Physics->ReceiveContact(Character, Bone, Velocity, T.PunchMass, Point - StrikeAim * 30.f, Point, 1.f, true)
 				: ECSContactResult::None;
-			if (Result != ECSContactResult::None)
+			if (Result == ECSContactResult::Stagger || Result == ECSContactResult::Ragdoll)
 			{
 				bLanded = true;
 				HitActors.Add(Other);
 				OnStrikeLanded.Broadcast(Character, Victim, Result);
 			}
+			else if (Result == ECSContactResult::Ignored)
+			{
+				// Already down: it took nothing. Not asked again this strike, and the punch goes on.
+				HitActors.Add(Other);
+			}
 		}
 		else if (Component->IsSimulatingPhysics())
 		{
 			HitActors.Add(Other);
-			Component->AddImpulseAtLocation(Velocity * T.PunchMass, Point, Hit.BoneName);
+			// As for a character: the velocity change the punch's momentum gives this body, with the
+			// same ceiling, so a light prop is knocked away and not shot out of the map.
+			const FBodyInstance* Struck = Component->GetBodyInstance(Hit.BoneName);
+			const float Mass = Struck && Struck->IsValidBodyInstance() ? Struck->GetBodyMass() : Component->GetMass();
+			if (Mass > UE_SMALL_NUMBER)
+			{
+				const FVector Change = (Velocity * (T.PunchMass / Mass)).GetClampedToMaxSize(T.ContactImpulseMax);
+				Component->AddImpulseAtLocation(Change * Mass, Point, Hit.BoneName);
+			}
 			OnStrikeLanded.Broadcast(Character, Other, ECSContactResult::None);
 		}
 	}

@@ -135,9 +135,14 @@ public:
 	 * ImpactPoint, on Bone (None: the body nearest the point). Works out the hit and applies it; see
 	 * the class comment. OtherActor may be null. This is also the entry for hits that do not come
 	 * from the physics engine (an attack, a test).
+	 *
+	 * bSkipRepeatGate: the hit is not refused because OtherActor hit the character less than
+	 * ContactRepeatSeconds ago. For a strike, which limits itself to one hit and must not be
+	 * swallowed by its attacker having brushed the victim a moment earlier. The time of the hit is
+	 * still noted, so the contacts that follow it are gated as usual.
 	 */
 	ECSContactResult ReceiveContact(AActor* OtherActor, FName Bone, const FVector& OtherVelocity, float OtherMass,
-		const FVector& OtherLocation, const FVector& ImpactPoint, float ExtraScale = 1.f);
+		const FVector& OtherLocation, const FVector& ImpactPoint, float ExtraScale = 1.f, bool bSkipRepeatGate = false);
 
 	/**
 	 * The velocity change (cm/s, world) a contact gives a character of OurMass: the other body's speed

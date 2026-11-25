@@ -46,7 +46,9 @@ DECLARE_MULTICAST_DELEGATE_ThreeParams(FCSStrikeLanded, ACSCharacter* /* Attacke
  * the aim. PunchMass is the part of the attacker's weight that is behind the fist, not the weight of
  * the hand. So a punch staggers or knocks down by the rules of every other hit, lands on the body
  * part it touched, and is seen by anything that listens for hits. A simulated prop in the way gets
- * the same momentum as an impulse. One strike hits one character and each prop once.
+ * the velocity change that momentum would give it, at most ContactImpulseMax. One strike hits one
+ * character and each prop once. A character that is already down is passed over: the punch has not
+ * landed on it and can still land on someone behind it.
  *
  * A strike cannot start while one is under way, while the character is ragdolled or getting up,
  * or without a physics body. Going down ends a strike at once.
