@@ -323,11 +323,10 @@ namespace CSPhysicsBodyTests
 	};
 }
 
-using namespace CSPhysicsBodyTests;
-
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSBodyNormalFollowsPoseTest, "CombatSimulator.CS.Body.NormalFollowsPose", CSPhysicsBodyTests::TestFlags)
 bool FCSBodyNormalFollowsPoseTest::RunTest(const FString& Parameters)
 {
+	using namespace CSPhysicsBodyTests;
 	// Spec 5.4 Normal: the upper body is simulated and follows its pose strongly; pelvis and legs stay animated.
 	FBodySim Sim;
 	if (!Sim.Init(*this))
@@ -387,6 +386,7 @@ bool FCSBodyNormalFollowsPoseTest::RunTest(const FString& Parameters)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSBodySmallImpulseStaggersTest, "CombatSimulator.CS.Body.SmallImpulseStaggers", CSPhysicsBodyTests::TestFlags)
 bool FCSBodySmallImpulseStaggersTest::RunTest(const FString& Parameters)
 {
+	using namespace CSPhysicsBodyTests;
 	// Below the threshold: state Hit, then Normal; the capsule never leaves the ground.
 	FBodySim Sim;
 	if (!Sim.Init(*this))
@@ -442,6 +442,7 @@ bool FCSBodySmallImpulseStaggersTest::RunTest(const FString& Parameters)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSBodyLargeImpulseRagdollsAndRecoversTest, "CombatSimulator.CS.Body.LargeImpulseRagdollsAndRecovers", CSPhysicsBodyTests::TestFlags)
 bool FCSBodyLargeImpulseRagdollsAndRecoversTest::RunTest(const FString& Parameters)
 {
+	using namespace CSPhysicsBodyTests;
 	// Above the threshold: Ragdoll, then Recovering, then Normal within the settle time plus
 	// RagdollRecoverSeconds plus 1 s. SetRagdolled(true) on entry, false only when control returns.
 	FBodySim Sim;
@@ -525,6 +526,7 @@ bool FCSBodyLargeImpulseRagdollsAndRecoversTest::RunTest(const FString& Paramete
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSBodyHighLandingRagdollsTest, "CombatSimulator.CS.Body.HighLandingRagdolls", CSPhysicsBodyTests::TestFlags)
 bool FCSBodyHighLandingRagdollsTest::RunTest(const FString& Parameters)
 {
+	using namespace CSPhysicsBodyTests;
 	// A landing faster than RagdollLandingSpeedThreshold ragdolls; a 2 m drop does not.
 	struct FCase { float Height; bool bRagdoll; };
 	for (const FCase& Case : {FCase{1100.f, true}, FCase{200.f, false}})
@@ -556,6 +558,7 @@ bool FCSBodyHighLandingRagdollsTest::RunTest(const FString& Parameters)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSBodyRecoveryOnSlopeOrUpsideDownIsUprightTest, "CombatSimulator.CS.Body.RecoveryOnSlopeOrUpsideDownIsUpright", CSPhysicsBodyTests::TestFlags)
 bool FCSBodyRecoveryOnSlopeOrUpsideDownIsUprightTest::RunTest(const FString& Parameters)
 {
+	using namespace CSPhysicsBodyTests;
 	// Review Focus 1: a ragdoll that ends on a slope or upside down stands up upright on walkable ground.
 	{
 		FBodySim Sim;
@@ -596,6 +599,7 @@ bool FCSBodyRecoveryOnSlopeOrUpsideDownIsUprightTest::RunTest(const FString& Par
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSBodyRecoveryNeverBelowFloorTest, "CombatSimulator.CS.Body.RecoveryNeverBelowFloor", CSPhysicsBodyTests::TestFlags)
 bool FCSBodyRecoveryNeverBelowFloorTest::RunTest(const FString& Parameters)
 {
+	using namespace CSPhysicsBodyTests;
 	// Review Focus 1: a ragdoll partly inside geometry recovers above the floor, never under it or inside a block.
 	{
 		FBodySim Sim;
@@ -643,6 +647,7 @@ bool FCSBodyRecoveryNeverBelowFloorTest::RunTest(const FString& Parameters)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSBodyInputIgnoredWhileRagdolledTest, "CombatSimulator.CS.Body.InputIgnoredWhileRagdolled", CSPhysicsBodyTests::TestFlags)
 bool FCSBodyInputIgnoredWhileRagdolledTest::RunTest(const FString& Parameters)
 {
+	using namespace CSPhysicsBodyTests;
 	// Move, jump and crouch pressed while ragdolled or recovering reach the character's real bindings
 	// with real values and do nothing: no movement input is queued, no jump is pressed, no crouch.
 	// Jump stays held across the moment control returns and must not start a jump. Held gait keys
@@ -722,6 +727,7 @@ bool FCSBodyInputIgnoredWhileRagdolledTest::RunTest(const FString& Parameters)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSBodyRecoveryOffSteepSlopeTest, "CombatSimulator.CS.Body.RecoveryOffSteepSlope", CSPhysicsBodyTests::TestFlags)
 bool FCSBodyRecoveryOffSteepSlopeTest::RunTest(const FString& Parameters)
 {
+	using namespace CSPhysicsBodyTests;
 	// Review Focus 1: a ragdoll that ends on a slope too steep to stand on (50 deg) still recovers
 	// upright on walkable ground within a few seconds, without help.
 	FBodySim Sim;
@@ -750,6 +756,7 @@ bool FCSBodyRecoveryOffSteepSlopeTest::RunTest(const FString& Parameters)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSBodyRecoveryWithNoSpotNearPelvisTest, "CombatSimulator.CS.Body.RecoveryWithNoSpotNearPelvis", CSPhysicsBodyTests::TestFlags)
 bool FCSBodyRecoveryWithNoSpotNearPelvisTest::RunTest(const FString& Parameters)
 {
+	using namespace CSPhysicsBodyTests;
 	// Nothing standable within RecoverySearchRadius of the pelvis (high on a long 50 deg ramp): the
 	// recovery uses the last clear spot of this ragdoll (here where it started) instead of putting
 	// the capsule in the air over the slope.
@@ -781,6 +788,7 @@ bool FCSBodyRecoveryWithNoSpotNearPelvisTest::RunTest(const FString& Parameters)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSBodyRagdollSlideIsBoundedTest, "CombatSimulator.CS.Body.RagdollSlideIsBounded", CSPhysicsBodyTests::TestFlags)
 bool FCSBodyRagdollSlideIsBoundedTest::RunTest(const FString& Parameters)
 {
+	using namespace CSPhysicsBodyTests;
 	// A 750 cm/s shove on flat ground: after the body first touches down it travels 1.5 to 3 m on
 	// the ground before it settles (the flight before touchdown is not damped). Ground damping and
 	// friction come from the tuning: the damping is on only on the ground, the friction material is
@@ -850,6 +858,7 @@ bool FCSBodyRagdollSlideIsBoundedTest::RunTest(const FString& Parameters)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSBodyRagdollFallsFreelyTest, "CombatSimulator.CS.Body.RagdollFallsFreely", CSPhysicsBodyTests::TestFlags)
 bool FCSBodyRagdollFallsFreelyTest::RunTest(const FString& Parameters)
 {
+	using namespace CSPhysicsBodyTests;
 	// A ragdoll dropped from about 5 m falls like a body: before it hits the floor it reaches at
 	// least 90 percent of sqrt(2 g h) for the height it fell (ground damping does not apply in the air).
 	FBodySim Sim;
@@ -882,6 +891,7 @@ bool FCSBodyRagdollFallsFreelyTest::RunTest(const FString& Parameters)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSBodyRecoveryWaitsForSpaceTest, "CombatSimulator.CS.Body.RecoveryWaitsForSpace", CSPhysicsBodyTests::TestFlags)
 bool FCSBodyRecoveryWaitsForSpaceTest::RunTest(const FString& Parameters)
 {
+	using namespace CSPhysicsBodyTests;
 	// Lying under a low ceiling with nowhere clear to stand (the ceiling covers the search radius and
 	// the spot where the ragdoll started): the recovery does not stand the capsule up inside the
 	// ceiling. It stays Ragdoll with the capsule not colliding, keeps trying, and stands up once the
@@ -927,6 +937,7 @@ bool FCSBodyRecoveryWaitsForSpaceTest::RunTest(const FString& Parameters)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSBodyPushKeyStaggersTest, "CombatSimulator.CS.Body.PushKeyStaggers", CSPhysicsBodyTests::TestFlags)
 bool FCSBodyPushKeyStaggersTest::RunTest(const FString& Parameters)
 {
+	using namespace CSPhysicsBodyTests;
 	// P pushes along the view at DevPushSpeed: a stagger by default, a ragdoll when set above the threshold.
 	FBodySim Sim;
 	if (!Sim.Init(*this))
@@ -956,6 +967,7 @@ bool FCSBodyPushKeyStaggersTest::RunTest(const FString& Parameters)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSBodyJointLimitsHumanRangeTest, "CombatSimulator.CS.Body.JointLimitsHumanRange", CSPhysicsBodyTests::TestFlags)
 bool FCSBodyJointLimitsHumanRangeTest::RunTest(const FString& Parameters)
 {
+	using namespace CSPhysicsBodyTests;
 	// PHYS_BaseCharacter's cones, checked against human ranges by turning a bone from its rest pose
 	// and testing the result against the constraint's swing and twist limits.
 	FBodySim Sim;
@@ -1038,6 +1050,7 @@ bool FCSBodyJointLimitsHumanRangeTest::RunTest(const FString& Parameters)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSBodyHingesBendTheRightWayTest, "CombatSimulator.CS.Body.HingesBendTheRightWay", CSPhysicsBodyTests::TestFlags)
 bool FCSBodyHingesBendTheRightWayTest::RunTest(const FString& Parameters)
 {
+	using namespace CSPhysicsBodyTests;
 	// In a simulated ragdoll (dropped, thrown forward, backward and sideways) knees and elbows bend only
 	// the anatomical way: hyperextension stays within the limit plus a little solver slack.
 	struct FHinge { const TCHAR* Parent; const TCHAR* Child; const TCHAR* End; float FlexSideSign; float ExtendLimit; };
@@ -1099,6 +1112,7 @@ bool FCSBodyHingesBendTheRightWayTest::RunTest(const FString& Parameters)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSBodyFirstPersonCopyFollowsPhysicsTest, "CombatSimulator.CS.Body.FirstPersonCopyFollowsPhysics", CSPhysicsBodyTests::TestFlags)
 bool FCSBodyFirstPersonCopyFollowsPhysicsTest::RunTest(const FString& Parameters)
 {
+	using namespace CSPhysicsBodyTests;
 	// The owner-only first-person body copies the body's pose, physics included;
 	// no bone gap with physical animation active, and nothing breaks while ragdolled (third person then).
 	FBodySim Sim;
@@ -1164,6 +1178,7 @@ bool FCSBodyFirstPersonCopyFollowsPhysicsTest::RunTest(const FString& Parameters
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSBodySpawnMidFrameTest, "CombatSimulator.CS.Body.SpawnMidFrameIsSafe", CSPhysicsBodyTests::TestFlags)
 bool FCSBodySpawnMidFrameTest::RunTest(const FString& Parameters)
 {
+	using namespace CSPhysicsBodyTests;
 	FBodySim Sim;
 	if (!Sim.Init(*this))
 	{

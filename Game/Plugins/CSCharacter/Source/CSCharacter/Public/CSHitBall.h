@@ -4,7 +4,10 @@
 #include "GameFramework/Actor.h"
 #include "CSHitBall.generated.h"
 
+class ACSHitBall;
 class UStaticMeshComponent;
+
+DECLARE_MULTICAST_DELEGATE_TwoParams(FCSBallThrown, ACSHitBall* /* Ball */, AActor* /* Thrower, may be null */);
 
 /**
  * A ball that is thrown at characters to try out hit reactions: the dev throw key
@@ -35,6 +38,9 @@ public:
 	 * is never hit by it. Null when the world or the direction is missing.
 	 */
 	static ACSHitBall* Throw(UWorld* World, AActor* Thrower, const FVector& From, const FVector& Direction, float Mass, float Speed);
+
+	/** Every ball thrown, in any world; listeners check the ball's world. */
+	static FCSBallThrown OnThrown;
 
 	/** Removes every ball in the world. Returns how many. */
 	static int32 RemoveAll(UWorld* World);

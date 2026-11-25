@@ -31,6 +31,7 @@ bool FCSPauseKeyGuard::ShouldSwallow(const FKey& Key, bool bIsRelease, double No
 TArray<ECSPauseTab> FCSPauseMenuModel::Tabs(bool bDevTools)
 {
 	TArray<ECSPauseTab> Out;
+	Out.Add(ECSPauseTab::Run);
 	Out.Add(ECSPauseTab::Settings);
 	if (bDevTools)
 	{
@@ -44,6 +45,7 @@ FString FCSPauseMenuModel::TabLabel(ECSPauseTab Tab)
 {
 	switch (Tab)
 	{
+	case ECSPauseTab::Run: return TEXT("Run");
 	case ECSPauseTab::Settings: return TEXT("Settings");
 	case ECSPauseTab::Tuning: return TEXT("Tuning");
 	case ECSPauseTab::Keys: return TEXT("Keys");

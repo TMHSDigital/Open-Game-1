@@ -7,6 +7,7 @@
 
 class ACSCharacter;
 class ACSTargetDummy;
+class UCSRunDirector;
 class UCSMovementTuning;
 
 /**
@@ -32,6 +33,11 @@ class UCSMovementTuning;
  *
  * Map switch: binds each spawned character's dev tools map switch request (F2, gated by bDevTools in
  * UCSDevTools) and opens the next map in DevSwitchMaps (DefaultGame.ini), so the plugin knows no maps.
+ *
+ * Runs: the run director (UCSRunDirector, a component of this actor) starts, counts and ends
+ * simulation runs. It uses the reset here with its own dummies in place of the map's
+ * (ResetPlaygroundWithDummies) and puts the map's back when a run is left (ResetPlaygroundToMap).
+ * While a run is on or over, the reset key starts the run again instead.
  */
 UCLASS(Config = Game)
 class COMBATSIMULATOR_API ACSGameMode : public AGameModeBase
@@ -51,6 +57,13 @@ public:
 	 */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CS|Dev tools")
 	TArray<FString> DevSwitchMaps;
+
+	/**
+	 * Maps a run can happen on, as long package names (/Game/Maps/L_Plane), in the order the Run tab
+	 * offers them. A packaged build can only open maps that are in MapsToCook.
+	 */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CS|Runs")
+	TArray<FString> RunMaps;
 
 	/** A player's pawn below this height, cm, is destroyed and the player respawns at a PlayerStart. */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CS")
@@ -74,6 +87,33 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "CS|Dev tools")
 	void ResetPlayground();
+
+	/** Starts, counts and ends simulation runs on this map. */
+	UCSRunDirector* GetRunDirector() const { return RunDirector; }
+
+	/** Short names of RunMaps ("L_Plane"), in order. */
+	TArray<FString> GetRunMapNames() const;
+
+	/** The long package name in RunMaps for a short map name; empty when it is not listed. */
+	FString FindRunMap(const FString& ShortName) const;
+
+	/** Where the first player starts a run: the PlayerStart the game would use; failing that, where the player is. */
+	FTransform GetRunStart();
+
+	/**
+	 * Drops each spot onto the floor below it (static geometry within 30 m): a character stands on
+	 * it, anything else has its origin on it. A spot with no floor under it keeps its height.
+	 */
+	TArray<FTransform> PutOnFloor(const TArray<FTransform>& Spots, bool bCharacters) const;
+
+	/** ResetPlayground, but the dummies that come back are fresh ones on Spots (tagged Dummy and RunDummy) instead of the ones there now. */
+	void ResetPlaygroundWithDummies(const TArray<FTransform>& Spots);
+
+	/** ResetPlayground, but the dummies that come back are the ones the map was made with, on their own spots. */
+	void ResetPlaygroundToMap();
+
+	/** True while a reset's dummies or players are still to appear (they do at the start of the next frame). */
+	bool IsResetPending() const { return !PendingDummies.IsEmpty() || !PendingRespawns.IsEmpty(); }
 
 	/** Gives every target dummy the tuning changes Player runs on. */
 	void SyncDummies(const ACSCharacter* Player);
@@ -113,6 +153,15 @@ private:
 		TArray<FName> Tags;
 	};
 	TArray<FDummyRespawn> PendingDummies;
+
+	/** The dummies the map was made with, noted when play began, for ResetPlaygroundToMap. */
+	TArray<FDummyRespawn> MapDummies;
+
+	/** The reset. Replacement null: every dummy comes back on its own spot. Otherwise Replacement comes back instead. */
+	void ResetPlaygroundInternal(const TArray<FDummyRespawn>* Replacement);
+
+	UPROPERTY(VisibleAnywhere, Category = "CS|Runs")
+	TObjectPtr<UCSRunDirector> RunDirector;
 
 	FString LastMapSwitchTarget;
 };

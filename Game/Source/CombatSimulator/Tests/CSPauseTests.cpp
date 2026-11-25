@@ -149,8 +149,8 @@ bool FCSPauseTabsFollowDevToolsTest::RunTest(const FString& Parameters)
 {
 	const TArray<ECSPauseTab> Off = FCSPauseMenuModel::Tabs(false);
 	const TArray<ECSPauseTab> On = FCSPauseMenuModel::Tabs(true);
-	TestTrue(TEXT("Dev tools off: Settings and Keys"), Off == TArray<ECSPauseTab>({ECSPauseTab::Settings, ECSPauseTab::Keys}));
-	TestTrue(TEXT("Dev tools on: Settings, Tuning, Keys"), On == TArray<ECSPauseTab>({ECSPauseTab::Settings, ECSPauseTab::Tuning, ECSPauseTab::Keys}));
+	TestTrue(TEXT("Dev tools off: Run, Settings and Keys"), Off == TArray<ECSPauseTab>({ECSPauseTab::Run, ECSPauseTab::Settings, ECSPauseTab::Keys}));
+	TestTrue(TEXT("Dev tools on: Run, Settings, Tuning, Keys"), On == TArray<ECSPauseTab>({ECSPauseTab::Run, ECSPauseTab::Settings, ECSPauseTab::Tuning, ECSPauseTab::Keys}));
 	for (const ECSPauseTab Tab : On)
 	{
 		TestFalse(TEXT("Every tab has a label"), FCSPauseMenuModel::TabLabel(Tab).IsEmpty());

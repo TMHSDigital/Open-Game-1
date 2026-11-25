@@ -53,6 +53,7 @@ struct FCSContactRecord
 };
 
 DECLARE_MULTICAST_DELEGATE(FCSBodyRecovered);
+DECLARE_MULTICAST_DELEGATE_ThreeParams(FCSCharacterContact, ACSCharacter* /* Victim */, AActor* /* Other, may be null */, const FCSContactRecord& /* Hit */);
 DECLARE_MULTICAST_DELEGATE_TwoParams(FCSBodyStateChanged, ECSBodyState /* Old */, ECSBodyState /* New */);
 
 /**
@@ -151,6 +152,13 @@ public:
 	 */
 	static FVector ComputeContactVelocityChange(const FVector& OtherVelocity, float OtherMass, const FVector& TowardUs, float OurMass,
 		float MinSpeed, float Scale, float MaxVelocityChange, const FVector& OurVelocity = FVector::ZeroVector);
+
+	/**
+	 * Every contact hit on any character, in any world, right after it was applied (never for a
+	 * contact that was not a hit: Result is Ignored, Stagger or Ragdoll). For whatever counts hits
+	 * without the character knowing about it; listeners check the victim's world.
+	 */
+	static FCSCharacterContact OnAnyContact;
 
 	/** The last contact hit (Result None and a negative Time before any). */
 	const FCSContactRecord& GetLastContact() const { return LastContact; }

@@ -12,10 +12,11 @@ class SButton;
 class SHorizontalBox;
 
 /**
- * The pause screen: Resume, Quit and the tabs Settings, Tuning (dev tools only) and Keys.
+ * The pause screen: Resume, Quit and the tabs Run, Settings, Tuning (dev tools only) and Keys.
  *
  * Shown by ACSPlayerController while the game is paused. Everything on it is generated from data:
- * the tabs from FCSPauseMenuModel::Tabs, the settings rows from UCSGameSettings::Rows, the tuning
+ * the tabs from FCSPauseMenuModel::Tabs, the run setup rows from FCSRunSetup::Rows (the run's state
+ * and results from UCSRunDirector), the settings rows from UCSGameSettings::Rows, the tuning
  * rows from CSTuning::Rows and the key list from the character's mapping context.
  *
  * Layout takes a share of whatever size the viewport is; the tab body scrolls. Usable with mouse,
@@ -28,6 +29,8 @@ class SCSPauseScreen : public SCompoundWidget
 public:
 	SLATE_BEGIN_ARGS(SCSPauseScreen) {}
 		SLATE_ARGUMENT(TWeakObjectPtr<ACSPlayerController>, Owner)
+		/** The tab to open on; unset or not one of the screen's tabs: the first. */
+		SLATE_ARGUMENT(TOptional<ECSPauseTab>, InitialTab)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);
@@ -46,6 +49,7 @@ public:
 	virtual FReply OnMouseButtonDoubleClick(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override { return FReply::Handled(); }
 
 private:
+	TSharedRef<SWidget> BuildRunTab();
 	TSharedRef<SWidget> BuildSettingsTab();
 	TSharedRef<SWidget> BuildTuningTab();
 	TSharedRef<SWidget> BuildKeysTab();

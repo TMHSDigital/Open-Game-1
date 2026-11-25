@@ -14,7 +14,8 @@ public class CombatSimulator : ModuleRules
 			"InputCore",
 			"PhysicsCore",  // physical materials in the body tests (CSPhysicsBodyTests.cpp)
 			"EnhancedInput",  // input asset tests (CSInputAssetTests.cpp)
-			"CSCharacter"  // Game/Plugins/CSCharacter: ACSCharacter, UCSMovementTuning
+			"CSCharacter",  // Game/Plugins/CSCharacter: ACSCharacter, UCSMovementTuning
+			"Json"  // run setups as text (Run/CSRunSetup.cpp)
 		});
 
 		// The pause screen (UI/): Slate widgets, and the clipboard for "Copy values".

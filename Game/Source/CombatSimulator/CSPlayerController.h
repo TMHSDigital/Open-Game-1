@@ -41,6 +41,15 @@ public:
 	UFUNCTION(BlueprintPure, Category = "CS|Pause")
 	bool IsPauseScreenOpen() const { return bPauseScreenOpen; }
 
+	/**
+	 * Opens the pause screen on Tab (pausing the game), or switches an open screen to it. A tab the
+	 * screen does not have (Tuning with dev tools off) leaves it on its first tab.
+	 */
+	void OpenPauseScreenOnTab(ECSPauseTab Tab);
+
+	/** The tab the screen was last asked to open on, if any; the screen's first tab otherwise. */
+	TOptional<ECSPauseTab> GetRequestedTab() const { return RequestedTab; }
+
 	/** What the pause key does: opens the screen, or closes it. */
 	UFUNCTION(BlueprintCallable, Category = "CS|Pause")
 	void TogglePauseScreen();
@@ -70,6 +79,7 @@ protected:
 
 private:
 	bool bPauseScreenOpen = false;
+	TOptional<ECSPauseTab> RequestedTab;
 	FCSPauseKeyGuard PauseKeyGuard;
 	FDelegateHandle SettingsChangedHandle;
 	TSharedPtr<SCSPauseScreen> PauseScreen;

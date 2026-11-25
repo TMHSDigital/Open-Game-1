@@ -1,15 +1,21 @@
 #include "SCSPauseScreen.h"
 
+#include "../CSGameMode.h"
 #include "../CSGameSettings.h"
 #include "../CSPlayerController.h"
+#include "../Run/CSRunDirector.h"
+#include "../Run/CSRunStore.h"
 #include "CSCharacter.h"
 #include "CSDevTools.h"
 #include "CSTuningPanelModel.h"
 #include "CSTuningRanges.h"
+#include "Engine/World.h"
 #include "Framework/Application/SlateApplication.h"
 #include "HAL/PlatformApplicationMisc.h"
 #include "InputCoreTypes.h"
 #include "InputMappingContext.h"
+#include "Misc/PackageName.h"
+#include "SCSChoiceRow.h"
 #include "SCSValueRow.h"
 #include "Styling/CoreStyle.h"
 #include "Widgets/Input/SButton.h"
@@ -122,7 +128,8 @@ void SCSPauseScreen::Construct(const FArguments& InArgs)
 			]
 		]
 	];
-	SetTab(Tabs.Num() > 0 ? Tabs[0] : ECSPauseTab::Settings);
+	const ECSPauseTab First = Tabs.Num() > 0 ? Tabs[0] : ECSPauseTab::Settings;
+	SetTab(InArgs._InitialTab.IsSet() && Tabs.Contains(InArgs._InitialTab.GetValue()) ? InArgs._InitialTab.GetValue() : First);
 }
 
 FMargin SCSPauseScreen::GetPanelPadding() const
@@ -143,6 +150,9 @@ void SCSPauseScreen::SetTab(ECSPauseTab Tab)
 	ActiveTab = Tab;
 	switch (Tab)
 	{
+	case ECSPauseTab::Run:
+		Body->SetContent(BuildRunTab());
+		break;
 	case ECSPauseTab::Settings:
 		Body->SetContent(BuildSettingsTab());
 		break;
@@ -421,5 +431,261 @@ TSharedRef<SWidget> SCSPauseScreen::BuildKeysTab()
 			]
 		];
 	}
+	return List;
+}
+
+TSharedRef<SWidget> SCSPauseScreen::BuildRunTab()
+{
+	const ACSPlayerController* Controller = Owner.Get();
+	UWorld* World = Controller ? Controller->GetWorld() : nullptr;
+	ACSGameMode* Mode = World ? Cast<ACSGameMode>(World->GetAuthGameMode()) : nullptr;
+	UCSRunDirector* Director = Mode ? Mode->GetRunDirector() : nullptr;
+	UCSRunStore* Store = UCSRunStore::Get(Controller);
+	if (!Director || !Store)
+	{
+		return Label(TEXT("Runs are not available on this map."));
+	}
+	const TWeakObjectPtr<ACSPlayerController> WeakOwner = Owner;
+	const TWeakObjectPtr<UCSRunDirector> WeakDirector = Director;
+	const TWeakObjectPtr<UCSRunStore> WeakStore = Store;
+	const FString CurrentMap = FPackageName::GetShortName(UWorld::RemovePIEPrefix(World->GetPackage()->GetName()));
+	const TArray<FString> Maps = Mode->GetRunMapNames();
+
+	auto StateIs = [WeakDirector](TFunction<bool(ECSRunState)> Test)
+	{
+		return TAttribute<EVisibility>::CreateLambda([WeakDirector, Test]
+		{
+			const UCSRunDirector* D = WeakDirector.Get();
+			return D && Test(D->GetState()) ? EVisibility::Visible : EVisibility::Collapsed;
+		});
+	};
+	const TAttribute<EVisibility> WhenRunning = StateIs([](ECSRunState S) { return S == ECSRunState::Running; });
+	const TAttribute<EVisibility> WhenNotIdle = StateIs([](ECSRunState S) { return S != ECSRunState::Idle; });
+
+	// A button that resumes the game and then acts on the director, so the run begins unpaused.
+	auto ResumeThen = [WeakOwner, WeakDirector](TFunction<void(UCSRunDirector&)> Action)
+	{
+		return FOnClicked::CreateLambda([WeakOwner, WeakDirector, Action]
+		{
+			if (ACSPlayerController* C = WeakOwner.Get())
+			{
+				C->SetPauseScreenOpen(false);
+			}
+			if (UCSRunDirector* D = WeakDirector.Get())
+			{
+				Action(*D);
+			}
+			return FReply::Handled();
+		});
+	};
+
+	TSharedRef<SScrollBox> List = SNew(SScrollBox);
+	List->AddSlot().Padding(0.f, 0.f, 0.f, 8.f)
+	[
+		SNew(STextBlock)
+		.Font(Font(12, true))
+		.AutoWrapText(true)
+		.Text_Lambda([WeakDirector] { return FText::FromString(WeakDirector.IsValid() ? WeakDirector->GetStatusText() : FString()); })
+		.ColorAndOpacity_Lambda([WeakDirector]
+		{
+			return FSlateColor(WeakDirector.IsValid() && WeakDirector->GetState() == ECSRunState::Running ? GoodColor : TextColor);
+		})
+	];
+	List->AddSlot().Padding(0.f, 0.f, 0.f, 10.f)
+	[
+		SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot().AutoWidth().Padding(0.f, 0.f, 6.f, 0.f)
+		[
+			SNew(SButton)
+			.Text_Lambda([WeakDirector]
+			{
+				const bool bIdle = !WeakDirector.IsValid() || WeakDirector->GetState() == ECSRunState::Idle;
+				return FText::FromString(bIdle ? TEXT("Start run") : TEXT("Start a new run with the setup below"));
+			})
+			.OnClicked(ResumeThen([WeakStore](UCSRunDirector& D)
+			{
+				if (const UCSRunStore* S = WeakStore.Get())
+				{
+					FString Reason;
+					D.StartRun(S->GetDraft(), Reason);
+				}
+			}))
+		]
+		+ SHorizontalBox::Slot().AutoWidth().Padding(0.f, 0.f, 6.f, 0.f)
+		[
+			SNew(SButton)
+			.Visibility(WhenNotIdle)
+			.Text(FText::FromString(TEXT("Run it again (Backspace)")))
+			.OnClicked(ResumeThen([](UCSRunDirector& D) { D.Rerun(); }))
+		]
+		+ SHorizontalBox::Slot().AutoWidth().Padding(0.f, 0.f, 6.f, 0.f)
+		[
+			SNew(SButton)
+			.Visibility(WhenRunning)
+			.Text(FText::FromString(TEXT("End run")))
+			.OnClicked_Lambda([WeakDirector]
+			{
+				// Stays on this tab: the results appear below.
+				if (UCSRunDirector* D = WeakDirector.Get())
+				{
+					D->EndRun(ECSRunEnd::Manual);
+				}
+				return FReply::Handled();
+			})
+		]
+		+ SHorizontalBox::Slot().AutoWidth()
+		[
+			SNew(SButton)
+			.Visibility(WhenNotIdle)
+			.Text(FText::FromString(TEXT("Leave run")))
+			.ToolTipText(FText::FromString(TEXT("Back to free play on the map as it was made.")))
+			.OnClicked(ResumeThen([](UCSRunDirector& D) { D.LeaveRun(); }))
+		]
+	];
+	List->AddSlot().Padding(0.f, 0.f, 0.f, 12.f)
+	[
+		SNew(SVerticalBox)
+		.Visibility(WhenNotIdle)
+		+ SVerticalBox::Slot().AutoHeight()
+		[
+			SNew(STextBlock)
+			.Font(Font(11, true))
+			.ColorAndOpacity(TextColor)
+			.Text_Lambda([WeakDirector]
+			{
+				const bool bOver = WeakDirector.IsValid() && WeakDirector->GetState() == ECSRunState::Ended;
+				return FText::FromString(bOver ? TEXT("Results") : TEXT("So far"));
+			})
+		]
+		+ SVerticalBox::Slot().AutoHeight().Padding(10.f, 4.f, 0.f, 0.f)
+		[
+			SNew(STextBlock)
+			.Font(Font(11))
+			.ColorAndOpacity(TextColor)
+			.Text_Lambda([WeakDirector]
+			{
+				return FText::FromString(WeakDirector.IsValid() ? FString::Join(WeakDirector->GetStats().SummaryLines(), TEXT("\n")) : FString());
+			})
+		]
+	];
+
+	List->AddSlot().Padding(0.f, 0.f, 0.f, 4.f)
+	[
+		Label(TEXT("Setup of the next run"), 12, TextColor, true)
+	];
+	if (!Store->GetLastLoadNote().IsEmpty())
+	{
+		List->AddSlot().Padding(0.f, 0.f, 0.f, 4.f)
+		[
+			Label(Store->GetLastLoadNote(), 9, ErrorColor)
+		];
+	}
+	List->AddSlot().Padding(0.f, 0.f, 0.f, 6.f)
+	[
+		Label(TEXT("Kept on this machine. A run on another map opens that map."), 9, FaintColor)
+	];
+	if (!Maps.IsEmpty())
+	{
+		List->AddSlot().Padding(0.f, 3.f)
+		[
+			SNew(SCSChoiceRow)
+			.Label(TEXT("Map"))
+			.Choices(Maps)
+			.Index_Lambda([WeakStore, Maps, CurrentMap]
+			{
+				// A setup that names no map, or one that is gone, means the map being played.
+				const FString& Wanted = WeakStore.IsValid() ? WeakStore->GetDraft().Map : CurrentMap;
+				const int32 Found = Maps.IndexOfByKey(Wanted);
+				return Found != INDEX_NONE ? Found : FMath::Max(0, Maps.IndexOfByKey(CurrentMap));
+			})
+			.OnChosen_Lambda([WeakStore, Maps](int32 Chosen)
+			{
+				if (UCSRunStore* S = WeakStore.Get(); S && Maps.IsValidIndex(Chosen))
+				{
+					S->SetDraftMap(Maps[Chosen], true);
+				}
+			})
+		];
+	}
+	for (const FCSRunRow& Row : FCSRunSetup::Rows())
+	{
+		const FName Key = Row.Key;
+		const float Default = Row.Default;
+		if (!Row.Choices.IsEmpty())
+		{
+			List->AddSlot().Padding(0.f, 3.f)
+			[
+				SNew(SCSChoiceRow)
+				.Label(Row.Label)
+				.Choices(Row.Choices)
+				.Index_Lambda([WeakStore, Key] { return WeakStore.IsValid() ? FMath::RoundToInt(WeakStore->GetDraft().GetValue(Key)) : 0; })
+				.OnChosen_Lambda([WeakStore, Key](int32 Chosen)
+				{
+					if (UCSRunStore* S = WeakStore.Get())
+					{
+						S->SetDraftValue(Key, float(Chosen), true);
+					}
+				})
+			];
+		}
+		else
+		{
+			List->AddSlot().Padding(0.f, 3.f)
+			[
+				SNew(SCSValueRow)
+				.Label(Row.Label)
+				.Unit(Row.Unit)
+				.Min(Row.Min)
+				.Max(Row.Max)
+				.Step(Row.Step)
+				.Value_Lambda([WeakStore, Key, Default] { return WeakStore.IsValid() ? WeakStore->GetDraft().GetValue(Key) : Default; })
+				.IsChanged_Lambda([WeakStore, Key] { return WeakStore.IsValid() && WeakStore->GetDraft().IsChanged(Key); })
+				.OnValueChanged_Lambda([WeakStore, Key](float NewValue)
+				{
+					if (UCSRunStore* S = WeakStore.Get())
+					{
+						S->SetDraftValue(Key, NewValue, false);
+					}
+				})
+				.OnValueCommitted_Lambda([WeakStore]
+				{
+					if (const UCSRunStore* S = WeakStore.Get())
+					{
+						S->SaveDraft();
+					}
+				})
+				.OnReset_Lambda([WeakStore, Key, Default]
+				{
+					if (UCSRunStore* S = WeakStore.Get())
+					{
+						S->SetDraftValue(Key, Default, true);
+					}
+				})
+			];
+		}
+		if (!Row.Help.IsEmpty())
+		{
+			List->AddSlot().Padding(0.f, 0.f, 0.f, 4.f)
+			[
+				Label(Row.Help, 9, FaintColor)
+			];
+		}
+	}
+	List->AddSlot().Padding(0.f, 12.f, 0.f, 0.f).HAlign(HAlign_Left)
+	[
+		SNew(SButton)
+		.Text(FText::FromString(TEXT("Reset the setup")))
+		.OnClicked_Lambda([WeakStore]
+		{
+			if (UCSRunStore* S = WeakStore.Get())
+			{
+				// Every value back to its default; the map stays.
+				FCSRunSetup Fresh;
+				Fresh.Map = S->GetDraft().Map;
+				S->SetDraft(Fresh);
+			}
+			return FReply::Handled();
+		})
+	];
 	return List;
 }

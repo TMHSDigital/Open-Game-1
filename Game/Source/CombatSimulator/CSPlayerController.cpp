@@ -70,7 +70,21 @@ void ACSPlayerController::SetupInputComponent()
 
 void ACSPlayerController::TogglePauseScreen()
 {
+	RequestedTab.Reset();
 	SetPauseScreenOpen(!bPauseScreenOpen);
+}
+
+void ACSPlayerController::OpenPauseScreenOnTab(ECSPauseTab Tab)
+{
+	RequestedTab = Tab;
+	if (!bPauseScreenOpen)
+	{
+		SetPauseScreenOpen(true);
+	}
+	else if (PauseScreen.IsValid() && PauseScreen->GetTab() != Tab)
+	{
+		PauseScreen->SetTab(Tab);
+	}
 }
 
 void ACSPlayerController::SetPauseScreenOpen(bool bOpen)
@@ -149,7 +163,7 @@ void ACSPlayerController::ShowPauseScreen(bool bShow)
 	{
 		return;
 	}
-	PauseScreen = SNew(SCSPauseScreen).Owner(this);
+	PauseScreen = SNew(SCSPauseScreen).Owner(this).InitialTab(RequestedTab);
 	PauseScreenHost = SNew(SWeakWidget).PossiblyNullContent(PauseScreen);
 	// Above the HUD and any other viewport content.
 	Viewport->AddViewportWidgetContent(PauseScreenHost.ToSharedRef(), 100);

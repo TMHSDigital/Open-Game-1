@@ -1,0 +1,82 @@
+#pragma once
+
+#include "CoreMinimal.h"
+#include "CSPhysicsBodyComponent.h"
+
+/** Why a run ended. */
+enum class ECSRunEnd : uint8
+{
+	None,
+	/** The player ended it. */
+	Manual,
+	TimeLimit,
+	KnockdownGoal,
+};
+
+/** Who a hit belongs to, from the player's side. */
+enum class ECSRunHitSide : uint8
+{
+	/** The player hit someone else: with something thrown, or by running into them. */
+	Dealt,
+	/** Something hit the player. */
+	Taken,
+	/** Neither: a launcher's ball on a dummy, one dummy falling into another. */
+	Other,
+};
+
+/** The hits of one side of a run. */
+struct COMBATSIMULATOR_API FCSRunHits
+{
+	/** Every hit, whatever it did. */
+	int32 Hits = 0;
+	int32 Staggers = 0;
+	int32 Knockdowns = 0;
+	/** Hits that changed nothing: the character was already down. */
+	int32 NoEffect = 0;
+	/** The largest hit, as the velocity change it stood for, cm/s. */
+	float Biggest = 0.f;
+	/** Sum of every hit's velocity change, cm/s. */
+	float Total = 0.f;
+	/** Hits per body part struck. */
+	TMap<FName, int32> ByBone;
+
+	void Record(const FCSContactRecord& Hit);
+
+	float Average() const { return Hits > 0 ? Total / float(Hits) : 0.f; }
+
+	/** Body parts by hit count, most first, ties by name: "spine_03 4, head 2". Empty without hits. */
+	FString DescribeBones(int32 MaxParts = 4) const;
+};
+
+/**
+ * What happened in a run. Filled by UCSRunDirector from the character plugin's hit and throw events;
+ * holds no pointers, so it can be kept, compared and shown after the run's actors are gone.
+ */
+struct COMBATSIMULATOR_API FCSRunStats
+{
+	/** Game time the run has lasted, s (the pause screen stops it). */
+	float Seconds = 0.f;
+	/** Balls the player threw. */
+	int32 BallsThrown = 0;
+	FCSRunHits Dealt;
+	FCSRunHits Taken;
+	/** Hits between others, counted only. */
+	int32 OtherHits = 0;
+
+	void RecordHit(ECSRunHitSide Side, const FCSContactRecord& Hit);
+	void RecordThrow() { ++BallsThrown; }
+
+	/** Share of the player's balls that hit someone, 0 to 1 (a ball that hits two counts once). 0 without throws. */
+	float Accuracy() const;
+
+	/** "1:05" for 65 s. */
+	static FString FormatTime(float Seconds);
+
+	static FString DescribeEnd(ECSRunEnd End);
+
+	/** The line drawn on screen while a run is on: "Run 0:34 / 1:00   hits 5   knockdowns 1 / 3   taken 2". */
+	FString HudLine(float TimeLimit, int32 KnockdownGoal) const;
+
+	/** The results, one fact per line, for the Run tab. */
+	TArray<FString> SummaryLines() const;
+};

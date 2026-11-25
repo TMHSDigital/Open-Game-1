@@ -8,6 +8,8 @@ class UInputMappingContext;
 /** The tabs of the pause screen. */
 enum class ECSPauseTab : uint8
 {
+	/** Simulation runs: start, end, results and the setup of the next one. */
+	Run,
 	Settings,
 	Tuning,
 	Keys,
@@ -60,7 +62,7 @@ private:
  */
 struct COMBATSIMULATOR_API FCSPauseMenuModel
 {
-	/** Settings and Keys always; Tuning between them only with dev tools on. */
+	/** Run, Settings and Keys always; Tuning before Keys only with dev tools on. Run is first: it is what the screen opens on. */
 	static TArray<ECSPauseTab> Tabs(bool bDevTools);
 
 	static FString TabLabel(ECSPauseTab Tab);

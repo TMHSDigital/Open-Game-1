@@ -72,6 +72,8 @@ namespace
 	}
 }
 
+FCSCharacterContact UCSPhysicsBodyComponent::OnAnyContact;
+
 UCSPhysicsBodyComponent::UCSPhysicsBodyComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
@@ -990,6 +992,7 @@ ECSContactResult UCSPhysicsBodyComponent::ReceiveContact(AActor* OtherActor, FNa
 	LastContact.VelocityChange = float(Change.Size());
 	LastContact.Result = Result;
 	LastContact.Source = GetNameSafe(OtherActor);
+	OnAnyContact.Broadcast(GetCharacter(), OtherActor, LastContact);
 	return Result;
 }
 

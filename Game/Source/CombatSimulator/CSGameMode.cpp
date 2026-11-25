@@ -4,6 +4,9 @@
 #include "CSDevTools.h"
 #include "CSHitBall.h"
 #include "CSTargetDummy.h"
+#include "Components/CapsuleComponent.h"
+#include "GameFramework/PlayerStart.h"
+#include "Run/CSRunDirector.h"
 #include "EngineUtils.h"
 #include "GameFramework/Character.h"
 #include "CSMovementTuning.h"
@@ -24,6 +27,7 @@ ACSGameMode::ACSGameMode()
 	HUDClass = AHUD::StaticClass();
 	// Tick checks the players' pawns against RespawnKillZ.
 	PrimaryActorTick.bCanEverTick = true;
+	RunDirector = CreateDefaultSubobject<UCSRunDirector>(TEXT("RunDirector"));
 }
 
 APawn* ACSGameMode::SpawnDefaultPawnAtTransform_Implementation(AController* NewPlayer, const FTransform& SpawnTransform)
@@ -89,6 +93,16 @@ void ACSGameMode::BeginPlay()
 			PropHomes.Add(*It, It->GetActorTransform());
 		}
 	}
+	// And the dummies the map was made with, for leaving a run.
+	for (TActorIterator<ACSTargetDummy> It(GetWorld()); It; ++It)
+	{
+		FDummyRespawn Respawn;
+		Respawn.Class = It->GetClass();
+		Respawn.Home = It->GetActorTransform();
+		Respawn.Tuning = It->Tuning;
+		Respawn.Tags = It->Tags;
+		MapDummies.Add(MoveTemp(Respawn));
+	}
 }
 
 void ACSGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -97,6 +111,7 @@ void ACSGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	WorldTickStartHandle.Reset();
 	PendingRespawns.Reset();
 	PendingDummies.Reset();
+	MapDummies.Reset();
 	PropHomes.Reset();
 	Super::EndPlay(EndPlayReason);
 }
@@ -234,6 +249,100 @@ void ACSGameMode::SyncDummies(const ACSCharacter* Player)
 
 void ACSGameMode::ResetPlayground()
 {
+	ResetPlaygroundInternal(nullptr);
+}
+
+void ACSGameMode::ResetPlaygroundWithDummies(const TArray<FTransform>& Spots)
+{
+	TArray<FDummyRespawn> Replacement;
+	for (const FTransform& Spot : Spots)
+	{
+		FDummyRespawn Respawn;
+		Respawn.Class = ACSTargetDummy::StaticClass();
+		Respawn.Home = Spot;
+		Respawn.Tags = {FName(TEXT("Dummy")), FName(TEXT("RunDummy"))};
+		Replacement.Add(MoveTemp(Respawn));
+	}
+	ResetPlaygroundInternal(&Replacement);
+}
+
+void ACSGameMode::ResetPlaygroundToMap()
+{
+	const TArray<FDummyRespawn> Replacement = MapDummies;
+	ResetPlaygroundInternal(&Replacement);
+}
+
+TArray<FString> ACSGameMode::GetRunMapNames() const
+{
+	TArray<FString> Names;
+	for (const FString& Map : RunMaps)
+	{
+		Names.Add(FPackageName::GetShortName(Map));
+	}
+	return Names;
+}
+
+FString ACSGameMode::FindRunMap(const FString& ShortName) const
+{
+	for (const FString& Map : RunMaps)
+	{
+		if (FPackageName::GetShortName(Map) == ShortName)
+		{
+			return Map;
+		}
+	}
+	return FString();
+}
+
+FTransform ACSGameMode::GetRunStart()
+{
+	UWorld* World = GetWorld();
+	APlayerController* PC = World ? World->GetFirstPlayerController() : nullptr;
+	if (const AActor* Start = PC ? FindPlayerStart(PC) : nullptr)
+	{
+		return Start->GetActorTransform();
+	}
+	if (World)
+	{
+		for (TActorIterator<APlayerStart> It(World); It; ++It)
+		{
+			return It->GetActorTransform();
+		}
+	}
+	if (const APawn* Pawn = PC ? PC->GetPawn() : nullptr)
+	{
+		return Pawn->GetActorTransform();
+	}
+	return FTransform(FVector(0.f, 0.f, 100.f));
+}
+
+TArray<FTransform> ACSGameMode::PutOnFloor(const TArray<FTransform>& Spots, bool bCharacters) const
+{
+	const UWorld* World = GetWorld();
+	const float HalfHeight = GetDefault<ACSCharacter>()->GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	TArray<FTransform> Out;
+	for (const FTransform& Spot : Spots)
+	{
+		FVector Location = Spot.GetLocation();
+		FHitResult Hit;
+		// Static geometry only: a prop, a ball or a character under the spot is not the floor.
+		if (World && World->LineTraceSingleByObjectType(Hit, Location + FVector(0.f, 0.f, 300.f), Location - FVector(0.f, 0.f, 3000.f),
+			FCollisionObjectQueryParams(ECC_WorldStatic)))
+		{
+			Location.Z = Hit.ImpactPoint.Z + (bCharacters ? HalfHeight + 2.f : 0.f);
+		}
+		else if (!bCharacters)
+		{
+			// The spot's height is a standing character's centre; a launcher's origin is at its feet.
+			Location.Z -= HalfHeight;
+		}
+		Out.Add(FTransform(Spot.GetRotation(), Location));
+	}
+	return Out;
+}
+
+void ACSGameMode::ResetPlaygroundInternal(const TArray<FDummyRespawn>* Replacement)
+{
 	UWorld* World = GetWorld();
 	if (!World)
 	{
@@ -265,14 +374,22 @@ void ACSGameMode::ResetPlayground()
 			Dummies.Add(*It);
 		}
 	}
+	if (Replacement)
+	{
+		// Whatever an earlier reset in this frame still had to bring back is replaced too.
+		PendingDummies = *Replacement;
+	}
 	for (ACSTargetDummy* Dummy : Dummies)
 	{
-		FDummyRespawn Respawn;
-		Respawn.Class = Dummy->GetClass();
-		Respawn.Home = Dummy->GetHomeTransform();
-		Respawn.Tuning = Dummy->Tuning;
-		Respawn.Tags = Dummy->Tags;
-		PendingDummies.Add(MoveTemp(Respawn));
+		if (!Replacement)
+		{
+			FDummyRespawn Respawn;
+			Respawn.Class = Dummy->GetClass();
+			Respawn.Home = Dummy->GetHomeTransform();
+			Respawn.Tuning = Dummy->Tuning;
+			Respawn.Tags = Dummy->Tags;
+			PendingDummies.Add(MoveTemp(Respawn));
+		}
 		Dummy->Destroy();
 	}
 
@@ -285,11 +402,16 @@ void ACSGameMode::ResetPlayground()
 			Pawn->Destroy();
 		}
 	}
-	UE_LOG(LogCombatSimulator, Log, TEXT("ACSGameMode: reset: %d prop(s) put back, %d dummy(ies) replaced, %d ball(s) removed"), Props, Dummies.Num(), Balls);
+	UE_LOG(LogCombatSimulator, Log, TEXT("ACSGameMode: reset: %d prop(s) put back, %d dummy(ies) removed and %d to come, %d ball(s) removed"), Props, Dummies.Num(), PendingDummies.Num(), Balls);
 }
 
 void ACSGameMode::HandleResetRequested()
 {
+	// With a run on or over, putting things back means starting that run again.
+	if (RunDirector && RunDirector->GetState() != ECSRunState::Idle && RunDirector->Rerun())
+	{
+		return;
+	}
 	ResetPlayground();
 }
 

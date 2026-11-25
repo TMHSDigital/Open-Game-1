@@ -6,6 +6,8 @@
 #include "EngineUtils.h"
 #include "UObject/ConstructorHelpers.h"
 
+FCSBallThrown ACSHitBall::OnThrown;
+
 ACSHitBall::ACSHitBall()
 {
 	PrimaryActorTick.bCanEverTick = false;
@@ -66,6 +68,7 @@ ACSHitBall* ACSHitBall::Throw(UWorld* World, AActor* Thrower, const FVector& Fro
 	}
 	NewBall->Ball->SetMassOverrideInKg(NAME_None, FMath::Max(Mass, 0.01f), true);
 	NewBall->Ball->SetPhysicsLinearVelocity(Along * FMath::Max(Speed, 0.f));
+	OnThrown.Broadcast(NewBall, Thrower);
 	return NewBall;
 }
 

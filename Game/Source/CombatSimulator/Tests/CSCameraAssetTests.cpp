@@ -145,11 +145,10 @@ namespace CSCameraAssetTests
 	};
 }
 
-using namespace CSCameraAssetTests;
-
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSCameraEyeSocketOnHeadTest, "CombatSimulator.CS.Camera.EyeSocketOnHead", CSCameraAssetTests::TestFlags)
 bool FCSCameraEyeSocketOnHeadTest::RunTest(const FString& Parameters)
 {
+	using namespace CSCameraAssetTests;
 	USkeletalMesh* Mesh = LoadObject<USkeletalMesh>(nullptr, MeshPath);
 	if (!TestNotNull(FString(TEXT("SK_BaseCharacter")) + Regenerate, Mesh))
 	{
@@ -179,6 +178,7 @@ bool FCSCameraEyeSocketOnHeadTest::RunTest(const FString& Parameters)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSCameraFirstPersonHidesHeadForOwnerOnlyTest, "CombatSimulator.CS.Camera.FirstPersonHidesHeadForOwnerOnly", CSCameraAssetTests::TestFlags)
 bool FCSCameraFirstPersonHidesHeadForOwnerOnlyTest::RunTest(const FString& Parameters)
 {
+	using namespace CSCameraAssetTests;
 	// Spec 5.3 and Review Focus 5: in first person the head and neck are hidden from the owner only;
 	// another player still sees them. Arms, hands, torso and legs are seen in both views by both.
 	FCameraSim Sim;
@@ -291,6 +291,7 @@ bool FCSCameraFirstPersonHidesHeadForOwnerOnlyTest::RunTest(const FString& Param
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSCameraNoHeadBobRunningTest, "CombatSimulator.CS.Camera.NoHeadBobRunning", CSCameraAssetTests::TestFlags)
 bool FCSCameraNoHeadBobRunningTest::RunTest(const FString& Parameters)
 {
+	using namespace CSCameraAssetTests;
 	// Spec 5.3: no head bob. Jogging and sprinting in first person with the real animation, the
 	// camera's height above the capsule varies by less than 1 cm (the head itself bounces).
 	FCameraSim Sim;
