@@ -163,13 +163,22 @@ void UCSAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	const float NaturalRate = bIsCrouching
 		? ComputeLocomotion(GroundSpeed, CrouchGaits, CrouchStride, 0.01f, 100.f, LocomotionAxis)
 		: ComputeLocomotion(GroundSpeed, StandingGaits, GroundStride, 0.01f, 100.f, LocomotionAxis);
-	LocomotionPlayRate = SplitStride(NaturalRate, Tuning->StrideRateMin, Tuning->StrideRateMax, Tuning->StrideScaleMin, Tuning->StrideScaleMax, StrideScale);
-	LocomotionPlayRate = FMath::Clamp(LocomotionPlayRate, Tuning->LocomotionRateMin, Tuning->LocomotionRateMax);
-	if (bIsInAir || GroundSpeed < 1.f)
+	float WantedStride = 1.f;
+	SplitStride(NaturalRate, Tuning->StrideRateMin, Tuning->StrideRateMax, Tuning->StrideScaleMin, Tuning->StrideScaleMax, WantedStride);
+	// Only walking and running have steps to change: not the air, and not a landing (the state
+	// from the last update, or one that starts in this one).
+	const bool bLanding = State == ECSLocomotionState::Land || (bWasInAir && GroundSpeed < 0.5f * Walk);
+	if (bIsInAir || bLanding)
 	{
-		// Standing or off the ground there are no steps to change.
-		StrideScale = 1.f;
+		WantedStride = 1.f;
 	}
+	// Starting and stopping: the slowest speeds need the shortest steps, which would jump the
+	// stride from 1 the moment the character moves. It comes in over the first of the walk speed
+	// and is eased, so the legs never snap.
+	WantedStride = FMath::Lerp(1.f, WantedStride, FMath::Clamp(GroundSpeed / FMath::Max(0.5f * Walk, 1.f), 0.f, 1.f));
+	StrideScale = FMath::FInterpTo(StrideScale, WantedStride, DeltaSeconds, StrideInterpSpeed);
+	// The rate is whatever the stride in use leaves, so the feet match the ground while it eases.
+	LocomotionPlayRate = FMath::Clamp(NaturalRate / FMath::Max(StrideScale, 0.01f), Tuning->LocomotionRateMin, Tuning->LocomotionRateMax);
 
 	if (bIsInAir)
 	{

@@ -16,8 +16,9 @@
  * the two (SplitStride).
  *
  * It works from the feet the animation gives (no IK bones are needed in the skeleton) and never
- * stretches a leg: a stride longer than the leg reaches is cut off at full extension, so large
- * scales lose a little of their length. At scale 1 the node does nothing.
+ * stretches a leg: a step longer than the leg reaches is cut short along the forward axis, with
+ * the foot kept at its height, so large scales lose a little of their length and no foot is lifted
+ * off the ground. At scale 1 the node does nothing.
  */
 USTRUCT(BlueprintInternalUseOnly)
 struct CSCHARACTER_API FCSAnimNode_StrideScale : public FAnimNode_SkeletalControlBase

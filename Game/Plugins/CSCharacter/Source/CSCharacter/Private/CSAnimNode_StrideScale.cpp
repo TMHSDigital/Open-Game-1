@@ -45,7 +45,22 @@ void FCSAnimNode_StrideScale::SolveLeg(FComponentSpacePoseContext& Output, const
 	FTransform End = Output.Pose.GetComponentSpaceTransform(FootIndex);
 	const FQuat FootRotation = End.GetRotation();
 
-	const FVector Target = ScaleFoot(End.GetLocation(), Upper.GetLocation(), Forward, StrideScale);
+	FVector Target = ScaleFoot(End.GetLocation(), Upper.GetLocation(), Forward, StrideScale);
+	// A longer step must not ask for more than the leg has. The solver does not stretch, so it would
+	// pull the foot back along the line to the hip, which lifts it off the ground. Instead the step
+	// is cut short along the forward axis and the foot keeps its height.
+	const FVector Hip = Upper.GetLocation();
+	const double LegLength = FVector::Dist(Upper.GetLocation(), Lower.GetLocation()) + FVector::Dist(Lower.GetLocation(), End.GetLocation());
+	const FVector FromHip = End.GetLocation() - Hip;
+	const double Ahead = FVector::DotProduct(FromHip, Forward);
+	const FVector Aside = FromHip - Forward * Ahead;
+	// Never shorter than the clip's own reach: a leg the clip already has at full stretch stays as it is.
+	const double MaxAhead = FMath::Max(FMath::Sqrt(FMath::Max(LegLength * LegLength - Aside.SizeSquared(), 0.0)), FMath::Abs(Ahead));
+	const double WantedAhead = FVector::DotProduct(Target - Hip, Forward);
+	if (FMath::Abs(WantedAhead) > MaxAhead)
+	{
+		Target = Hip + Aside + Forward * (FMath::Sign(WantedAhead) * MaxAhead);
+	}
 	// The knee keeps pointing the way the character walks.
 	const FVector KneeTarget = Lower.GetLocation() + Forward * 100.0;
 	AnimationCore::SolveTwoBoneIK(Upper, Lower, End, KneeTarget, Target, false, 1.0, 1.0);

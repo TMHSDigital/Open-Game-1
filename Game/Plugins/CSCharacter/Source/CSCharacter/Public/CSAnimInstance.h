@@ -92,6 +92,10 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "CS|Animation")
 	float LandSeconds = 0.4f;
 
+	/** How fast the stride scale follows the one wanted, 1/s (FInterpTo): about a fifth of a second to get there. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "CS|Animation")
+	float StrideInterpSpeed = 12.f;
+
 	/**
 	 * Stride of each sample of the Ground blend space, in axis order: idle, walk, jog, sprint.
 	 * Filled on the animation Blueprint's class defaults by setup_animation.py. Empty: rate 1.
