@@ -9,6 +9,7 @@ class UCameraComponent;
 class UCSCameraRig;
 class UCSDevTools;
 class UCSPhysicsBodyComponent;
+class UCSStrikeComponent;
 class UPhysicalAnimationComponent;
 class UCSSpringArmComponent;
 class UCSMovementTuning;
@@ -130,6 +131,13 @@ public:
 	/** The physics-driven body: sway, stagger, ragdoll and recovery. */
 	UCSPhysicsBodyComponent* GetPhysicsBody() const { return PhysicsBody; }
 
+	/** The melee attack: a punch steered through the physics body. */
+	UCSStrikeComponent* GetStrike() const { return Strike; }
+
+	/** The attack key: throws a punch (UCSStrikeComponent::StartPunch). Returns whether one started. */
+	UFUNCTION(BlueprintCallable, Category = "CS|Strike")
+	bool Attack();
+
 	/** Dev tools (ragdoll and push keys, feel overlay, tuning reload). */
 	UCSDevTools* GetDevTools() const { return DevTools; }
 
@@ -214,6 +222,10 @@ public:
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CS|Input")
 	TSoftObjectPtr<UInputAction> ToggleCameraAction;
 
+	/** Throws a punch on press. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CS|Input")
+	TSoftObjectPtr<UInputAction> AttackAction;
+
 	/** Dev tool: feel overlay. */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CS|Input")
 	TSoftObjectPtr<UInputAction> DebugOverlayAction;
@@ -289,6 +301,7 @@ private:
 	void OnWalkCompleted();
 	void OnCrouchStarted();
 	void OnToggleCameraStarted();
+	void OnAttackStarted();
 	void OnDebugOverlayStarted();
 	void OnDebugRagdollStarted();
 	void OnDebugPushStarted();
@@ -305,6 +318,9 @@ private:
 
 	UPROPERTY(VisibleAnywhere, Category = "CS|Body")
 	TObjectPtr<UCSPhysicsBodyComponent> PhysicsBody;
+
+	UPROPERTY(VisibleAnywhere, Category = "CS|Strike")
+	TObjectPtr<UCSStrikeComponent> Strike;
 
 	/** Drives the simulated bodies toward the animated pose; set up and run by PhysicsBody. */
 	UPROPERTY(VisibleAnywhere, Category = "CS|Body")

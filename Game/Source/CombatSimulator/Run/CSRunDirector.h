@@ -38,8 +38,9 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FCSRunStateChanged, ECSRunState /* New */);
  *
  * Counting: the director listens to the character plugin's hit and throw events for its own world.
  * A hit on the player's character is taken; a hit on anyone else by the player's character, or by
- * something the player threw, is dealt; anything else is counted as between others. Characters and
- * what hits them know nothing about runs.
+ * something the player threw, is dealt; anything else is counted as between others. A punch is a
+ * hit by the player's character like any other; the punches thrown and landed are counted beside
+ * it from the strike component's events. Characters and what hits them know nothing about runs.
  *
  * While a run is on, one line (FCSRunStats::HudLine) is drawn on the player's screen. It is not a
  * dev tool: it shows with dev tools off.
@@ -98,6 +99,8 @@ private:
 	void RemoveLaunchers();
 	void HandleContact(ACSCharacter* Victim, AActor* Other, const FCSContactRecord& Hit);
 	void HandleThrow(ACSHitBall* Ball, AActor* Thrower);
+	void HandleStrikeStarted(ACSCharacter* Attacker);
+	void HandleStrikeLanded(ACSCharacter* Attacker, AActor* Victim, ECSContactResult Result);
 	void DrawHud(AHUD* HUD, UCanvas* Canvas);
 	void OpenResults();
 
@@ -120,5 +123,7 @@ private:
 
 	FDelegateHandle ContactHandle;
 	FDelegateHandle ThrowHandle;
+	FDelegateHandle StrikeStartedHandle;
+	FDelegateHandle StrikeLandedHandle;
 	FDelegateHandle HudHandle;
 };

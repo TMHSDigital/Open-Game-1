@@ -72,6 +72,11 @@ float FCSRunStats::Accuracy() const
 	return BallsThrown > 0 ? FMath::Min(1.f, float(BallHits) / float(BallsThrown)) : 0.f;
 }
 
+float FCSRunStats::PunchAccuracy() const
+{
+	return PunchesThrown > 0 ? FMath::Min(1.f, float(PunchesLanded) / float(PunchesThrown)) : 0.f;
+}
+
 FString FCSRunStats::FormatTime(float Seconds)
 {
 	const int32 Whole = FMath::Max(0, FMath::FloorToInt(Seconds));
@@ -109,6 +114,14 @@ TArray<FString> FCSRunStats::SummaryLines() const
 {
 	TArray<FString> Lines;
 	Lines.Add(FString::Printf(TEXT("Time: %s"), *FormatTime(Seconds)));
+	if (PunchesThrown > 0)
+	{
+		Lines.Add(FString::Printf(TEXT("Punches: %d thrown, %d landed (%d%%)"), PunchesThrown, PunchesLanded, FMath::RoundToInt(PunchAccuracy() * 100.f)));
+	}
+	else
+	{
+		Lines.Add(TEXT("Punches: none thrown"));
+	}
 	Lines.Add(FString::Printf(TEXT("Balls thrown: %d"), BallsThrown));
 	if (BallsThrown > 0)
 	{

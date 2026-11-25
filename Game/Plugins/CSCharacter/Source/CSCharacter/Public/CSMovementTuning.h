@@ -348,6 +348,39 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Body", meta = (UIMin = "100", UIMax = "5000", Units = "cm/s"))
 	float DevBallSpeed = 2000.f;
 
+	// ----- Punch (UCSStrikeComponent) -----
+
+	/** How long the fist is drawn back to the shoulder before it goes out, seconds. 0: no draw back. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Punch", meta = (UIMin = "0", UIMax = "0.5", Units = "s"))
+	float PunchWindupSeconds = 0.1f;
+
+	/** How long the fist is driven out along the aim, seconds: the time in which it can hit. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Punch", meta = (UIMin = "0.05", UIMax = "0.6", Units = "s"))
+	float PunchStrikeSeconds = 0.16f;
+
+	/** After the strike, how long before the next punch can start, seconds. The arm swings back by itself. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Punch", meta = (UIMin = "0.05", UIMax = "1", Units = "s"))
+	float PunchRecoverSeconds = 0.25f;
+
+	/** How far from the shoulder the fist is driven, cm. Past the arm's length it pulls the upper body after it. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Punch", meta = (UIMin = "30", UIMax = "120", Units = "cm"))
+	float PunchReach = 68.f;
+
+	/** The fastest the fist is driven, cm/s. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Punch", meta = (UIMin = "200", UIMax = "4000", Units = "cm/s"))
+	float PunchSpeed = 1100.f;
+
+	/** How fast the chest is pushed along the aim during the strike, cm/s: the upper body going into the punch. 0: the arm alone. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Punch", meta = (UIMin = "0", UIMax = "600", Units = "cm/s"))
+	float PunchLean = 160.f;
+
+	/**
+	 * The weight behind the fist, kg: what a punch hits like. The hit is this mass arriving at the
+	 * fist's speed (see MinContactSpeed and ContactImpulseScale), so it is far more than the hand.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Punch", meta = (UIMin = "1", UIMax = "100", Units = "kg"))
+	float PunchMass = 14.f;
+
 	// ----- Dev tools -----
 
 	/** Ragdoll and push keys, debug overlay and the tuning reload command are active. On until launch. */

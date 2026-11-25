@@ -89,6 +89,13 @@ namespace
 		{TEXT("ContactRepeatSeconds"), TEXT("Body"), TEXT("s"), 0.05f, 3.f, 0.05f},
 		{TEXT("DevBallMass"), TEXT("Body"), TEXT("kg"), 0.5f, 100.f, 0.5f},
 		{TEXT("DevBallSpeed"), TEXT("Body"), TEXT("cm/s"), 100.f, 5000.f, 50.f},
+		{TEXT("PunchWindupSeconds"), TEXT("Punch"), TEXT("s"), 0.f, 0.5f, 0.01f},
+		{TEXT("PunchStrikeSeconds"), TEXT("Punch"), TEXT("s"), 0.05f, 0.6f, 0.01f},
+		{TEXT("PunchRecoverSeconds"), TEXT("Punch"), TEXT("s"), 0.05f, 1.f, 0.01f},
+		{TEXT("PunchReach"), TEXT("Punch"), TEXT("cm"), 30.f, 120.f, 1.f},
+		{TEXT("PunchSpeed"), TEXT("Punch"), TEXT("cm/s"), 200.f, 4000.f, 50.f},
+		{TEXT("PunchLean"), TEXT("Punch"), TEXT("cm/s"), 0.f, 600.f, 10.f},
+		{TEXT("PunchMass"), TEXT("Punch"), TEXT("kg"), 1.f, 100.f, 0.5f},
 	};
 
 	/** "HitProfile.PositionStrength" -> "Hit Profile: Position Strength". */

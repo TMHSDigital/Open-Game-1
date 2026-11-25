@@ -7,6 +7,7 @@
 #include "CSCharacter.h"
 #include "CSHitBall.h"
 #include "CSRunStore.h"
+#include "CSStrikeComponent.h"
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
 #include "Engine/Font.h"
@@ -40,6 +41,8 @@ void UCSRunDirector::BeginPlay()
 	Super::BeginPlay();
 	ContactHandle = UCSPhysicsBodyComponent::OnAnyContact.AddUObject(this, &UCSRunDirector::HandleContact);
 	ThrowHandle = ACSHitBall::OnThrown.AddUObject(this, &UCSRunDirector::HandleThrow);
+	StrikeStartedHandle = UCSStrikeComponent::OnStrikeStarted.AddUObject(this, &UCSRunDirector::HandleStrikeStarted);
+	StrikeLandedHandle = UCSStrikeComponent::OnStrikeLanded.AddUObject(this, &UCSRunDirector::HandleStrikeLanded);
 	HudHandle = AHUD::OnHUDPostRender.AddUObject(this, &UCSRunDirector::DrawHud);
 }
 
@@ -47,6 +50,10 @@ void UCSRunDirector::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	UCSPhysicsBodyComponent::OnAnyContact.Remove(ContactHandle);
 	ACSHitBall::OnThrown.Remove(ThrowHandle);
+	UCSStrikeComponent::OnStrikeStarted.Remove(StrikeStartedHandle);
+	UCSStrikeComponent::OnStrikeLanded.Remove(StrikeLandedHandle);
+	StrikeStartedHandle.Reset();
+	StrikeLandedHandle.Reset();
 	AHUD::OnHUDPostRender.Remove(HudHandle);
 	ContactHandle.Reset();
 	ThrowHandle.Reset();
@@ -281,6 +288,24 @@ void UCSRunDirector::HandleThrow(ACSHitBall* Ball, AActor* Thrower)
 		}
 		PlayerBalls.Add(Ball);
 		Stats.RecordThrow();
+	}
+}
+
+void UCSRunDirector::HandleStrikeStarted(ACSCharacter* Attacker)
+{
+	if (State == ECSRunState::Running && Attacker && Attacker->GetWorld() == GetWorld() && Attacker == GetPlayerCharacter())
+	{
+		Stats.RecordPunch();
+	}
+}
+
+void UCSRunDirector::HandleStrikeLanded(ACSCharacter* Attacker, AActor* Victim, ECSContactResult Result)
+{
+	// A prop that was punched is not a punch landed: Result is None for it.
+	if (State == ECSRunState::Running && Attacker && Attacker->GetWorld() == GetWorld() && Attacker == GetPlayerCharacter()
+		&& Result != ECSContactResult::None)
+	{
+		Stats.RecordPunchLanded();
 	}
 }
 

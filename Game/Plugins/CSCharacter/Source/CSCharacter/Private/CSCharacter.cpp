@@ -11,6 +11,7 @@
 #include "CSDevTools.h"
 #include "CSMovementTuning.h"
 #include "CSPhysicsBodyComponent.h"
+#include "CSStrikeComponent.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/SkeletalMesh.h"
 #include "Engine/World.h"
@@ -101,6 +102,7 @@ ACSCharacter::ACSCharacter(const FObjectInitializer& ObjectInitializer)
 
 	PhysicalAnimation = CreateDefaultSubobject<UPhysicalAnimationComponent>(TEXT("PhysicalAnimation"));
 	PhysicsBody = CreateDefaultSubobject<UCSPhysicsBodyComponent>(TEXT("PhysicsBody"));
+	Strike = CreateDefaultSubobject<UCSStrikeComponent>(TEXT("Strike"));
 }
 
 const UCSMovementTuning& ACSCharacter::GetActiveTuning() const
@@ -385,6 +387,10 @@ void ACSCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 	{
 		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnToggleCameraStarted);
 	}
+	if (UInputAction* A = Load(AttackAction, TEXT("AttackAction")))
+	{
+		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnAttackStarted);
+	}
 	// Dev keys are always bound; UCSDevTools decides at press time whether they do anything, so a
 	// reload can turn bDevTools on or off (the reload key itself reads the source tuning).
 	if (UInputAction* A = Load(DebugOverlayAction, TEXT("DebugOverlayAction")))
@@ -428,6 +434,16 @@ void ACSCharacter::OnMove(const FInputActionValue& Value)
 	const FRotationMatrix Basis(FRotator(0.f, GetControlRotation().Yaw, 0.f));
 	AddMovementInput(Basis.GetUnitAxis(EAxis::X), Axis.Y);
 	AddMovementInput(Basis.GetUnitAxis(EAxis::Y), Axis.X);
+}
+
+bool ACSCharacter::Attack()
+{
+	return Strike && Strike->StartPunch();
+}
+
+void ACSCharacter::OnAttackStarted()
+{
+	Attack();
 }
 
 void ACSCharacter::OnDebugThrowStarted()

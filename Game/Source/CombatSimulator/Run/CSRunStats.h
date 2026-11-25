@@ -60,6 +60,9 @@ struct COMBATSIMULATOR_API FCSRunStats
 	int32 BallsThrown = 0;
 	/** Hits dealt by a ball the player threw (the rest of Dealt is the player's own body). */
 	int32 BallHits = 0;
+	/** Punches the player threw, and how many of them reached a character. */
+	int32 PunchesThrown = 0;
+	int32 PunchesLanded = 0;
 	FCSRunHits Dealt;
 	FCSRunHits Taken;
 	/** Hits between others, counted only. */
@@ -68,6 +71,11 @@ struct COMBATSIMULATOR_API FCSRunStats
 	/** bPlayerBall: the hit was made by a ball the player threw (only meaningful for Dealt). */
 	void RecordHit(ECSRunHitSide Side, const FCSContactRecord& Hit, bool bPlayerBall = false);
 	void RecordThrow() { ++BallsThrown; }
+	void RecordPunch() { ++PunchesThrown; }
+	void RecordPunchLanded() { ++PunchesLanded; }
+
+	/** Punches landed over punches thrown, 0 to 1. 0 without punches. */
+	float PunchAccuracy() const;
 
 	/** Ball hits over balls thrown, 0 to 1 (at most 1: one ball can hit two). 0 without throws. Hits with the body do not count. */
 	float Accuracy() const;
