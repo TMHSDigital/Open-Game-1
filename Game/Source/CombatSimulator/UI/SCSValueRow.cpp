@@ -48,8 +48,8 @@ void SCSValueRow::Construct(const FArguments& InArgs)
 	OnReset = InArgs._OnReset;
 	const TAttribute<bool> IsChanged = InArgs._IsChanged;
 
-	const FSlateFontInfo Font = FCoreStyle::GetDefaultFontStyle("Regular", 11);
-	const FLinearColor TextColor(0.9f, 0.9f, 0.9f);
+	const FSlateFontInfo RowFont = FCoreStyle::GetDefaultFontStyle("Regular", 11);
+	const FLinearColor RowTextColor(0.9f, 0.9f, 0.9f);
 
 	TSharedRef<SWidget> Editor = SNullWidget::NullWidget;
 	if (InArgs._bIsBool)
@@ -88,7 +88,7 @@ void SCSValueRow::Construct(const FArguments& InArgs)
 				SNew(SBox).WidthOverride(84.f)
 				[
 					SNew(SEditableTextBox)
-					.Font(Font)
+					.Font(RowFont)
 					.SelectAllTextWhenFocused(true)
 					.Text_Lambda([this] { return FText::FromString(FormatNumber(Value.Get(), Step)); })
 					.OnTextCommitted(this, &SCSValueRow::HandleText)
@@ -101,7 +101,7 @@ void SCSValueRow::Construct(const FArguments& InArgs)
 		SNew(SHorizontalBox)
 		+ SHorizontalBox::Slot().FillWidth(0.42f).VAlign(VAlign_Center)
 		[
-			SNew(STextBlock).Font(Font).ColorAndOpacity(TextColor).Text(FText::FromString(InArgs._Label))
+			SNew(STextBlock).Font(RowFont).ColorAndOpacity(RowTextColor).Text(FText::FromString(InArgs._Label))
 		]
 		+ SHorizontalBox::Slot().FillWidth(0.58f).VAlign(VAlign_Center)
 		[
@@ -111,7 +111,7 @@ void SCSValueRow::Construct(const FArguments& InArgs)
 		[
 			SNew(SBox).WidthOverride(54.f)
 			[
-				SNew(STextBlock).Font(Font).ColorAndOpacity(FLinearColor(0.6f, 0.6f, 0.6f)).Text(FText::FromString(InArgs._Unit))
+				SNew(STextBlock).Font(RowFont).ColorAndOpacity(FLinearColor(0.6f, 0.6f, 0.6f)).Text(FText::FromString(InArgs._Unit))
 			]
 		]
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
@@ -119,7 +119,7 @@ void SCSValueRow::Construct(const FArguments& InArgs)
 			SNew(SBox).WidthOverride(16.f)
 			[
 				// The value is not the default (settings) or not the packaged one (tuning).
-				SNew(STextBlock).Font(Font).ColorAndOpacity(FLinearColor(1.f, 0.75f, 0.2f)).Text(FText::FromString(TEXT("*")))
+				SNew(STextBlock).Font(RowFont).ColorAndOpacity(FLinearColor(1.f, 0.75f, 0.2f)).Text(FText::FromString(TEXT("*")))
 				.Visibility_Lambda([IsChanged] { return IsChanged.Get() ? EVisibility::Visible : EVisibility::Hidden; })
 			]
 		]
