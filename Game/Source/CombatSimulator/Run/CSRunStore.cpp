@@ -93,13 +93,19 @@ void UCSRunStore::SaveDraft() const
 	}
 }
 
-bool UCSRunStore::TakePending(FCSRunSetup& OutSetup)
+bool UCSRunStore::TakePending(const FString& CurrentMap, FCSRunSetup& OutSetup)
 {
 	if (!Pending.IsSet())
 	{
 		return false;
 	}
-	OutSetup = Pending.GetValue();
+	const FCSRunSetup Waiting = Pending.GetValue();
 	Pending.Reset();
+	if (Waiting.Map != CurrentMap)
+	{
+		UE_LOG(LogCombatSimulator, Warning, TEXT("UCSRunStore: a run was waiting for %s but %s opened; it is dropped"), *Waiting.Map, *CurrentMap);
+		return false;
+	}
+	OutSetup = Waiting;
 	return true;
 }

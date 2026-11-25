@@ -502,10 +502,16 @@ TSharedRef<SWidget> SCSPauseScreen::BuildRunTab()
 				const bool bIdle = !WeakDirector.IsValid() || WeakDirector->GetState() == ECSRunState::Idle;
 				return FText::FromString(bIdle ? TEXT("Start run") : TEXT("Start a new run with the setup below"));
 			})
-			.OnClicked(ResumeThen([WeakStore](UCSRunDirector& D)
+			.OnClicked(ResumeThen([WeakStore, Maps, CurrentMap](UCSRunDirector& D)
 			{
-				if (const UCSRunStore* S = WeakStore.Get())
+				if (UCSRunStore* S = WeakStore.Get())
 				{
+					// A saved setup may name a map the game no longer has. The Map row then shows the
+					// map being played, so that is where the run starts, and the draft is put right.
+					if (!S->GetDraft().Map.IsEmpty() && !Maps.Contains(S->GetDraft().Map))
+					{
+						S->SetDraftMap(CurrentMap, true);
+					}
 					FString Reason;
 					D.StartRun(S->GetDraft(), Reason);
 				}
@@ -523,13 +529,15 @@ TSharedRef<SWidget> SCSPauseScreen::BuildRunTab()
 			SNew(SButton)
 			.Visibility(WhenRunning)
 			.Text(FText::FromString(TEXT("End run")))
-			.OnClicked_Lambda([WeakDirector]
+			.OnClicked_Lambda([this, WeakDirector]
 			{
 				// Stays on this tab: the results appear below.
 				if (UCSRunDirector* D = WeakDirector.Get())
 				{
 					D->EndRun(ECSRunEnd::Manual);
 				}
+				// This button is gone now that the run is over; focus must not stay on it.
+				FocusFirstControl();
 				return FReply::Handled();
 			})
 		]

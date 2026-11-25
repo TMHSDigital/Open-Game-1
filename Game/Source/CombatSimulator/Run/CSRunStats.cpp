@@ -46,7 +46,7 @@ FString FCSRunHits::DescribeBones(int32 MaxParts) const
 	return FString::Join(Out, TEXT(", "));
 }
 
-void FCSRunStats::RecordHit(ECSRunHitSide Side, const FCSContactRecord& Hit)
+void FCSRunStats::RecordHit(ECSRunHitSide Side, const FCSContactRecord& Hit, bool bPlayerBall)
 {
 	if (Hit.Result == ECSContactResult::None)
 	{
@@ -56,6 +56,7 @@ void FCSRunStats::RecordHit(ECSRunHitSide Side, const FCSContactRecord& Hit)
 	{
 	case ECSRunHitSide::Dealt:
 		Dealt.Record(Hit);
+		BallHits += bPlayerBall ? 1 : 0;
 		break;
 	case ECSRunHitSide::Taken:
 		Taken.Record(Hit);
@@ -68,7 +69,7 @@ void FCSRunStats::RecordHit(ECSRunHitSide Side, const FCSContactRecord& Hit)
 
 float FCSRunStats::Accuracy() const
 {
-	return BallsThrown > 0 ? FMath::Min(1.f, float(Dealt.Hits) / float(BallsThrown)) : 0.f;
+	return BallsThrown > 0 ? FMath::Min(1.f, float(BallHits) / float(BallsThrown)) : 0.f;
 }
 
 FString FCSRunStats::FormatTime(float Seconds)

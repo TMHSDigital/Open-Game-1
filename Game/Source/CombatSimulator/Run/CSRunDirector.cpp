@@ -107,6 +107,7 @@ void UCSRunDirector::BeginRunHere(const FCSRunSetup& InSetup)
 	bHasSetup = true;
 	bCheckPending = false;
 	Stats = FCSRunStats();
+	PlayerBalls.Reset();
 	EndReason = ECSRunEnd::None;
 
 	const FTransform Start = Mode->GetRunStart();
@@ -191,11 +192,10 @@ void UCSRunDirector::TickComponent(float DeltaTime, ELevelTick TickType, FActorC
 		bCheckPending = false;
 		FCSRunSetup Carried;
 		UCSRunStore* Store = UCSRunStore::Get(this);
-		if (Store && Store->TakePending(Carried))
+		const FString Current = FPackageName::GetShortName(UWorld::RemovePIEPrefix(GetWorld()->GetPackage()->GetName()));
+		if (Store && Store->TakePending(Current, Carried))
 		{
 			FString Reason;
-			// The map was opened for this run: whatever its name says, it happens here.
-			Carried.Map.Reset();
 			if (!StartRun(Carried, Reason))
 			{
 				UE_LOG(LogCombatSimulator, Warning, TEXT("UCSRunDirector: the run carried to this map did not start: %s"), *Reason);
@@ -219,16 +219,29 @@ void UCSRunDirector::TickComponent(float DeltaTime, ELevelTick TickType, FActorC
 	}
 }
 
+bool UCSRunDirector::IsPlayerBall(const AActor* Other) const
+{
+	return Other && PlayerBalls.Contains(Other);
+}
+
 ECSRunHitSide UCSRunDirector::Classify(const ACSCharacter* Victim, const AActor* Other) const
 {
 	const ACSCharacter* Player = GetPlayerCharacter();
-	if (!Player || !Victim)
+	if (!Victim)
 	{
 		return ECSRunHitSide::Other;
 	}
-	if (Victim == Player)
+	if (Player && Victim == Player)
 	{
 		return ECSRunHitSide::Taken;
+	}
+	if (IsPlayerBall(Other))
+	{
+		return ECSRunHitSide::Dealt;
+	}
+	if (!Player)
+	{
+		return ECSRunHitSide::Other;
 	}
 	// The player's own body, or anything it threw (a ball's Owner is its thrower).
 	for (const AActor* Actor = Other; Actor; Actor = Actor->GetOwner())
@@ -247,7 +260,7 @@ void UCSRunDirector::HandleContact(ACSCharacter* Victim, AActor* Other, const FC
 	{
 		return;
 	}
-	Stats.RecordHit(Classify(Victim, Other), Hit);
+	Stats.RecordHit(Classify(Victim, Other), Hit, IsPlayerBall(Other));
 }
 
 void UCSRunDirector::HandleThrow(ACSHitBall* Ball, AActor* Thrower)
@@ -258,6 +271,15 @@ void UCSRunDirector::HandleThrow(ACSHitBall* Ball, AActor* Thrower)
 	}
 	if (Thrower && Thrower == GetPlayerCharacter())
 	{
+		// Forget balls that are gone, so the set does not grow with every throw.
+		for (auto It = PlayerBalls.CreateIterator(); It; ++It)
+		{
+			if (!It->IsValid())
+			{
+				It.RemoveCurrent();
+			}
+		}
+		PlayerBalls.Add(Ball);
 		Stats.RecordThrow();
 	}
 }

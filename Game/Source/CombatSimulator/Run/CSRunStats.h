@@ -58,15 +58,18 @@ struct COMBATSIMULATOR_API FCSRunStats
 	float Seconds = 0.f;
 	/** Balls the player threw. */
 	int32 BallsThrown = 0;
+	/** Hits dealt by a ball the player threw (the rest of Dealt is the player's own body). */
+	int32 BallHits = 0;
 	FCSRunHits Dealt;
 	FCSRunHits Taken;
 	/** Hits between others, counted only. */
 	int32 OtherHits = 0;
 
-	void RecordHit(ECSRunHitSide Side, const FCSContactRecord& Hit);
+	/** bPlayerBall: the hit was made by a ball the player threw (only meaningful for Dealt). */
+	void RecordHit(ECSRunHitSide Side, const FCSContactRecord& Hit, bool bPlayerBall = false);
 	void RecordThrow() { ++BallsThrown; }
 
-	/** Share of the player's balls that hit someone, 0 to 1 (a ball that hits two counts once). 0 without throws. */
+	/** Ball hits over balls thrown, 0 to 1 (at most 1: one ball can hit two). 0 without throws. Hits with the body do not count. */
 	float Accuracy() const;
 
 	/** "1:05" for 65 s. */

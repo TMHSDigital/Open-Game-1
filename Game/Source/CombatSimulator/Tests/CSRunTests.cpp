@@ -297,10 +297,11 @@ bool FCSRunStatsTest::RunTest(const FString& Parameters)
 	{
 		Stats.RecordThrow();
 	}
-	Stats.RecordHit(ECSRunHitSide::Dealt, MakeHit(TEXT("spine_03"), 200.f, ECSContactResult::Stagger));
-	Stats.RecordHit(ECSRunHitSide::Dealt, MakeHit(TEXT("head"), 900.f, ECSContactResult::Ragdoll));
-	Stats.RecordHit(ECSRunHitSide::Dealt, MakeHit(TEXT("spine_03"), 100.f, ECSContactResult::Ignored));
-	Stats.RecordHit(ECSRunHitSide::Dealt, MakeHit(TEXT("head"), 500.f, ECSContactResult::None));
+	// Two with a ball and one with the body; a contact that was no hit counts for nothing.
+	Stats.RecordHit(ECSRunHitSide::Dealt, MakeHit(TEXT("spine_03"), 200.f, ECSContactResult::Stagger), true);
+	Stats.RecordHit(ECSRunHitSide::Dealt, MakeHit(TEXT("head"), 900.f, ECSContactResult::Ragdoll), true);
+	Stats.RecordHit(ECSRunHitSide::Dealt, MakeHit(TEXT("spine_03"), 100.f, ECSContactResult::Ignored), false);
+	Stats.RecordHit(ECSRunHitSide::Dealt, MakeHit(TEXT("head"), 500.f, ECSContactResult::None), true);
 	Stats.RecordHit(ECSRunHitSide::Taken, MakeHit(TEXT("upperarm_l"), 300.f, ECSContactResult::Stagger));
 	Stats.RecordHit(ECSRunHitSide::Other, MakeHit(TEXT("pelvis"), 300.f, ECSContactResult::Stagger));
 
@@ -314,7 +315,8 @@ bool FCSRunStatsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Only the first few body parts are named"), Stats.Dealt.DescribeBones(1), FString(TEXT("spine_03 2, and 1 more")));
 	TestEqual(TEXT("Hits taken"), Stats.Taken.Hits, 1);
 	TestEqual(TEXT("Hits between others"), Stats.OtherHits, 1);
-	TestEqual(TEXT("Three of four balls hit"), Stats.Accuracy(), 0.75f);
+	TestEqual(TEXT("Ball hits are counted apart from hits with the body"), Stats.BallHits, 2);
+	TestEqual(TEXT("Two of four balls hit; the body hit is not accuracy"), Stats.Accuracy(), 0.5f);
 
 	Stats.Seconds = 65.4f;
 	TestEqual(TEXT("Time reads as minutes and seconds"), FCSRunStats::FormatTime(Stats.Seconds), FString(TEXT("1:05")));
@@ -323,7 +325,7 @@ bool FCSRunStatsTest::RunTest(const FString& Parameters)
 
 	const FString Summary = FString::Join(Stats.SummaryLines(), TEXT("\n"));
 	TestTrue(TEXT("The results give the time"), Summary.Contains(TEXT("Time: 1:05")));
-	TestTrue(TEXT("The results give the accuracy"), Summary.Contains(TEXT("Accuracy: 75%")));
+	TestTrue(TEXT("The results give the accuracy"), Summary.Contains(TEXT("Accuracy: 50%")));
 	TestTrue(TEXT("The results count what was dealt"), Summary.Contains(TEXT("Hits dealt: 3 (1 staggers, 1 knockdowns, 1 with no effect)")));
 	TestTrue(TEXT("The results count what was taken"), Summary.Contains(TEXT("Hits taken: 1 (1 staggers, 0 knockdowns, 0 with no effect)")));
 	TestTrue(TEXT("The results name where the hits landed"), Summary.Contains(TEXT("where: spine_03 2, head 1")));
@@ -437,10 +439,22 @@ bool FCSRunPlayTest::RunTest(const FString& Parameters)
 			TestTrue(TEXT("The player running into a dummy is dealt"), Director->Classify(Now[0], Player) == ECSRunHitSide::Dealt);
 			TestTrue(TEXT("One dummy on another is neither"), Director->Classify(Now[0], Now[1]) == ECSRunHitSide::Other);
 
+			// A ball stays the player's after the character that threw it is gone (its Owner is cleared then).
+			ACSHitBall* Orphan = ACSHitBall::Throw(World, Player, FVector(-3000.f, 3000.f, 6000.f), FVector::UpVector, 1.f, 10.f);
+			++Run->PlayerBalls;
+			if (TestNotNull(TEXT("A ball thrown by the player"), Orphan))
+			{
+				TestTrue(TEXT("It is known as the player's"), Director->IsPlayerBall(Orphan));
+				Orphan->SetOwner(nullptr);
+				TestTrue(TEXT("Without an owner its hit is still dealt"), Director->Classify(Now[0], Orphan) == ECSRunHitSide::Dealt);
+				Orphan->Destroy();
+			}
+
 			const ECSContactResult Light = HitWithBall(World, Player, Now[0], 8.f, 2000.f);
 			++Run->PlayerBalls;
 			TestTrue(TEXT("A light ball staggers a dummy"), Light == ECSContactResult::Stagger);
 			TestEqual(TEXT("The player's ball on a dummy is a hit dealt"), Stats.Dealt.Hits, 1);
+			TestEqual(TEXT("And a ball hit"), Stats.BallHits, 1);
 			TestEqual(TEXT("And a stagger"), Stats.Dealt.Staggers, 1);
 			TestTrue(TEXT("Its size and body part are kept"), Stats.Dealt.Biggest > 0.f && Stats.Dealt.ByBone.Num() == 1);
 
@@ -642,6 +656,17 @@ bool FCSRunOtherMapTest::RunTest(const FString& Parameters)
 		}
 		UCSRunStore* Store = UCSRunStore::Get(World);
 		TestTrue(TEXT("The waiting run was taken"), Store && !Store->HasPending());
+		if (Store)
+		{
+			// A run waiting for a map that is not the one that opened is dropped, not started here.
+			FCSRunSetup Elsewhere;
+			Elsewhere.Map = TEXT("L_Plane");
+			Store->SetPending(Elsewhere);
+			FCSRunSetup Taken;
+			AddExpectedError(TEXT("a run was waiting for L_Plane"), EAutomationExpectedErrorFlags::Contains, 1);
+			TestFalse(TEXT("A run waiting for another map is not taken here"), Store->TakePending(TEXT("L_MovementGym"), Taken));
+			TestFalse(TEXT("And it is dropped"), Store->HasPending());
+		}
 		TestTrue(TEXT("The draft came along"), Store && Store->GetDraft().Dummies == 2 && Store->GetDraft().Map == TEXT("L_MovementGym"));
 		TestEqual(TEXT("The run knows where it is"), Director->GetSetup().Map, FString(TEXT("L_MovementGym")));
 		TestTrue(TEXT("It is the ring that was asked for"), Director->GetSetup().Formation == ECSRunFormation::Ring);

@@ -78,6 +78,9 @@ public:
 	/** One line for the top of the Run tab: "No run: free play.", "Run on: ...", "Run over (time limit reached): ...". */
 	FString GetStatusText() const;
 
+	/** Other is a ball the player threw in this run (also after the character that threw it is gone). */
+	bool IsPlayerBall(const AActor* Other) const;
+
 	/** Which side of the run a hit on Victim by Other belongs to. */
 	ECSRunHitSide Classify(const ACSCharacter* Victim, const AActor* Other) const;
 
@@ -108,6 +111,12 @@ private:
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<ACSBallLauncher>> Launchers;
+
+	/**
+	 * The balls the player threw in this run. A ball's Owner is cleared when its thrower is destroyed
+	 * (a fall off the map and a respawn), so the owner alone would lose whose ball it was.
+	 */
+	TSet<TWeakObjectPtr<const AActor>> PlayerBalls;
 
 	FDelegateHandle ContactHandle;
 	FDelegateHandle ThrowHandle;

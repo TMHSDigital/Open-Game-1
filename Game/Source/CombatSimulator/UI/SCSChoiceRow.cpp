@@ -1,5 +1,6 @@
 #include "SCSChoiceRow.h"
 
+#include "InputCoreTypes.h"
 #include "Styling/CoreStyle.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/SBoxPanel.h"
@@ -61,6 +62,20 @@ void SCSChoiceRow::Construct(const FArguments& InArgs)
 			]
 		]
 	];
+}
+
+FReply SCSChoiceRow::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent)
+{
+	const FKey Key = InKeyEvent.GetKey();
+	if (Key == EKeys::Left || Key == EKeys::Gamepad_DPad_Left || Key == EKeys::Gamepad_LeftStick_Left)
+	{
+		return HandleStep(-1);
+	}
+	if (Key == EKeys::Right || Key == EKeys::Gamepad_DPad_Right || Key == EKeys::Gamepad_LeftStick_Right)
+	{
+		return HandleStep(1);
+	}
+	return SCompoundWidget::OnKeyDown(MyGeometry, InKeyEvent);
 }
 
 FReply SCSChoiceRow::HandleStep(int32 Direction)

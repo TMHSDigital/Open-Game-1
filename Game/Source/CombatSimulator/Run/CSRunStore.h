@@ -43,8 +43,12 @@ public:
 	void SetPending(const FCSRunSetup& Setup) { Pending = Setup; }
 	bool HasPending() const { return Pending.IsSet(); }
 
-	/** Takes the waiting run, if there is one. */
-	bool TakePending(FCSRunSetup& OutSetup);
+	/**
+	 * The map CurrentMap (short name) is up: takes the waiting run if it was meant for this map.
+	 * A run waiting for any other map is dropped (its map did not open, or the player went
+	 * elsewhere first), so it can never start somewhere it was not asked for.
+	 */
+	bool TakePending(const FString& CurrentMap, FCSRunSetup& OutSetup);
 
 	/** What reading the file said: empty when it was read cleanly or there was none. */
 	const FString& GetLastLoadNote() const { return LastLoadNote; }

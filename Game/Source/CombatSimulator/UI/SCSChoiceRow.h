@@ -25,6 +25,10 @@ public:
 
 	void Construct(const FArguments& InArgs);
 
+	// Left and right (keys, D-pad) change the choice while either button has focus, as they change a
+	// focused slider; up and down still move to the next row.
+	virtual FReply OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent) override;
+
 	/** The index Direction (-1 or 1) steps away from Index among Count choices, wrapping. 0 when there are none. */
 	static int32 Step(int32 Index, int32 Direction, int32 Count);
 
