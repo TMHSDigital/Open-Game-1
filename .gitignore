@@ -7,6 +7,9 @@
 # Local planning and design work (superpowers specs and plans)
 docs/superpowers/
 
+# Private design briefs (interview answers stay local; decisions are published as docs/decisions)
+docs/design/
+
 # Scratch, drafts, and unpublished release material
 _scratch/
 _release/
