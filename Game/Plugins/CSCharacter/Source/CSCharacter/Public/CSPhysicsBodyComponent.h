@@ -50,6 +50,8 @@ struct FCSContactRecord
 	ECSContactResult Result = ECSContactResult::None;
 	/** Name of what hit. */
 	FString Source;
+	/** Where it landed, world. */
+	FVector Point = FVector::ZeroVector;
 };
 
 DECLARE_MULTICAST_DELEGATE(FCSBodyRecovered);

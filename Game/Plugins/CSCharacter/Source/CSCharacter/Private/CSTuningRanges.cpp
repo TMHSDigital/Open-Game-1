@@ -102,6 +102,13 @@ namespace
 		{TEXT("PunchReach"), TEXT("Punch"), TEXT("cm"), 30.f, 120.f, 1.f},
 		{TEXT("PunchSpeed"), TEXT("Punch"), TEXT("cm/s"), 200.f, 4000.f, 50.f},
 		{TEXT("PunchLean"), TEXT("Punch"), TEXT("cm/s"), 0.f, 600.f, 10.f},
+		{TEXT("PunchAssistRange"), TEXT("Punch"), TEXT("cm"), 0.f, 500.f, 5.f},
+		{TEXT("PunchAssistAngle"), TEXT("Punch"), TEXT("deg"), 0.f, 90.f, 1.f},
+		{TEXT("PunchLungeSpeed"), TEXT("Punch"), TEXT("cm/s"), 0.f, 800.f, 10.f},
+		{TEXT("CombatFacingRange"), TEXT("Combat"), TEXT("cm"), 0.f, 2000.f, 10.f},
+		{TEXT("CombatFacingSeconds"), TEXT("Combat"), TEXT("s"), 0.f, 10.f, 0.1f},
+		{TEXT("CombatBackSpeedScale"), TEXT("Combat"), TEXT("x"), 0.3f, 1.f, 0.01f},
+		{TEXT("LegYawMax"), TEXT("Combat"), TEXT("deg"), 0.f, 90.f, 1.f},
 		{TEXT("PunchMass"), TEXT("Punch"), TEXT("kg"), 1.f, 100.f, 0.5f},
 	};
 

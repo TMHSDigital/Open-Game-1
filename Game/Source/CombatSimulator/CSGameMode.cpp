@@ -6,6 +6,8 @@
 #include "CSTargetDummy.h"
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/PlayerStart.h"
+#include "Feedback/CSHitFeedback.h"
+#include "Playtest/CSPlaytestRunner.h"
 #include "Run/CSRunDirector.h"
 #include "EngineUtils.h"
 #include "GameFramework/Character.h"
@@ -28,6 +30,8 @@ ACSGameMode::ACSGameMode()
 	// Tick checks the players' pawns against RespawnKillZ.
 	PrimaryActorTick.bCanEverTick = true;
 	RunDirector = CreateDefaultSubobject<UCSRunDirector>(TEXT("RunDirector"));
+	HitFeedback = CreateDefaultSubobject<UCSHitFeedback>(TEXT("HitFeedback"));
+	PlaytestRunner = CreateDefaultSubobject<UCSPlaytestRunner>(TEXT("PlaytestRunner"));
 }
 
 APawn* ACSGameMode::SpawnDefaultPawnAtTransform_Implementation(AController* NewPlayer, const FTransform& SpawnTransform)

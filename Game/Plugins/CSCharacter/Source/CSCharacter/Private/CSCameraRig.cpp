@@ -66,8 +66,9 @@ void UCSCameraRig::BeginPlay()
 	BlendTarget = GetEffectiveView();
 	BlendProgress = BlendTarget == ECSView::FirstPerson ? 1.f : 0.f;
 	FirstPersonWeight = BlendProgress;
-	ApplyRotationMode(BlendTarget);
+	ApplyRotationMode(BlendTarget == ECSView::FirstPerson || bFaceAimRequested);
 	bHasEye = false;
+	PivotOffset = FVector::ZeroVector;
 	UpdateRig(0.f);
 }
 
@@ -157,17 +158,19 @@ FVector UCSCameraRig::ReadEyeInBodySpace() const
 	return Frame.InverseTransformPosition(World);
 }
 
-void UCSCameraRig::ApplyRotationMode(ECSView Effective)
+void UCSCameraRig::ApplyRotationMode(bool bFaceAim)
 {
+	bAppliedFaceAim = bFaceAim;
 	const ACharacter* Character = Cast<ACharacter>(GetOwner());
 	UCharacterMovementComponent* Move = Character ? Character->GetCharacterMovement() : nullptr;
 	if (!Move)
 	{
 		return;
 	}
-	if (Effective == ECSView::FirstPerson)
+	if (bFaceAim)
 	{
-		// The body turns toward the aim, so the eyes look where the camera looks.
+		// The body turns toward the aim: in first person so the eyes look where the camera looks,
+		// in the combat stance so the character keeps facing what it fights.
 		Move->bOrientRotationToMovement = false;
 		Move->bUseControllerDesiredRotation = true;
 	}
@@ -273,7 +276,11 @@ void UCSCameraRig::UpdateRig(float DeltaSeconds)
 	if (Effective != BlendTarget)
 	{
 		BlendTarget = Effective;
-		ApplyRotationMode(Effective);
+	}
+	const bool bFaceAim = Effective == ECSView::FirstPerson || bFaceAimRequested;
+	if (bFaceAim != bAppliedFaceAim)
+	{
+		ApplyRotationMode(bFaceAim);
 	}
 	const float Goal = Effective == ECSView::FirstPerson ? 1.f : 0.f;
 	const float Step = T.CameraBlendSeconds > KINDA_SMALL_NUMBER ? DeltaSeconds / T.CameraBlendSeconds : 1.f;
@@ -321,7 +328,15 @@ void UCSCameraRig::UpdateRig(float DeltaSeconds)
 		Arm->SocketOffset = T.ThirdPersonShoulderOffset;
 		Arm->CameraLagSpeed = T.ThirdPersonLagSpeed;
 		Arm->CameraLagMaxDistance = T.ThirdPersonLagMaxDistance;
-		Arm->SetWorldLocation(Eye);
+		// Ragdolled or getting up: the pivot goes down with the body, so the camera shows it lying and
+		// getting up instead of the empty air where its head was. Smoothed both ways.
+		FVector WantedOffset = FVector::ZeroVector;
+		if (CSCharacter && CSCharacter->IsRagdolled() && Body)
+		{
+			WantedOffset = Body->GetSocketLocation(RagdollPivotBone) + FVector(0.f, 0.f, RagdollPivotHeight) - Eye;
+		}
+		PivotOffset = bFirstUpdate ? WantedOffset : FMath::Lerp(PivotOffset, WantedOffset, Ease(RagdollPivotSeconds));
+		Arm->SetWorldLocation(Eye + PivotOffset);
 		Arm->UpdateArm(DeltaSeconds, !bFirstUpdate);
 		ThirdPerson = Arm->GetSocketLocation(USpringArmComponent::SocketName);
 	}

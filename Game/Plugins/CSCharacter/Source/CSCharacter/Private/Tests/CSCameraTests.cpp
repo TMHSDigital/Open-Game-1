@@ -469,7 +469,7 @@ bool FCSCameraTuningReloadChangesRigTest::RunTest(const FString& Parameters)
 	Tuning->ThirdPersonLagMaxDistance = 30.f;
 	Tuning->FirstPersonSmoothSeconds = 0.3f;
 	Sim.Run(FVector::ZeroVector, 0.2f);
-	TestNearlyEqual(TEXT("An edit does nothing until it is reloaded"), Arm->TargetArmLength, 260.f, 0.001f);
+	TestNearlyEqual(TEXT("An edit does nothing until it is reloaded"), Arm->TargetArmLength, GetDefault<UCSMovementTuning>()->ThirdPersonArmLength, 0.001f);
 	FString Message;
 	TestTrue(TEXT("Reload accepted"), UCSDevTools::ReloadTuning(*Character, Message));
 	Sim.Run(FVector::ZeroVector, 2.f);

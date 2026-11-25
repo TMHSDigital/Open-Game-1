@@ -72,6 +72,18 @@ Play keys: WASD and mouse, Space jump (from a crouch it stands up and jumps), Le
 9. Gait speeds and the feet: the walk, jog, sprint and crouch clips get their blend position and play rate while the game runs, from the speed the character actually moves and each clip's stride (`UCSAnimInstance::ComputeLocomotion`), so changing a gait speed does not make the feet slide and needs no script rerun. The play rate is held between `LocomotionRateMin` and `LocomotionRateMax`; outside them the feet slide. `setup_animation.py` only needs a rerun when the clips themselves change. The other editor scripts in `Game/Content/Python/` are rerunnable: `import_base_character.py` (mesh, eyes socket, physics asset; never overwrites `DA_MovementTuning`), `create_input_assets.py` (input actions and `IMC_Character`), `create_movement_maps.py` (`L_Plane`, `L_MovementGym`, grid materials, the dummies and the ball launcher) and `create_capture_stage.py`.
 10. Run `pwsh tools/ue/test.ps1 -Filter CombatSimulator.CS` (movement, animation, camera, body, dev tools, maps). Add capture cameras for the gym with the `capture` skill; owner-view shots use the `view`, `commands` and `settleSeconds` fields described there.
 
+## Play-test a build
+
+The game plays itself through scripted scenarios on a recording. Nothing is sent from outside, so the result does not depend on window focus or guessed distances. Skill: `playtest`.
+
+1. Build the editor (`pwsh tools/ue/build.ps1`), or package one (`tools/ue/package.ps1`) for `-Target Packaged`.
+2. `pwsh tools/ue/playtest.ps1 [-Scenario punch,stance] [-Target Packaged]`. Leave the game window uncovered and the desktop unlocked: the window's area of the screen is recorded.
+3. The game (`UCSPlaytestRunner`, started with `-CSPlaytest=`) drives the player, frames the whole body with a review camera, writes the segment label on screen and logs timed events, then quits.
+4. The script cuts a clip and an 8-frame contact sheet per segment into `_scratch/playtest/<time>-<scenario>/`, which is gitignored. It also writes `summary.md` with the game's numbers: punches landed, facing error, top speed, when a body went down and got up.
+5. Review `summary.md`, `overview.png` and the sheets. Sample the clips frame by frame for a single motion.
+
+New scenarios go in `Game/Source/CombatSimulator/Playtest/CSPlaytestRunner.cpp`, with their name added to the script.
+
 ## Open a decision
 
 Skill: `decide`. Tool: `gh`.

@@ -87,6 +87,16 @@ public:
 
 	FCSRunStateChanged OnStateChanged;
 
+	/**
+	 * Real seconds between the end of a run and its results opening: the player may still be
+	 * clicking (an attack), and the clicks would land on the results.
+	 */
+	UPROPERTY(EditAnywhere, Category = "CS|Runs", meta = (ClampMin = "0", Units = "s"))
+	float ResultsDelaySeconds = 1.f;
+
+	/** The results are waiting to open (the run has just ended). */
+	bool AreResultsPending() const { return ResultsAt > 0.0; }
+
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
@@ -109,6 +119,8 @@ private:
 	FCSRunSetup Setup;
 	FCSRunStats Stats;
 	bool bHasSetup = false;
+	/** Real time the results open; 0 when none are waiting. */
+	double ResultsAt = 0.0;
 	/** A run carried over from another map, started on the first tick (the player exists by then). */
 	bool bCheckPending = true;
 

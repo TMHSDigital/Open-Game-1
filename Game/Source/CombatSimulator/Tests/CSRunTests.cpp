@@ -474,9 +474,12 @@ bool FCSRunPlayTest::RunTest(const FString& Parameters)
 		}
 		if (Run->Stage == 2)
 		{
-			// The goal was one knockdown: the director ends the run on its next tick.
-			if (Director->GetState() != ECSRunState::Ended)
+			// The goal was one knockdown: the director ends the run on its next tick, and the results
+			// open a moment later (ResultsDelaySeconds).
+			if (Director->GetState() != ECSRunState::Ended || !PC->IsPauseScreenOpen())
 			{
+				TestFalse(TEXT("The results do not open the moment the run ends"), Director->GetState() == ECSRunState::Ended
+					&& !Director->AreResultsPending() && !PC->IsPauseScreenOpen() && Run->Waited() < Director->ResultsDelaySeconds * 0.5);
 				return false;
 			}
 			TestTrue(TEXT("The run ended at its knockdown goal"), Director->GetEndReason() == ECSRunEnd::KnockdownGoal);
@@ -520,12 +523,13 @@ bool FCSRunPlayTest::RunTest(const FString& Parameters)
 
 			Director->EndRun(ECSRunEnd::Manual);
 			TestTrue(TEXT("The player can end a run"), Director->GetState() == ECSRunState::Ended && Director->GetEndReason() == ECSRunEnd::Manual);
-			TestTrue(TEXT("The results open then too"), PC->IsPauseScreenOpen());
-			PC->SetPauseScreenOpen(false);
+			TestTrue(TEXT("The results are on their way then too"), Director->AreResultsPending());
+			TestFalse(TEXT("But not open yet: the player may still be clicking"), PC->IsPauseScreenOpen());
 
 			Run->OldPawn = Player;
 			Director->LeaveRun();
 			TestTrue(TEXT("Leaving goes back to no run"), Director->GetState() == ECSRunState::Idle);
+			TestFalse(TEXT("Leaving drops the results that were on their way"), Director->AreResultsPending());
 			TestFalse(TEXT("With no run there is nothing to run again"), Director->Rerun());
 			Run->Next();
 			return false;
@@ -580,13 +584,13 @@ bool FCSRunTimeLimitTest::RunTest(const FString& Parameters)
 			Run->Next();
 			return false;
 		}
-		if (Director->GetState() == ECSRunState::Ended)
+		if (Director->GetState() == ECSRunState::Ended && PC->IsPauseScreenOpen())
 		{
 			TestTrue(TEXT("The run ended at its time limit"), Director->GetEndReason() == ECSRunEnd::TimeLimit);
 			TestEqual(TEXT("Its time is the limit"), Director->GetStats().Seconds, 5.f);
 			TestEqual(TEXT("A run with no dummies has none, the map's included"), LiveDummies(World).Num(), 0);
 			TestTrue(TEXT("The results opened"), PC->IsPauseScreenOpen());
-			TestTrue(TEXT("It took about as long as it said"), Run->Waited() > 4.0);
+			TestTrue(TEXT("It took about as long as it said, and the results a moment more"), Run->Waited() > 4.0 + Director->ResultsDelaySeconds * 0.8);
 			PC->SetPauseScreenOpen(false);
 			return true;
 		}

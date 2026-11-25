@@ -5,6 +5,8 @@
 #include "CSMovementTuning.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "PhysicsEngine/BodyInstance.h"
 
 FCSStrikeStarted UCSStrikeComponent::OnStrikeStarted;
@@ -61,10 +63,42 @@ bool UCSStrikeComponent::StartPunch()
 	PeakSpeed = 0.f;
 	HitActors.Reset();
 	StrikeAim = GetAimDirection();
+	Target = FindTarget();
+	AimAtTarget();
+	bSteppingIn = Target.IsValid();
 	bHasLastHand = false;
-	SetPhase(GetTuning().PunchWindupSeconds > 0.f ? ECSStrikePhase::Windup : ECSStrikePhase::Strike);
+	if (GetTuning().PunchWindupSeconds > 0.f)
+	{
+		SetPhase(ECSStrikePhase::Windup);
+	}
+	else
+	{
+		BeginStrike();
+	}
 	OnStrikeStarted.Broadcast(GetCharacter());
 	return true;
+}
+
+void UCSStrikeComponent::ReleaseArm()
+{
+	// The fist was driven fast; let go at that speed, the arm swings on past the target and up over
+	// the head. It is let go moving with the body instead, and the motors bring it back.
+	const ACSCharacter* Character = GetCharacter();
+	USkeletalMeshComponent* Body = GetBody();
+	if (!Character || !Body)
+	{
+		return;
+	}
+	const int32 Index = HandIndex();
+	for (const FName Bone : {HandBones[Index], ForearmBones[Index]})
+	{
+		FBodyInstance* Part = Body->GetBodyInstance(Bone);
+		if (Part && Part->IsValidBodyInstance() && Part->IsInstanceSimulatingPhysics())
+		{
+			Part->SetLinearVelocity(Character->GetVelocity(), false);
+			Part->SetAngularVelocityInRadians(FVector::ZeroVector, false);
+		}
+	}
 }
 
 void UCSStrikeComponent::Cancel()
@@ -79,6 +113,122 @@ void UCSStrikeComponent::SetPhase(ECSStrikePhase NewPhase)
 	SetComponentTickEnabled(NewPhase != ECSStrikePhase::None);
 }
 
+ACSCharacter* UCSStrikeComponent::FindTarget() const
+{
+	const ACSCharacter* Self = GetCharacter();
+	const UWorld* World = GetWorld();
+	const UCSMovementTuning& T = GetTuning();
+	if (!Self || !World || T.PunchAssistRange <= 0.f)
+	{
+		return nullptr;
+	}
+	const FVector From = GetChestLocation();
+	const FVector Aim = GetAimDirection().GetSafeNormal2D();
+	ACSCharacter* Best = nullptr;
+	float BestScore = TNumericLimits<float>::Max();
+	for (TActorIterator<ACSCharacter> It(GetWorld()); It; ++It)
+	{
+		ACSCharacter* Other = *It;
+		if (Other == Self || Other->IsActorBeingDestroyed() || Other->IsRagdolled())
+		{
+			continue;
+		}
+		const USkeletalMeshComponent* OtherBody = Other->GetMesh();
+		const FVector Chest = OtherBody ? OtherBody->GetSocketLocation(ChestBone) : Other->GetActorLocation();
+		const FVector To = (Chest - From) * FVector(1.f, 1.f, 0.f);
+		const float Distance = float(To.Size());
+		if (Distance > T.PunchAssistRange || Distance < 1.f)
+		{
+			continue;
+		}
+		const float Cos = float(FVector::DotProduct(To / Distance, Aim));
+		// At arm's length the cone opens to the side: an opponent at the shoulder (a stagger moves it
+		// there) is still the one in the fight, though no longer in front of the aim.
+		const float Close = FMath::Clamp((Distance - T.PunchReach) / FMath::Max(T.PunchReach, 1.f), 0.f, 1.f);
+		const float Angle = FMath::Lerp(FMath::Max(T.PunchAssistAngle, 90.f), T.PunchAssistAngle, Close);
+		if (Cos < FMath::Cos(FMath::DegreesToRadians(Angle)))
+		{
+			continue;
+		}
+		// Nearer and straighter ahead wins: a target right in front beats one at the edge of the cone.
+		const float Score = Distance / T.PunchAssistRange + (1.f - Cos);
+		if (Score < BestScore)
+		{
+			BestScore = Score;
+			Best = Other;
+		}
+	}
+	return Best;
+}
+
+FVector UCSStrikeComponent::GetAimPointOn(const ACSCharacter& Victim) const
+{
+	const USkeletalMeshComponent* VictimBody = Victim.GetMesh();
+	const FVector Chest = VictimBody ? VictimBody->GetSocketLocation(ChestBone) : Victim.GetActorLocation();
+	const ACSCharacter* Self = GetCharacter();
+	if (!Self || !VictimBody)
+	{
+		return Chest;
+	}
+	// The line of sight from the eyes along the control rotation, at the target's distance.
+	const FVector Eye = Self->GetPawnViewLocation();
+	const FRotator Look = Self->GetController() ? Self->GetControlRotation() : Self->GetActorRotation();
+	const double Across = FVector::Dist2D(Eye, Chest);
+	const double Height = Eye.Z + FMath::Tan(FMath::DegreesToRadians(FRotator::NormalizeAxis(Look.Pitch))) * Across;
+	// Held to the body: no lower than a little above the pelvis, no higher than the upper chest.
+	const double Low = VictimBody->GetSocketLocation(TEXT("pelvis")).Z + 20.0;
+	const double High = VictimBody->GetSocketLocation(AimTopBone).Z;
+	return FVector(Chest.X, Chest.Y, FMath::Clamp(Height, FMath::Min(Low, High), FMath::Max(Low, High)));
+}
+
+void UCSStrikeComponent::AimAtTarget()
+{
+	const ACSCharacter* Victim = Target.Get();
+	if (!Victim)
+	{
+		return;
+	}
+	FRotator Toward = (GetAimPointOn(*Victim) - GetChestLocation()).Rotation();
+	Toward.Pitch = FMath::Clamp(FRotator::NormalizeAxis(Toward.Pitch), -MaxAimPitch, MaxAimPitch);
+	Toward.Roll = 0.f;
+	StrikeAim = Toward.Vector();
+}
+
+void UCSStrikeComponent::BeginStrike()
+{
+	SetPhase(ECSStrikePhase::Strike);
+	AimAtTarget();
+}
+
+void UCSStrikeComponent::StepIn()
+{
+	ACSCharacter* Character = GetCharacter();
+	const ACSCharacter* Victim = Target.Get();
+	UCharacterMovementComponent* Move = Character ? Character->GetCharacterMovement() : nullptr;
+	const UCSMovementTuning& T = GetTuning();
+	if (!Victim || !Move || !Move->IsMovingOnGround() || T.PunchLungeSpeed <= 0.f)
+	{
+		return;
+	}
+	// Out of reach: step in until the target's chest is within the arm's reach of this one. That is
+	// closer than the two bodies can stand (their capsules stop them first), so the step goes on
+	// until they meet or the strike ends, and the arm arrives with the body behind it.
+	const USkeletalMeshComponent* VictimBody = Victim->GetMesh();
+	const FVector Chest = VictimBody ? VictimBody->GetSocketLocation(ChestBone) : Victim->GetActorLocation();
+	const FVector To = (Chest - GetChestLocation()) * FVector(1.f, 1.f, 0.f);
+	if (To.Size() <= T.PunchReach)
+	{
+		bSteppingIn = false;
+		return;
+	}
+	const FVector Along = To.GetSafeNormal();
+	const float Current = float(FVector::DotProduct(Move->Velocity, Along));
+	if (Current < T.PunchLungeSpeed)
+	{
+		Move->Velocity += Along * (T.PunchLungeSpeed - Current);
+	}
+}
+
 FVector UCSStrikeComponent::GetAimDirection() const
 {
 	const ACSCharacter* Character = GetCharacter();
@@ -86,7 +236,9 @@ FVector UCSStrikeComponent::GetAimDirection() const
 	{
 		return FVector::ForwardVector;
 	}
-	FRotator Aim = Character->GetBaseAimRotation();
+	// The control rotation is where the player aims. The view point is not: another camera (a cut,
+	// a review camera) may be the view target, and a punch must not follow it.
+	FRotator Aim = Character->GetController() ? Character->GetControlRotation() : Character->GetActorRotation();
 	Aim.Pitch = FMath::Clamp(FRotator::NormalizeAxis(Aim.Pitch), -MaxAimPitch, MaxAimPitch);
 	Aim.Roll = 0.f;
 	const FVector Direction = Aim.Vector();
@@ -132,13 +284,13 @@ FVector UCSStrikeComponent::ComputeHandTarget(ECSStrikePhase InPhase, const FVec
 	}
 }
 
-FVector UCSStrikeComponent::ComputeDriveVelocity(const FVector& Hand, const FVector& Target, float DeltaTime, float MaxSpeed, const FVector& BaseVelocity)
+FVector UCSStrikeComponent::ComputeDriveVelocity(const FVector& Hand, const FVector& Goal, float DeltaTime, float MaxSpeed, const FVector& BaseVelocity)
 {
 	if (DeltaTime <= UE_SMALL_NUMBER)
 	{
 		return BaseVelocity;
 	}
-	return BaseVelocity + ((Target - Hand) / DeltaTime).GetClampedToMaxSize(FMath::Max(MaxSpeed, 0.f));
+	return BaseVelocity + ((Goal - Hand) / DeltaTime).GetClampedToMaxSize(FMath::Max(MaxSpeed, 0.f));
 }
 
 void UCSStrikeComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -164,11 +316,12 @@ void UCSStrikeComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 	PhaseSeconds += DeltaTime;
 	if (Phase == ECSStrikePhase::Windup && PhaseSeconds >= T.PunchWindupSeconds)
 	{
-		SetPhase(ECSStrikePhase::Strike);
+		BeginStrike();
 	}
 	else if (Phase == ECSStrikePhase::Strike && PhaseSeconds >= T.PunchStrikeSeconds)
 	{
 		SetPhase(ECSStrikePhase::Recover);
+		ReleaseArm();
 	}
 	else if (Phase == ECSStrikePhase::Recover && PhaseSeconds >= T.PunchRecoverSeconds)
 	{
@@ -177,6 +330,11 @@ void UCSStrikeComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 	}
 	if (Phase == ECSStrikePhase::Windup || Phase == ECSStrikePhase::Strike)
 	{
+		if (bSteppingIn)
+		{
+			// Every frame until in reach: ground friction would stop a single push within the punch.
+			StepIn();
+		}
 		Drive(DeltaTime);
 	}
 }
@@ -203,10 +361,10 @@ void UCSStrikeComponent::Drive(float DeltaTime)
 	const UCSMovementTuning& T = GetTuning();
 	const FVector Shoulder = Body->GetSocketLocation(ShoulderBones[Index]);
 	const FVector Hand = Body->GetSocketLocation(HandBones[Index]);
-	const FVector Target = ComputeHandTarget(Phase, Shoulder, GetChestLocation(), StrikeAim, T.PunchReach);
+	const FVector HandGoal = ComputeHandTarget(Phase, Shoulder, GetChestLocation(), StrikeAim, T.PunchReach);
 	// The draw back is unhurried; only the strike is at full speed.
 	const float Speed = Phase == ECSStrikePhase::Strike ? T.PunchSpeed : T.PunchSpeed * 0.5f;
-	Fist->SetLinearVelocity(ComputeDriveVelocity(Hand, Target, DeltaTime, Speed, Character->GetVelocity()), false);
+	Fist->SetLinearVelocity(ComputeDriveVelocity(Hand, HandGoal, DeltaTime, Speed, Character->GetVelocity()), false);
 
 	// The lean: during the strike the chest moves along the aim at PunchLean or faster. Only what is
 	// missing is added, so a chest already going that way (a hit from behind, a run) is left alone.
@@ -242,7 +400,9 @@ void UCSStrikeComponent::Sweep()
 		bHasLastHand = false;
 	}
 	const FVector From = bHasLastHand ? LastHandLocation : Hand;
-	if (bHasLastHand && DeltaTime > UE_SMALL_NUMBER)
+	// Measured until the punch lands: the hit-stop that follows slows the world, and a frame that
+	// short would turn the fist settling against the body into a huge speed.
+	if (bHasLastHand && !bLanded && DeltaTime > UE_SMALL_NUMBER)
 	{
 		// Relative to the character, so running does not count as a fast fist.
 		const FVector Relative = (Hand - From) / DeltaTime - Character->GetVelocity();

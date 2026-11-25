@@ -7,6 +7,8 @@
 
 class ACSCharacter;
 class ACSTargetDummy;
+class UCSHitFeedback;
+class UCSPlaytestRunner;
 class UCSRunDirector;
 class UCSMovementTuning;
 
@@ -91,6 +93,12 @@ public:
 	/** Starts, counts and ends simulation runs on this map. */
 	UCSRunDirector* GetRunDirector() const { return RunDirector; }
 
+	/** Flashes, hit marks and the hit-stop. */
+	UCSHitFeedback* GetHitFeedback() const { return HitFeedback; }
+
+	/** Scripted play-tests (only active with -CSPlaytest=). */
+	UCSPlaytestRunner* GetPlaytestRunner() const { return PlaytestRunner; }
+
 	/** Short names of RunMaps ("L_Plane"), in order. */
 	TArray<FString> GetRunMapNames() const;
 
@@ -162,6 +170,12 @@ private:
 
 	UPROPERTY(VisibleAnywhere, Category = "CS|Runs")
 	TObjectPtr<UCSRunDirector> RunDirector;
+
+	UPROPERTY(VisibleAnywhere, Category = "CS|Feedback")
+	TObjectPtr<UCSHitFeedback> HitFeedback;
+
+	UPROPERTY(VisibleAnywhere, Category = "CS|Playtest")
+	TObjectPtr<UCSPlaytestRunner> PlaytestRunner;
 
 	FString LastMapSwitchTarget;
 };

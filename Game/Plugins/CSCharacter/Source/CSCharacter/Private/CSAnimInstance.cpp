@@ -101,6 +101,14 @@ void UCSAnimInstance::SetState(ECSLocomotionState NewState)
 	PoseIndex = int32(PoseForState(State));
 }
 
+float UCSAnimInstance::ComputeLegYaw(float MoveAngle, float MaxYaw, bool& bOutBackward)
+{
+	const float Angle = FRotator::NormalizeAxis(MoveAngle);
+	bOutBackward = FMath::Abs(Angle) > 100.f;
+	const float FromFacing = bOutBackward ? Angle - FMath::Sign(Angle) * 180.f : Angle;
+	return FMath::Clamp(FromFacing, -FMath::Abs(MaxYaw), FMath::Abs(MaxYaw));
+}
+
 float UCSAnimInstance::SplitStride(float NaturalRate, float RateMin, float RateMax, float ScaleMin, float ScaleMax, float& OutStrideScale)
 {
 	OutStrideScale = 1.f;
@@ -126,6 +134,7 @@ void UCSAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 		LocomotionAxis = 0.f;
 		LocomotionPlayRate = 1.f;
 		StrideScale = 1.f;
+		LegYaw = 0.f;
 		bIsCrouching = bIsInAir = false;
 		SetState(ECSLocomotionState::Idle);
 		return;
@@ -179,6 +188,24 @@ void UCSAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	StrideScale = FMath::FInterpTo(StrideScale, WantedStride, DeltaSeconds, StrideInterpSpeed);
 	// The rate is whatever the stride in use leaves, so the feet match the ground while it eases.
 	LocomotionPlayRate = FMath::Clamp(NaturalRate / FMath::Max(StrideScale, 0.01f), Tuning->LocomotionRateMin, Tuning->LocomotionRateMax);
+
+	// Facing the aim and moving another way (the combat stance, first person): the legs turn toward
+	// the movement and the steps play backward when backing off. Facing the way it moves this is
+	// nothing: the angle is 0.
+	float WantedLegYaw = 0.f;
+	if (!bIsInAir && !bLanding && GroundSpeed > 30.f)
+	{
+		const FVector Facing = Character->GetActorForwardVector().GetSafeNormal2D();
+		const FVector Moving = Velocity.GetSafeNormal2D();
+		const float MoveAngle = FMath::RadiansToDegrees(FMath::Atan2(float(FVector::CrossProduct(Facing, Moving).Z), float(FVector::DotProduct(Facing, Moving))));
+		bool bBackward = false;
+		WantedLegYaw = ComputeLegYaw(MoveAngle, Tuning->LegYawMax, bBackward);
+		if (bBackward)
+		{
+			LocomotionPlayRate = -LocomotionPlayRate;
+		}
+	}
+	LegYaw = FMath::FInterpTo(LegYaw, WantedLegYaw, DeltaSeconds, LegYawInterpSpeed);
 
 	if (bIsInAir)
 	{

@@ -50,6 +50,7 @@ namespace
 void SCSPauseScreen::Construct(const FArguments& InArgs)
 {
 	Owner = InArgs._Owner;
+	OpenedAt = FPlatformTime::Seconds();
 	const ACSPlayerController* Controller = Owner.Get();
 	Tabs = FCSPauseMenuModel::Tabs(Controller && Controller->AreDevToolsOn());
 
@@ -192,6 +193,11 @@ FReply SCSPauseScreen::Resume()
 		C->SetPauseScreenOpen(false);
 	}
 	return FReply::Handled();
+}
+
+FReply SCSPauseScreen::OnPreviewMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
+{
+	return IsInClickGrace() ? FReply::Handled() : FReply::Unhandled();
 }
 
 FReply SCSPauseScreen::OnPreviewKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent)

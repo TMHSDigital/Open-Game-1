@@ -15,6 +15,7 @@
 #include "Engine/LocalPlayer.h"
 #include "Engine/SkeletalMesh.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -438,7 +439,45 @@ void ACSCharacter::OnMove(const FInputActionValue& Value)
 
 bool ACSCharacter::Attack()
 {
-	return Strike && Strike->StartPunch();
+	if (!Strike || !Strike->StartPunch())
+	{
+		return false;
+	}
+	LastAttackTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+	return true;
+}
+
+void ACSCharacter::UpdateCombatStance()
+{
+	const UWorld* World = GetWorld();
+	const UCSMovementTuning& T = GetActiveTuning();
+	bool bStance = false;
+	if (World && IsPlayerControlled() && !bRagdolled)
+	{
+		const double Now = World->GetTimeSeconds();
+		if (T.CombatFacingRange > 0.f)
+		{
+			const float RangeSquared = T.CombatFacingRange * T.CombatFacingRange;
+			for (TActorIterator<ACSCharacter> It(World); It; ++It)
+			{
+				const ACSCharacter* Other = *It;
+				if (Other != this && !Other->IsActorBeingDestroyed() && !Other->IsRagdolled()
+					&& FVector::DistSquared2D(Other->GetActorLocation(), GetActorLocation()) <= RangeSquared)
+				{
+					LastNearTime = Now;
+					break;
+				}
+			}
+		}
+		// Held for CombatFacingSeconds after an attack, and after the opponent was last in range:
+		// backing off out of range must not turn the body around mid-retreat.
+		bStance = Now - FMath::Max(LastAttackTime, LastNearTime) < T.CombatFacingSeconds;
+	}
+	bCombatStance = bStance;
+	if (CameraRig)
+	{
+		CameraRig->SetFaceAimRequested(bCombatStance);
+	}
 }
 
 void ACSCharacter::OnAttackStarted()
@@ -651,6 +690,7 @@ void ACSCharacter::Tick(float DeltaSeconds)
 	const UCSMovementTuning& T = GetActiveTuning();
 	UCharacterMovementComponent* Move = GetCharacterMovement();
 	SlopeSpeedFactor = ComputeSlopeSpeedFactor(T);
+	UpdateCombatStance();
 
 	float Cap = GetGaitSpeed(Gait);
 	if (Gait == ECSGait::Sprint)
@@ -664,6 +704,17 @@ void ACSCharacter::Tick(float DeltaSeconds)
 		Cap = Rate > 0.f
 			? FMath::Clamp(FMath::Max(T.JogSpeed, FlatSpeed) + Rate * DeltaSeconds, T.JogSpeed, T.SprintSpeed)
 			: T.SprintSpeed;
+	}
+	if (bCombatStance)
+	{
+		// Facing the aim: backing off is slower than going forward, and never a sprint.
+		const FVector Wanted = Move->GetCurrentAcceleration().GetSafeNormal2D();
+		const float Back = FMath::Clamp(-float(FVector::DotProduct(Wanted, GetActorForwardVector().GetSafeNormal2D())), 0.f, 1.f);
+		if (Back > 0.5f)
+		{
+			Cap = FMath::Min(Cap, T.JogSpeed);
+		}
+		Cap *= FMath::Lerp(1.f, T.CombatBackSpeedScale, Back);
 	}
 	Move->MaxWalkSpeed = Cap * SlopeSpeedFactor;
 

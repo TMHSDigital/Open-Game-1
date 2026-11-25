@@ -1084,6 +1084,7 @@ ECSContactResult UCSPhysicsBodyComponent::ReceiveContact(AActor* OtherActor, FNa
 	LastContact.VelocityChange = float(Change.Size());
 	LastContact.Result = Result;
 	LastContact.Source = GetNameSafe(OtherActor);
+	LastContact.Point = ImpactPoint;
 	OnAnyContact.Broadcast(GetCharacter(), OtherActor, LastContact);
 	return Result;
 }

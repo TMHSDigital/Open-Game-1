@@ -360,7 +360,7 @@ def make_anim_blueprint(skeleton, assets):
     abp = load_or_create(ABP, unreal.AnimBlueprint, factory)
     poses = [unreal.CSPoseSource(asset=assets[a], loop=loop, blend_in_seconds=blend) for a, loop, blend in POSES]
     result = unreal.CSAnimGraphBuilder.build_locomotion_graph(
-        abp, poses, "PoseIndex", "LocomotionAxis", "LocomotionPlayRate", "DefaultSlot", "StrideScale")
+        abp, poses, "PoseIndex", "LocomotionAxis", "LocomotionPlayRate", "DefaultSlot", "StrideScale", "LegYaw")
     if not result.success:
         fail(result.message)
     for line in result.message.splitlines():

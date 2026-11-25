@@ -90,8 +90,11 @@ public:
 	 * With StrideScaleVariable set (a float member of the parent class), the blended pose goes
 	 * through a CS Stride Scale node driven by it before the slot:
 	 *   Blend Poses by int -> to component space -> CS Stride Scale -> to local space -> Slot
+	 * and with LegYawVariable set as well, a CS Leg Yaw node driven by it after the stride:
+	 *   ... -> CS Stride Scale -> CS Leg Yaw -> to local space -> Slot
 	 */
 	UFUNCTION(BlueprintCallable, Category = "CS|Animation")
 	static FCSAnimBuildResult BuildLocomotionGraph(UAnimBlueprint* AnimBlueprint, const TArray<FCSPoseSource>& Poses,
-		FName PoseIndexVariable, FName SpeedVariable, FName PlayRateVariable, FName SlotName, FName StrideScaleVariable = NAME_None);
+		FName PoseIndexVariable, FName SpeedVariable, FName PlayRateVariable, FName SlotName, FName StrideScaleVariable = NAME_None,
+		FName LegYawVariable = NAME_None);
 };

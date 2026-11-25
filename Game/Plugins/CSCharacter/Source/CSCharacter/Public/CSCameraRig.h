@@ -122,12 +122,36 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "CS|Camera")
 	void SyncFirstPersonBody();
 
+	/**
+	 * Asks for the body to turn toward the aim (the combat stance) whatever the view; first person
+	 * always does. The character sets this every tick.
+	 */
+	void SetFaceAimRequested(bool bRequested) { bFaceAimRequested = bRequested; }
+
+	/** The body is turning toward the aim (first person, or requested), not toward its movement. */
+	bool IsFacingAim() const { return bAppliedFaceAim; }
+
 	/** Runs the rig for this frame (TickComponent calls it). */
 	void UpdateRig(float DeltaSeconds);
 
 	/** View at BeginPlay. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "CS|Camera")
 	ECSView DefaultView = ECSView::ThirdPerson;
+
+	/**
+	 * While the character is ragdolled or getting up, the third-person camera pivots on this bone,
+	 * RagdollPivotHeight above it, instead of the eyes, so it follows the body down to the ground.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "CS|Camera")
+	FName RagdollPivotBone = TEXT("pelvis");
+
+	/** See RagdollPivotBone, cm: about the eyes' height above the pelvis when standing. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "CS|Camera", meta = (Units = "cm"))
+	float RagdollPivotHeight = 65.f;
+
+	/** How quickly the pivot moves to the body and back, seconds (time constant). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "CS|Camera", meta = (ClampMin = "0", Units = "s"))
+	float RagdollPivotSeconds = 0.15f;
 
 	/** Socket on the body mesh the first-person camera sits on (on the head bone, between the eyes). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "CS|Camera")
@@ -164,7 +188,7 @@ private:
 	/** The eye point in the body mesh's space, unsmoothed. */
 	FVector ReadEyeInBodySpace() const;
 	void SetHeadHiddenForOwner(bool bHidden);
-	void ApplyRotationMode(ECSView Effective);
+	void ApplyRotationMode(bool bFaceAim);
 
 	UPROPERTY(Transient)
 	TObjectPtr<USkeletalMeshComponent> Body;
@@ -188,6 +212,11 @@ private:
 	bool bHasEye = false;
 	bool bHeadHiddenForOwner = false;
 	mutable bool bWarnedNoSocket = false;
+
+	bool bFaceAimRequested = false;
+	bool bAppliedFaceAim = false;
+	/** Where the third-person pivot is moved from the eyes (toward the ragdolled body), smoothed. */
+	FVector PivotOffset = FVector::ZeroVector;
 
 	/** The movement component's rotation settings in third person, restored when leaving first person. */
 	bool bThirdPersonOrientToMovement = true;

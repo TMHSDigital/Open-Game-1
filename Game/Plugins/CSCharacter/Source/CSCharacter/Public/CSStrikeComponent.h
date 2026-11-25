@@ -50,6 +50,12 @@ DECLARE_MULTICAST_DELEGATE_ThreeParams(FCSStrikeLanded, ACSCharacter* /* Attacke
  * character and each prop once. A character that is already down is passed over: the punch has not
  * landed on it and can still land on someone behind it.
  *
+ * Target: a punch goes for the nearest standing character in front of the aim (within
+ * PunchAssistRange and PunchAssistAngle, the angle opening to 90 degrees within arm's length;
+ * FindTarget). The aim is turned toward the point of its
+ * body the player looks at (GetAimPointOn) when the punch starts and again when the strike starts, and while it is out of the arm's reach the
+ * character steps in toward it at PunchLungeSpeed, from the start of the punch. With no target the punch goes straight along the aim.
+ *
  * A strike cannot start while one is under way, while the character is ragdolled or getting up,
  * or without a physics body. Going down ends a strike at once.
  *
@@ -92,7 +98,28 @@ public:
 	/** The fastest the fist moved in the strike under way or the last one, cm/s. */
 	float GetPeakSpeed() const { return PeakSpeed; }
 
-	/** Where a strike goes: the view direction, its pitch held within MaxAimPitch; the actor's facing without a view. */
+	/** The character the strike under way, or the last one, went for; null when it went straight. */
+	ACSCharacter* GetTarget() const { return Target.Get(); }
+
+	/** The character a punch started now would go for (see the class comment); null when none qualifies. */
+	ACSCharacter* FindTarget() const;
+
+	/**
+	 * Where on Victim a strike goes: the point of its body nearest the player's line of sight, held
+	 * between just above its pelvis and its upper chest (AimTopBone). Looking level or up goes for
+	 * the upper chest, high enough that in first person the fist comes into view; looking down goes
+	 * lower. The head and neck are left out: they are narrow, and a punch aimed there misses.
+	 */
+	FVector GetAimPointOn(const ACSCharacter& Victim) const;
+
+	/** The highest bone an aim point may reach. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "CS|Strike")
+	FName AimTopBone = TEXT("spine_05");
+
+	/** The aim of the strike under way (fixed at its start, turned toward the target). */
+	FVector GetStrikeAim() const { return StrikeAim; }
+
+	/** Where a strike goes: the control rotation, its pitch held within MaxAimPitch; the actor's facing without a controller. */
 	FVector GetAimDirection() const;
 
 	/** World location of the striking hand (the right one before any strike). */
@@ -182,4 +209,14 @@ private:
 	bool bHasLastHand = false;
 	/** What this strike has already hit. */
 	TArray<TWeakObjectPtr<AActor>> HitActors;
+	TWeakObjectPtr<ACSCharacter> Target;
+	/** Turns StrikeAim toward GetAimPointOn(target) (pitch held within MaxAimPitch); no target: leaves it. */
+	void AimAtTarget();
+	/** The strike starts: aims again at the target. */
+	void BeginStrike();
+	/** The strike is over: the fist and forearm are left moving with the body, not at the strike's speed. */
+	void ReleaseArm();
+	/** Out of reach of the target: moves the character toward it at PunchLungeSpeed (or faster). In reach: stops stepping in. */
+	void StepIn();
+	bool bSteppingIn = false;
 };

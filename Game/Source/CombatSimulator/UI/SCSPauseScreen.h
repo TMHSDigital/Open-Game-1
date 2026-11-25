@@ -43,6 +43,14 @@ public:
 
 	virtual bool SupportsKeyboardFocus() const override { return true; }
 	virtual FReply OnPreviewKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent) override;
+	// A click within ClickGraceSeconds of the screen opening was meant for the game (an attack
+	// still being clicked as a run ends): it is swallowed before any control sees it.
+	virtual FReply OnPreviewMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
+
+	static constexpr double ClickGraceSeconds = 0.4;
+
+	/** True while a click would still be swallowed. */
+	bool IsInClickGrace() const { return FPlatformTime::Seconds() - OpenedAt < ClickGraceSeconds; }
 	// A click on the dimmed game or between controls stays with the screen. Left unhandled it would
 	// reach the game viewport, which takes focus, and the keys above would stop working.
 	virtual FReply OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override { return FReply::Handled(); }
@@ -64,4 +72,5 @@ private:
 	TSharedPtr<SBox> Body;
 	TSharedPtr<SButton> ResumeButton;
 	TSharedPtr<FCSTuningPanelModel> TuningModel;
+	double OpenedAt = 0.0;
 };

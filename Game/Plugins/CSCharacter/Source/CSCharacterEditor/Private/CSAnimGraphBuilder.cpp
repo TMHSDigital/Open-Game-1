@@ -6,6 +6,7 @@
 #include "AnimGraphNode_BlendListByInt.h"
 #include "AnimGraphNode_BlendSpacePlayer.h"
 #include "AnimGraphNode_ComponentToLocalSpace.h"
+#include "AnimGraphNode_CSLegYaw.h"
 #include "AnimGraphNode_CSStrideScale.h"
 #include "AnimGraphNode_LocalToComponentSpace.h"
 #include "AnimGraphNode_Root.h"
@@ -152,7 +153,7 @@ FCSAnimBuildResult UCSAnimGraphBuilder::SetBlendSpace1D(UBlendSpace* BlendSpace,
 }
 
 FCSAnimBuildResult UCSAnimGraphBuilder::BuildLocomotionGraph(UAnimBlueprint* AnimBlueprint, const TArray<FCSPoseSource>& Poses,
-	FName PoseIndexVariable, FName SpeedVariable, FName PlayRateVariable, FName SlotName, FName StrideScaleVariable)
+	FName PoseIndexVariable, FName SpeedVariable, FName PlayRateVariable, FName SlotName, FName StrideScaleVariable, FName LegYawVariable)
 {
 	using namespace CSAnimGraphBuilderPrivate;
 	if (!AnimBlueprint || Poses.Num() == 0)
@@ -273,10 +274,31 @@ FCSAnimBuildResult UCSAnimGraphBuilder::BuildLocomotionGraph(UAnimBlueprint* Ani
 			return Fail(TEXT("The stride scale nodes do not have the expected pins (engine changed?), or the stride variable is not a member of the parent class."));
 		}
 		if (!Schema->TryCreateConnection(FirstOutput(List), ToComponentIn) || !Schema->TryCreateConnection(FirstOutput(ToComponent), StrideIn)
-			|| !Schema->TryCreateConnection(ScaleOut, ScaleIn) || !Schema->TryCreateConnection(FirstOutput(Stride), ToLocalIn)
-			|| !Schema->TryCreateConnection(FirstOutput(ToLocal), SlotIn))
+			|| !Schema->TryCreateConnection(ScaleOut, ScaleIn) || !Schema->TryCreateConnection(FirstOutput(ToLocal), SlotIn))
 		{
 			return Fail(TEXT("Could not connect the blend list through the stride scale to the slot."));
+		}
+		UEdGraphNode* LastComponentNode = Stride;
+		if (!LegYawVariable.IsNone())
+		{
+			FGraphNodeCreator<UAnimGraphNode_CSLegYaw> YawCreator(*Graph);
+			UAnimGraphNode_CSLegYaw* Yaw = YawCreator.CreateNode();
+			Yaw->NodePosX = X0 - 430;
+			Yaw->NodePosY = Y0 + 320;
+			YawCreator.Finalize();
+			UK2Node_VariableGet* GetYaw = MakeGetter(*Graph, LegYawVariable, X0 - 700, Y0 + 400);
+			UEdGraphPin* YawPoseIn = Yaw->FindPin(TEXT("ComponentPose"), EGPD_Input);
+			UEdGraphPin* YawIn = Yaw->FindPin(TEXT("Yaw"), EGPD_Input);
+			UEdGraphPin* YawOut = GetYaw->FindPin(LegYawVariable, EGPD_Output);
+			if (!YawPoseIn || !YawIn || !YawOut || !Schema->TryCreateConnection(FirstOutput(Stride), YawPoseIn) || !Schema->TryCreateConnection(YawOut, YawIn))
+			{
+				return Fail(TEXT("Could not connect the leg yaw node (or the leg yaw variable is not a member of the parent class)."));
+			}
+			LastComponentNode = Yaw;
+		}
+		if (!Schema->TryCreateConnection(FirstOutput(LastComponentNode), ToLocalIn))
+		{
+			return Fail(TEXT("Could not connect the stride scale to local space."));
 		}
 	}
 	UK2Node_VariableGet* GetIndex = MakeGetter(*Graph, PoseIndexVariable, X0 - 900, Y0 - 150);
@@ -366,7 +388,8 @@ FCSAnimBuildResult UCSAnimGraphBuilder::BuildLocomotionGraph(UAnimBlueprint* Ani
 	Result.bSuccess = true;
 	Result.Message = FString::Printf(TEXT("%s: Blend Poses by %s ->%s Slot %s -> Output Pose%s"),
 		*AnimBlueprint->GetName(), *PoseIndexVariable.ToString(),
-		StrideScaleVariable.IsNone() ? TEXT("") : *FString::Printf(TEXT(" CS Stride Scale by %s ->"), *StrideScaleVariable.ToString()),
+		StrideScaleVariable.IsNone() ? TEXT("") : *FString::Printf(TEXT(" CS Stride Scale by %s ->%s"), *StrideScaleVariable.ToString(),
+			LegYawVariable.IsNone() ? TEXT("") : *FString::Printf(TEXT(" CS Leg Yaw by %s ->"), *LegYawVariable.ToString())),
 		*SlotName.ToString(), *Built);
 	return Result;
 }

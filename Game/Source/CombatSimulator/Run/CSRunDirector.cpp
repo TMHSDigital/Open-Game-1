@@ -134,6 +134,7 @@ void UCSRunDirector::BeginRunHere(const FCSRunSetup& InSetup)
 			Launchers.Add(Launcher);
 		}
 	}
+	ResultsAt = 0.0;
 	UE_LOG(LogCombatSimulator, Log, TEXT("UCSRunDirector: run started: %s"), *Setup.Describe());
 	// Leaving Ended for Running again must be announced too, so go through Idle when restarting.
 	State = ECSRunState::Idle;
@@ -150,7 +151,14 @@ void UCSRunDirector::EndRun(ECSRunEnd Reason)
 	UE_LOG(LogCombatSimulator, Log, TEXT("UCSRunDirector: run over (%s) after %s: %d dealt, %d taken"),
 		*FCSRunStats::DescribeEnd(Reason), *FCSRunStats::FormatTime(Stats.Seconds), Stats.Dealt.Hits, Stats.Taken.Hits);
 	SetState(ECSRunState::Ended);
-	OpenResults();
+	if (ResultsDelaySeconds <= 0.f)
+	{
+		OpenResults();
+	}
+	else
+	{
+		ResultsAt = FPlatformTime::Seconds() + ResultsDelaySeconds;
+	}
 }
 
 bool UCSRunDirector::Rerun()
@@ -175,6 +183,7 @@ void UCSRunDirector::LeaveRun()
 		Mode->ResetPlaygroundToMap();
 	}
 	EndReason = ECSRunEnd::None;
+	ResultsAt = 0.0;
 	UE_LOG(LogCombatSimulator, Log, TEXT("UCSRunDirector: run left; the map is as it was made"));
 	SetState(ECSRunState::Idle);
 }
@@ -194,6 +203,15 @@ void UCSRunDirector::RemoveLaunchers()
 void UCSRunDirector::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+	if (ResultsAt > 0.0 && FPlatformTime::Seconds() >= ResultsAt)
+	{
+		ResultsAt = 0.0;
+		// Only for the run that ended: started again or left in the meantime, there is nothing to show.
+		if (State == ECSRunState::Ended)
+		{
+			OpenResults();
+		}
+	}
 	if (bCheckPending)
 	{
 		bCheckPending = false;

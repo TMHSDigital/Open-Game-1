@@ -139,16 +139,20 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Camera", meta = (UIMin = "0.05", UIMax = "1", Units = "s"))
 	float CameraBlendSeconds = 0.2f;
 
-	/** Third-person spring arm length behind the eyes, cm (no spec value; default 260). Inside (0, 1000]. */
+	/**
+	 * Third-person spring arm length behind the eyes, cm. Default 340: far enough that a level view
+	 * shows the feet. Inside (0, 1000].
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Camera", meta = (UIMin = "50", UIMax = "1000", Units = "cm"))
-	float ThirdPersonArmLength = 260.f;
+	float ThirdPersonArmLength = 340.f;
 
 	/**
 	 * Third-person camera offset at the end of the arm, in the view's frame (X forward, Y right,
-	 * Z up), cm. Default (0, 45, 10): over the right shoulder. Each part within [-200, 200].
+	 * Z up), cm. Default (0, 50, -10): over the right shoulder, a little below the eyes. Each part
+	 * within [-200, 200].
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Camera", meta = (UIMin = "-200", UIMax = "200"))
-	FVector ThirdPersonShoulderOffset = FVector(0.f, 45.f, 10.f);
+	FVector ThirdPersonShoulderOffset = FVector(0.f, 50.f, -10.f);
 
 	/**
 	 * Third-person positional lag: how fast the camera catches up with the character, 1/s (higher is
@@ -417,11 +421,56 @@ public:
 	float PunchLean = 160.f;
 
 	/**
+	 * A punch goes for the nearest standing character whose chest is within this far of the
+	 * attacker's, cm (horizontally), and within PunchAssistAngle of the aim. 0: no assist, the punch
+	 * goes straight along the aim.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Punch", meta = (UIMin = "0", UIMax = "500", Units = "cm"))
+	float PunchAssistRange = 230.f;
+
+	/** How far off the aim a target may be for the punch to go for it, degrees. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Punch", meta = (UIMin = "0", UIMax = "90", Units = "deg"))
+	float PunchAssistAngle = 50.f;
+
+	/**
+	 * When the target is out of the arm's reach, the character steps in at this speed as the
+	 * strike starts, cm/s. 0: no step.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Punch", meta = (UIMin = "0", UIMax = "800", Units = "cm/s"))
+	float PunchLungeSpeed = 320.f;
+
+	/**
 	 * The weight behind the fist, kg: what a punch hits like. The hit is this mass arriving at the
 	 * fist's speed (see MinContactSpeed and ContactImpulseScale), so it is far more than the hand.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Punch", meta = (UIMin = "1", UIMax = "100", Units = "kg"))
 	float PunchMass = 14.f;
+
+	// ----- Combat stance -----
+
+	/**
+	 * A player's character faces its aim, instead of the way it moves, while another standing
+	 * character is within this far, cm, so it can back off and circle while facing it. 0: only
+	 * after an attack (CombatFacingSeconds).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat", meta = (UIMin = "0", UIMax = "2000", Units = "cm"))
+	float CombatFacingRange = 450.f;
+
+	/** It keeps facing its aim for this long after an attack, or after the other character was last in range, seconds. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat", meta = (UIMin = "0", UIMax = "10", Units = "s"))
+	float CombatFacingSeconds = 2.5f;
+
+	/** Facing the aim, moving straight backward is this share of the speed (sideways in between); no sprinting backward. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat", meta = (UIMin = "0.3", UIMax = "1"))
+	float CombatBackSpeedScale = 0.7f;
+
+	/**
+	 * Facing the aim while moving another way, the legs turn toward the way they move by up to
+	 * this, degrees, and the upper body keeps facing the aim. Moving backward, the steps play in
+	 * reverse.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat", meta = (UIMin = "0", UIMax = "90", Units = "deg"))
+	float LegYawMax = 60.f;
 
 	// ----- Dev tools -----
 

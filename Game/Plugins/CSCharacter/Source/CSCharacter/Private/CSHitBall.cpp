@@ -1,5 +1,7 @@
 #include "CSHitBall.h"
 
+#include "Materials/MaterialInstanceDynamic.h"
+
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
@@ -68,6 +70,12 @@ ACSHitBall* ACSHitBall::Throw(UWorld* World, AActor* Thrower, const FVector& Fro
 	}
 	NewBall->Ball->SetMassOverrideInKg(NAME_None, FMath::Max(Mass, 0.01f), true);
 	NewBall->Ball->SetPhysicsLinearVelocity(Along * FMath::Max(Speed, 0.f));
+	// Bright, so it can be followed in flight against the grey floor and sky. The engine's basic
+	// shape material has a Color parameter; with another material this does nothing.
+	if (UMaterialInstanceDynamic* Paint = NewBall->Ball->CreateDynamicMaterialInstance(0))
+	{
+		Paint->SetVectorParameterValue(TEXT("Color"), FLinearColor(1.f, 0.55f, 0.f));
+	}
 	OnThrown.Broadcast(NewBall, Thrower);
 	return NewBall;
 }

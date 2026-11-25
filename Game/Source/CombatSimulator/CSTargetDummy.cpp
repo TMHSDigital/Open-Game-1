@@ -30,6 +30,12 @@ void ACSTargetDummy::BeginPlay()
 	}
 	Super::BeginPlay();
 	HomeTransform = GetActorTransform();
+	// Several dummies on the same idle in perfect step look like copies: each plays a little
+	// faster or slower, so they drift apart within a few seconds.
+	if (USkeletalMeshComponent* Body = GetMesh())
+	{
+		Body->GlobalAnimRateScale = FMath::FRandRange(0.9f, 1.1f);
+	}
 	// Possession would pick the movement mode; do it by hand.
 	GetCharacterMovement()->SetDefaultMovementMode();
 

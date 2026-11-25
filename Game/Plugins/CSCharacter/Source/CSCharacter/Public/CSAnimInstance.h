@@ -92,6 +92,10 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "CS|Animation")
 	float LandSeconds = 0.4f;
 
+	/** How fast LegYaw follows the one wanted, 1/s (FInterpTo). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "CS|Animation")
+	float LegYawInterpSpeed = 10.f;
+
 	/** How fast the stride scale follows the one wanted, 1/s (FInterpTo): about a fifth of a second to get there. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "CS|Animation")
 	float StrideInterpSpeed = 12.f;
@@ -112,6 +116,16 @@ public:
 	float GetLocomotionAxis() const { return LocomotionAxis; }
 	float GetLocomotionPlayRate() const { return LocomotionPlayRate; }
 	float GetStrideScale() const { return StrideScale; }
+	float GetLegYaw() const { return LegYaw; }
+
+	/**
+	 * Facing one way and moving another (MoveAngle: the way of movement from the facing, degrees,
+	 * positive to the right): how far to turn the legs, at most MaxYaw either way, and whether the
+	 * steps play backward. Up to 100 degrees the legs turn toward the movement; beyond that the
+	 * character is backing off, the steps play in reverse, and the legs turn by what is left of the
+	 * angle from straight back.
+	 */
+	static float ComputeLegYaw(float MoveAngle, float MaxYaw, bool& bOutBackward);
 
 	/**
 	 * Blend position and play rate for a ground speed.
@@ -161,6 +175,10 @@ protected:
 	/** How much longer (above 1) or shorter the steps are than the clips' own (see SplitStride). 1 off the ground. */
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "CS|Animation")
 	float StrideScale = 1.f;
+
+	/** How far the legs are turned from the facing toward the way they move, degrees, positive right (see ComputeLegYaw). */
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "CS|Animation")
+	float LegYaw = 0.f;
 
 	/** Vertical speed, cm/s, up positive. */
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "CS|Animation")

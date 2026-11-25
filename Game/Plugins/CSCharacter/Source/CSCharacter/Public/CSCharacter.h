@@ -134,6 +134,15 @@ public:
 	/** The melee attack: a punch steered through the physics body. */
 	UCSStrikeComponent* GetStrike() const { return Strike; }
 
+	/**
+	 * Combat stance: a player's character faces its aim instead of the way it moves, while another
+	 * standing character is within CombatFacingRange, and for CombatFacingSeconds after that or after
+	 * an attack.
+	 * Backing off is slower (CombatBackSpeedScale) and never a sprint. Worked out every tick.
+	 */
+	UFUNCTION(BlueprintPure, Category = "CS|Strike")
+	bool IsInCombatStance() const { return bCombatStance; }
+
 	/** The attack key: throws a punch (UCSStrikeComponent::StartPunch). Returns whether one started. */
 	UFUNCTION(BlueprintCallable, Category = "CS|Strike")
 	bool Attack();
@@ -321,6 +330,13 @@ private:
 
 	UPROPERTY(VisibleAnywhere, Category = "CS|Strike")
 	TObjectPtr<UCSStrikeComponent> Strike;
+
+	bool bCombatStance = false;
+	/** World time of the last attack started; very negative before any. */
+	double LastAttackTime = -1.0e9;
+	/** World time another standing character was last within CombatFacingRange. */
+	double LastNearTime = -1.0e9;
+	void UpdateCombatStance();
 
 	/** Drives the simulated bodies toward the animated pose; set up and run by PhysicsBody. */
 	UPROPERTY(VisibleAnywhere, Category = "CS|Body")
