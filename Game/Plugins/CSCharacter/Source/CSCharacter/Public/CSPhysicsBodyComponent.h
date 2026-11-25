@@ -136,16 +136,21 @@ public:
 	 * from the physics engine (an attack, a test).
 	 */
 	ECSContactResult ReceiveContact(AActor* OtherActor, FName Bone, const FVector& OtherVelocity, float OtherMass,
-		const FVector& OtherLocation, const FVector& ImpactPoint);
+		const FVector& OtherLocation, const FVector& ImpactPoint, float ExtraScale = 1.f);
 
 	/**
 	 * The velocity change (cm/s, world) a contact gives a character of OurMass: the other body's speed
 	 * along TowardUs (unit vector from the other body to the contact), times its mass over OurMass,
 	 * times Scale, at most MaxVelocityChange, in the direction the other body moves. Zero when it
 	 * moves away, or toward the character slower than MinSpeed.
+	 *
+	 * The speed that counts is the smaller of two: how fast the other body moves toward the
+	 * character, and how fast the two close on each other (OurVelocity is the character's own).
+	 * The first keeps walking into something at rest from being a hit; the second keeps something
+	 * the character is pushing or dragging along its own path from hitting it back.
 	 */
 	static FVector ComputeContactVelocityChange(const FVector& OtherVelocity, float OtherMass, const FVector& TowardUs, float OurMass,
-		float MinSpeed, float Scale, float MaxVelocityChange);
+		float MinSpeed, float Scale, float MaxVelocityChange, const FVector& OurVelocity = FVector::ZeroVector);
 
 	/** The last contact hit (Result None and a negative Time before any). */
 	const FCSContactRecord& GetLastContact() const { return LastContact; }
@@ -281,7 +286,7 @@ private:
 	UFUNCTION()
 	void HandleCapsuleHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 	/** A contact reported by the mesh or the capsule: looks up what the other body is and how it moved. */
-	void HandleContactEvent(AActor* OtherActor, UPrimitiveComponent* OtherComp, FName OurBone, const FVector& ImpactPoint);
+	void HandleContactEvent(AActor* OtherActor, UPrimitiveComponent* OtherComp, FName OurBone, FName OtherBone, const FVector& ImpactPoint);
 	/** Remembers how fast the bodies around the character move, for the contacts of the next frame. */
 	void TrackNearbyBodies();
 	void HandleRagdollRequested();

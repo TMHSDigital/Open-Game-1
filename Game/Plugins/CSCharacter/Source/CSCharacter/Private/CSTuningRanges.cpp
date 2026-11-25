@@ -84,6 +84,7 @@ namespace
 		{TEXT("LocomotionRateMax"), TEXT("Body"), TEXT("x"), 1.f, 4.f, 0.05f},
 		{TEXT("MinContactSpeed"), TEXT("Body"), TEXT("cm/s"), 0.f, 2000.f, 10.f},
 		{TEXT("ContactImpulseScale"), TEXT("Body"), TEXT(""), 0.f, 5.f, 0.05f},
+		{TEXT("CharacterContactScale"), TEXT("Body"), TEXT(""), 0.f, 2.f, 0.05f},
 		{TEXT("ContactImpulseMax"), TEXT("Body"), TEXT("cm/s"), 100.f, 10000.f, 50.f},
 		{TEXT("ContactRepeatSeconds"), TEXT("Body"), TEXT("s"), 0.05f, 3.f, 0.05f},
 		{TEXT("DevBallMass"), TEXT("Body"), TEXT("kg"), 0.5f, 100.f, 0.5f},

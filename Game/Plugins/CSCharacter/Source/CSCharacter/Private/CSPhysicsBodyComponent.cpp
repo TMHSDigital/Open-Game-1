@@ -879,14 +879,16 @@ void UCSPhysicsBodyComponent::HandleLanded(const FHitResult& Hit)
 // ----- Contact hits -----
 
 FVector UCSPhysicsBodyComponent::ComputeContactVelocityChange(const FVector& OtherVelocity, float OtherMass, const FVector& TowardUs, float OurMass,
-	float MinSpeed, float Scale, float MaxVelocityChange)
+	float MinSpeed, float Scale, float MaxVelocityChange, const FVector& OurVelocity)
 {
-	if (OtherMass <= 0.f || OurMass <= KINDA_SMALL_NUMBER || Scale <= 0.f || OtherVelocity.ContainsNaN())
+	if (OtherMass <= 0.f || OurMass <= KINDA_SMALL_NUMBER || Scale <= 0.f || OtherVelocity.ContainsNaN() || OurVelocity.ContainsNaN())
 	{
 		return FVector::ZeroVector;
 	}
 	const FVector Toward = TowardUs.GetSafeNormal();
-	const float Approach = Toward.IsNearlyZero() ? OtherVelocity.Size() : float(FVector::DotProduct(OtherVelocity, Toward));
+	const float Own = Toward.IsNearlyZero() ? OtherVelocity.Size() : float(FVector::DotProduct(OtherVelocity, Toward));
+	const float Closing = Toward.IsNearlyZero() ? (OtherVelocity - OurVelocity).Size() : float(FVector::DotProduct(OtherVelocity - OurVelocity, Toward));
+	const float Approach = FMath::Min(Own, Closing);
 	if (Approach <= 0.f || Approach < MinSpeed)
 	{
 		return FVector::ZeroVector;
@@ -920,7 +922,7 @@ FName UCSPhysicsBodyComponent::FindNearestBodyBone(const FVector& WorldPoint) co
 }
 
 ECSContactResult UCSPhysicsBodyComponent::ReceiveContact(AActor* OtherActor, FName Bone, const FVector& OtherVelocity, float OtherMass,
-	const FVector& OtherLocation, const FVector& ImpactPoint)
+	const FVector& OtherLocation, const FVector& ImpactPoint, float ExtraScale)
 {
 	const ACSCharacter* Character = GetCharacter();
 	const UWorld* World = GetWorld();
@@ -942,8 +944,10 @@ ECSContactResult UCSPhysicsBodyComponent::ReceiveContact(AActor* OtherActor, FNa
 			return ECSContactResult::None;
 		}
 	}
+	// The character's own motion: its movement velocity (in Ragdoll the contact changes nothing anyway).
+	const FVector OurVelocity = State == ECSBodyState::Ragdoll ? FVector::ZeroVector : Character->GetVelocity();
 	const FVector Change = ComputeContactVelocityChange(OtherVelocity, OtherMass, ImpactPoint - OtherLocation, GetBodyMass(),
-		T.MinContactSpeed, T.ContactImpulseScale, T.ContactImpulseMax);
+		T.MinContactSpeed, T.ContactImpulseScale * FMath::Max(ExtraScale, 0.f), T.ContactImpulseMax, OurVelocity);
 	if (Change.IsNearlyZero())
 	{
 		return ECSContactResult::None;
@@ -1030,7 +1034,7 @@ void UCSPhysicsBodyComponent::TrackNearbyBodies()
 	}
 }
 
-void UCSPhysicsBodyComponent::HandleContactEvent(AActor* OtherActor, UPrimitiveComponent* OtherComp, FName OurBone, const FVector& ImpactPoint)
+void UCSPhysicsBodyComponent::HandleContactEvent(AActor* OtherActor, UPrimitiveComponent* OtherComp, FName OurBone, FName OtherBone, const FVector& ImpactPoint)
 {
 	const ACSCharacter* Character = GetCharacter();
 	if (!OtherComp || !OtherActor || !Character || OtherActor == Character)
@@ -1038,10 +1042,20 @@ void UCSPhysicsBodyComponent::HandleContactEvent(AActor* OtherActor, UPrimitiveC
 		return;
 	}
 	float Mass = 0.f;
-	if (const ACSCharacter* Other = Cast<ACSCharacter>(OtherActor))
+	float ExtraScale = 1.f;
+	const ACSCharacter* Other = Cast<ACSCharacter>(OtherActor);
+	if (Other && !Other->IsRagdolled())
 	{
+		// A standing character running into this one: its whole mass, scaled down (CharacterContactScale).
 		const UCSPhysicsBodyComponent* OtherBody = Other->GetPhysicsBody();
 		Mass = OtherBody ? OtherBody->GetBodyMass() : 0.f;
+		ExtraScale = GetTuning().CharacterContactScale;
+	}
+	else if (Other)
+	{
+		// A ragdoll is a pile of separate bodies: only the one that touched counts, not the whole character.
+		const FBodyInstance* Struck = OtherComp->GetBodyInstance(OtherBone);
+		Mass = Struck && Struck->IsValidBodyInstance() ? Struck->GetBodyMass() : 0.f;
 	}
 	else if (OtherComp->IsSimulatingPhysics())
 	{
@@ -1065,19 +1079,19 @@ void UCSPhysicsBodyComponent::HandleContactEvent(AActor* OtherActor, UPrimitiveC
 	{
 		Velocity = OtherComp->GetComponentVelocity();
 	}
-	ReceiveContact(OtherActor, OurBone, Velocity, Mass, OtherComp->Bounds.Origin, ImpactPoint);
+	ReceiveContact(OtherActor, OurBone, Velocity, Mass, OtherComp->Bounds.Origin, ImpactPoint, ExtraScale);
 }
 
 void UCSPhysicsBodyComponent::HandleBodyHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
 	// MyBoneName is the body of this mesh that was struck.
-	HandleContactEvent(OtherActor, OtherComp, Hit.MyBoneName, Hit.ImpactPoint);
+	HandleContactEvent(OtherActor, OtherComp, Hit.MyBoneName, Hit.BoneName, Hit.ImpactPoint);
 }
 
 void UCSPhysicsBodyComponent::HandleCapsuleHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
 	// The capsule has no body parts: the hit counts for the body nearest the contact.
-	HandleContactEvent(OtherActor, OtherComp, NAME_None, Hit.ImpactPoint);
+	HandleContactEvent(OtherActor, OtherComp, NAME_None, Hit.BoneName, Hit.ImpactPoint);
 }
 
 void UCSPhysicsBodyComponent::HandleRagdollRequested()

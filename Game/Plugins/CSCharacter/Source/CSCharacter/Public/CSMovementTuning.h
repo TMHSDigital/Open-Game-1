@@ -324,6 +324,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Body", meta = (UIMin = "0", UIMax = "5"))
 	float ContactImpulseScale = 1.f;
 
+	/**
+	 * Extra scale when what hits the character is another standing character (running into it). Two
+	 * characters weigh the same, so at 1 a sprint into a dummy would knock it down; at the default a
+	 * walk does nothing, a jog and a sprint stagger. A ragdolled body counts as an object, not as this.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Body", meta = (UIMin = "0", UIMax = "2"))
+	float CharacterContactScale = 0.5f;
+
 	/** The largest velocity change one contact hit may give, cm/s (compare RagdollImpulseThreshold). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Body", meta = (UIMin = "100", UIMax = "10000", Units = "cm/s"))
 	float ContactImpulseMax = 1500.f;

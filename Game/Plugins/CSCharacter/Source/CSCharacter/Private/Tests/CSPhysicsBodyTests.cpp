@@ -103,6 +103,19 @@ bool FCSBodyContactVelocityChangeTest::RunTest(const FString& Parameters)
 	IsNothing(TEXT("Scale 0 turns contact hits off"), FVector(1000.f, 0.f, 0.f), 10.f, 80.f, 0.f);
 	IsNothing(TEXT("A velocity that is not a number: nothing"), FVector(std::numeric_limits<float>::quiet_NaN(), 0.f, 0.f), 10.f, 80.f, 1.f);
 
+	// The character's own motion. Something moving the same way as the character, slower than it
+	// (a box or a ragdoll it is pushing along): they are not closing, so it is not a hit.
+	auto WithOurs = [&](const FVector& Other, const FVector& Ours)
+	{
+		return UCSPhysicsBodyComponent::ComputeContactVelocityChange(Other, 40.f, Toward, 80.f, 150.f, 1.f, 1500.f, Ours);
+	};
+	TestTrue(TEXT("Pushed along the character's own path: nothing"), WithOurs(FVector(300.f, 0.f, 0.f), FVector(400.f, 0.f, 0.f)).IsNearlyZero());
+	TestTrue(TEXT("Closing slower than the minimum: nothing"), WithOurs(FVector(300.f, 0.f, 0.f), FVector(200.f, 0.f, 0.f)).IsNearlyZero());
+	TestNearlyEqual(TEXT("Closing at 200: counts 200, not its own 400"), float(WithOurs(FVector(400.f, 0.f, 0.f), FVector(200.f, 0.f, 0.f)).Size()), 100.f, 0.01f);
+	// Walking into something that comes at the character: its own speed counts, not the sum.
+	TestNearlyEqual(TEXT("The character's speed toward it adds nothing"), float(WithOurs(FVector(300.f, 0.f, 0.f), FVector(-400.f, 0.f, 0.f)).Size()), 150.f, 0.01f);
+	TestTrue(TEXT("Walking into something at rest: nothing"), WithOurs(FVector::ZeroVector, FVector(-400.f, 0.f, 0.f)).IsNearlyZero());
+
 	// No direction to the contact (the two are at the same point): the whole speed counts.
 	Change = UCSPhysicsBodyComponent::ComputeContactVelocityChange(FVector(0.f, 1000.f, 0.f), 8.f, FVector::ZeroVector, 80.f, 150.f, 1.f, 1500.f);
 	TestNearlyEqual(TEXT("Without a direction the whole speed counts"), float(Change.Size()), 100.f, 0.01f);
