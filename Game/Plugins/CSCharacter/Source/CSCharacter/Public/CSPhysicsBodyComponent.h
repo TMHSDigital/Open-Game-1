@@ -82,14 +82,20 @@ DECLARE_MULTICAST_DELEGATE_TwoParams(FCSBodyStateChanged, ECSBodyState /* Old */
  * applies only while the pelvis is on the ground, so a fall is not slowed.
  *
  * Recovering: when the pelvis has stayed slower than RagdollSettleSpeed for RagdollSettleSeconds
- * (or after RagdollMaxSeconds, or on R), the world transforms of the bodies are snapshotted and
- * held there (no gravity, no velocity); the capsule is stood upright on walkable ground near the
+ * (or after RagdollMaxSeconds, or on R), the capsule is stood upright on walkable ground near the
  * pelvis (never inside geometry or below the floor; if there is none, at the last standable spot
  * the ragdoll passed; failing that, clear of geometry above the pelvis to fall; failing that the
- * ragdoll waits and tries again), facing the way the body would get up; and the
- * physics blend weight runs from 1 (the held ragdoll pose) to 0 (the animated pose) over
- * RagdollRecoverSeconds. Then the bodies return to Normal, SetRagdolled(false) is called and
- * OnRecovered is broadcast.
+ * ragdoll waits and tries again), facing the way the body would get up. Then the body gets up in
+ * two parts.
+ * Getting up (IsGettingUp; skipped when GetUpStrength is 0): the bodies stay simulated, with
+ * gravity and the floor, and every one of them, pelvis and legs too, is pulled toward the animated
+ * pose by the Normal motors times GetUpStrength: toward the crouch pose for GetUpCrouchSeconds
+ * (IsGetUpCrouch; the animation instance shows the crouch then), then toward standing for
+ * GetUpStandSeconds. The body climbs to its feet against the floor, so nothing can pass through it.
+ * The blend: the world transforms of the bodies are snapshotted and held there (no gravity, no
+ * velocity) and the physics blend weight runs from 1 (the held pose) to 0 (the animated pose) over
+ * RagdollRecoverSeconds, which closes whatever gap the motors left. Then the bodies return to
+ * Normal, SetRagdolled(false) is called and OnRecovered is broadcast.
  *
  * Contact hits: anything that moves into the character hits it. The mesh and the capsule report
  * their contacts (rigid body hits, and blocked moves of another character); ReceiveContact turns
@@ -198,6 +204,21 @@ public:
 	UFUNCTION(BlueprintPure, Category = "CS|Body")
 	float GetBodyMass() const;
 
+	/** Recovering, and still pulling itself up with motors (before the closing blend). */
+	UFUNCTION(BlueprintPure, Category = "CS|Body")
+	bool IsGettingUp() const { return State == ECSBodyState::Recovering && bGettingUp; }
+
+	/** Getting up, in the first part: the pose to aim for is the crouch. */
+	UFUNCTION(BlueprintPure, Category = "CS|Body")
+	bool IsGetUpCrouch() const;
+
+	/** Seconds of getting up before the closing blend: GetUpCrouchSeconds + GetUpStandSeconds, or 0 with GetUpStrength at 0. */
+	float GetGetUpSeconds() const;
+
+	/** Seconds a whole recovery takes: GetGetUpSeconds + RagdollRecoverSeconds. */
+	UFUNCTION(BlueprintPure, Category = "CS|Body")
+	float GetRecoverySeconds() const;
+
 	/** In Ragdoll: true while the pelvis is on the ground (RagdollLinearDamping applies), false in the air. */
 	bool IsRagdollOnGround() const { return State == ECSBodyState::Ragdoll && bRagdollOnGround; }
 
@@ -277,6 +298,12 @@ private:
 	void RestoreBodyPhysics();
 	/** Holds every body at its snapshot transform with no velocity. */
 	void HoldSnapshot();
+	/** Notes where every body is, for HoldSnapshot. */
+	void TakeSnapshot();
+	/** Getting up: motors on every body at GetUpStrength times Ramp (0 to 1). */
+	void ApplyGetUpMotors(float Ramp);
+	/** Ends the getting up and starts the closing blend from where the bodies are. */
+	void BeginRecoveryBlend();
 	void FinishRecovery();
 
 	/**
@@ -313,6 +340,10 @@ private:
 
 	ECSBodyState State = ECSBodyState::Normal;
 	float StateSeconds = 0.f;
+	/** Recovering: the body is still pulling itself up (see IsGettingUp). */
+	bool bGettingUp = false;
+	/** Recovering: StateSeconds when the closing blend began. */
+	float RecoveryBlendStart = 0.f;
 	/** Seconds the pelvis has been slower than RagdollSettleSpeed. */
 	float SettledSeconds = 0.f;
 	/** Seconds since each body in a hit chain was hit. */

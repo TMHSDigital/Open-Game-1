@@ -470,7 +470,7 @@ bool FCSBodyLargeImpulseRagdollsAndRecoversTest::RunTest(const FString& Paramete
 	FVector LastPelvis = Sim.Mesh()->GetBoneLocation(TEXT("pelvis"));
 	bool bRagdolledThroughRecovery = true;
 	const float Start = Sim.Time;
-	const float Limit = T.RagdollMaxSeconds + T.RagdollRecoverSeconds + 2.f;
+	const float Limit = T.RagdollMaxSeconds + Sim.PhysicsBody->GetRecoverySeconds() + 2.f;
 	for (int32 i = 0; i < FMath::CeilToInt(Limit / Sim.Dt) && NormalAt < 0.f; ++i)
 	{
 		Sim.Step();
@@ -506,8 +506,8 @@ bool FCSBodyLargeImpulseRagdollsAndRecoversTest::RunTest(const FString& Paramete
 	TestTrue(TEXT("The body settled"), SettledAt > 0.f);
 	TestTrue(TEXT("Recovering started"), RecoveringAt > 0.f);
 	TestTrue(TEXT("Normal again"), NormalAt > 0.f);
-	TestTrue(TEXT("Normal within the settle time + RagdollRecoverSeconds + 1 s"), NormalAt > 0.f && NormalAt <= SettledAt + T.RagdollRecoverSeconds + 1.f);
-	TestTrue(TEXT("The recovery blend takes about RagdollRecoverSeconds"), FMath::Abs((NormalAt - RecoveringAt) - T.RagdollRecoverSeconds) <= 2.f * Sim.Dt);
+	TestTrue(TEXT("Normal within the settle time + the recovery time + 1 s"), NormalAt > 0.f && NormalAt <= SettledAt + Sim.PhysicsBody->GetRecoverySeconds() + 1.f);
+	TestTrue(TEXT("The recovery takes about GetRecoverySeconds"), FMath::Abs((NormalAt - RecoveringAt) - Sim.PhysicsBody->GetRecoverySeconds()) <= 2.f * Sim.Dt);
 	TestTrue(TEXT("The capsule followed the pelvis (within 5 cm sideways)"), MaxFollowGap < 5.f);
 	TestTrue(TEXT("Still ragdolled (third person, no input) while Recovering"), bRagdolledThroughRecovery);
 	TestFalse(TEXT("Not ragdolled once control returns"), Sim.Character->IsRagdolled());
@@ -589,7 +589,7 @@ bool FCSBodyRecoveryOnSlopeOrUpsideDownIsUprightTest::RunTest(const FString& Par
 		// Recover while still upside down (R before it settles) and after it lands.
 		Sim.PhysicsBody->Recover();
 		TestEqual(TEXT("Upside down: R starts the recovery"), Sim.State(), ECSBodyState::Recovering);
-		const bool bBack = Sim.RunUntil(Sim.Tuning->RagdollRecoverSeconds + 1.f, [&]() { return Sim.State() == ECSBodyState::Normal; });
+		const bool bBack = Sim.RunUntil(Sim.PhysicsBody->GetRecoverySeconds() + 1.f, [&]() { return Sim.State() == ECSBodyState::Normal; });
 		TestTrue(TEXT("Upside down: recovered"), bBack);
 		CheckStanding(*this, Sim, TEXT("Upside down in the air"));
 	}
@@ -615,7 +615,7 @@ bool FCSBodyRecoveryNeverBelowFloorTest::RunTest(const FString& Parameters)
 		Sim.MoveBodies(FQuat::Identity, FVector::ZeroVector, FVector(0.f, 0.f, -Sim.Mesh()->GetBoneLocation(TEXT("pelvis")).Z - 10.f));
 		AddInfo(FString::Printf(TEXT("Sunk: pelvis body at z %.1f"), Sim.Mesh()->GetBodyInstance(TEXT("pelvis"))->GetUnrealWorldTransform().GetLocation().Z));
 		Sim.PhysicsBody->Recover();
-		const bool bBack = Sim.RunUntil(Sim.Tuning->RagdollRecoverSeconds + 1.f, [&]() { return Sim.State() == ECSBodyState::Normal; });
+		const bool bBack = Sim.RunUntil(Sim.PhysicsBody->GetRecoverySeconds() + 1.f, [&]() { return Sim.State() == ECSBodyState::Normal; });
 		TestTrue(TEXT("Sunk into the floor: recovered"), bBack);
 		CheckStanding(*this, Sim, TEXT("Sunk into the floor"));
 		TestTrue(TEXT("Sunk into the floor: capsule bottom at or above the floor"), Sim.Character->GetActorLocation().Z - Sim.Capsule()->GetScaledCapsuleHalfHeight() >= -0.5f);
@@ -635,7 +635,7 @@ bool FCSBodyRecoveryNeverBelowFloorTest::RunTest(const FString& Parameters)
 		Sim.MoveBodies(FQuat::Identity, FVector::ZeroVector, FVector(70.f + 10.f - Sim.Mesh()->GetBoneLocation(TEXT("pelvis")).X, 0.f, 0.f));
 		AddInfo(FString::Printf(TEXT("Into the block: pelvis body at %s"), *Sim.Mesh()->GetBodyInstance(TEXT("pelvis"))->GetUnrealWorldTransform().GetLocation().ToString()));
 		Sim.PhysicsBody->Recover();
-		const bool bBack = Sim.RunUntil(Sim.Tuning->RagdollRecoverSeconds + 1.f, [&]() { return Sim.State() == ECSBodyState::Normal; });
+		const bool bBack = Sim.RunUntil(Sim.PhysicsBody->GetRecoverySeconds() + 1.f, [&]() { return Sim.State() == ECSBodyState::Normal; });
 		TestTrue(TEXT("Inside a block: recovered"), bBack);
 		CheckStanding(*this, Sim, TEXT("Inside a block"));
 		Sim.Run(0.5f);
@@ -774,7 +774,7 @@ bool FCSBodyRecoveryWithNoSpotNearPelvisTest::RunTest(const FString& Parameters)
 	AddInfo(FString::Printf(TEXT("High on the ramp: pelvis body at %s"), *Sim.PelvisBody().ToString()));
 	Sim.PhysicsBody->Recover();
 	TestEqual(TEXT("The recovery starts"), Sim.State(), ECSBodyState::Recovering);
-	const bool bBack = Sim.RunUntil(Sim.Tuning->RagdollRecoverSeconds + 1.f, [&]() { return Sim.State() == ECSBodyState::Normal; });
+	const bool bBack = Sim.RunUntil(Sim.PhysicsBody->GetRecoverySeconds() + 1.f, [&]() { return Sim.State() == ECSBodyState::Normal; });
 	TestTrue(TEXT("No spot near the pelvis: recovered"), bBack);
 	CheckStanding(*this, Sim, TEXT("No spot near the pelvis"));
 	AddInfo(FString::Printf(TEXT("Stood up at %s; the ragdoll started at %s"), *Sim.Character->GetActorLocation().ToString(), *StartSpot.ToString()));
@@ -928,7 +928,7 @@ bool FCSBodyRecoveryWaitsForSpaceTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("Under the ceiling for 3 s: never stood up, capsule never colliding"), bLeftRagdoll);
 
 	Ceiling->GetOwner()->Destroy();
-	const bool bBack = Sim.RunUntil(Sim.Tuning->RagdollSettleSeconds + Sim.Tuning->RagdollRecoverSeconds + 1.f, [&]() { return Sim.State() == ECSBodyState::Normal; });
+	const bool bBack = Sim.RunUntil(Sim.Tuning->RagdollSettleSeconds + Sim.PhysicsBody->GetRecoverySeconds() + 1.f, [&]() { return Sim.State() == ECSBodyState::Normal; });
 	TestTrue(TEXT("Ceiling gone: the next try stands up"), bBack);
 	CheckStanding(*this, Sim, TEXT("Ceiling gone"));
 	return true;
@@ -1467,6 +1467,82 @@ bool FCSBodyLauncherFiresAtWhoStandsInFrontTest::RunTest(const FString& Paramete
 	Sim.Run(2.5f);
 	TestEqual(TEXT("Nobody on the square: it does not fire"), Launcher->GetFiredCount(), Before);
 	TestFalse(TEXT("FireOnce does nothing either"), Launcher->FireOnce());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSBodyGetsUpAgainstTheFloorTest, "CombatSimulator.CS.Body.GetsUpAgainstTheFloor", CSPhysicsBodyTests::TestFlags)
+bool FCSBodyGetsUpAgainstTheFloorTest::RunTest(const FString& Parameters)
+{
+	using namespace CSPhysicsBodyTests;
+	// Getting up is physical: from lying, the body is pulled to its feet by motors with gravity and
+	// the floor still acting, by way of the crouch, and only then blended onto the pose.
+	{
+		FBodySim Sim;
+		if (!Sim.Init(*this))
+		{
+			return false;
+		}
+		auto PelvisZ = [&Sim]() { return float(Sim.Mesh()->GetBodyInstance(TEXT("pelvis"))->GetUnrealWorldTransform().GetLocation().Z); };
+		const float StandingPelvis = float(Sim.Mesh()->GetBoneLocation(TEXT("pelvis")).Z);
+		Sim.PhysicsBody->EnterRagdoll();
+		if (!TestTrue(TEXT("The ragdoll settles and starts to recover"), Sim.RunUntil(Sim.Tuning->RagdollMaxSeconds + 1.f, [&]() { return Sim.State() == ECSBodyState::Recovering; })))
+		{
+			return false;
+		}
+		const float LyingPelvis = PelvisZ();
+		TestTrue(TEXT("The recovery starts by getting up"), Sim.PhysicsBody->IsGettingUp());
+		TestTrue(TEXT("Toward the crouch first"), Sim.PhysicsBody->IsGetUpCrouch());
+		TestTrue(TEXT("From lying on the floor"), LyingPelvis < 0.5f * StandingPelvis);
+
+		float GettingUpSeconds = 0.f, CrouchSeconds = 0.f, LowestBody = 1000.f, PelvisAtEnd = LyingPelvis;
+		bool bSimulatedThroughout = true;
+		while (Sim.PhysicsBody->IsGettingUp() && GettingUpSeconds < 10.f)
+		{
+			Sim.Step();
+			if (!Sim.PhysicsBody->IsGettingUp())
+			{
+				break;
+			}
+			GettingUpSeconds += Sim.Dt;
+			CrouchSeconds += Sim.PhysicsBody->IsGetUpCrouch() ? Sim.Dt : 0.f;
+			PelvisAtEnd = PelvisZ();
+			for (const FBodyInstance* B : Sim.Mesh()->Bodies)
+			{
+				if (B && B->IsValidBodyInstance())
+				{
+					LowestBody = FMath::Min(LowestBody, float(B->GetUnrealWorldTransform().GetLocation().Z));
+					bSimulatedThroughout &= B->IsInstanceSimulatingPhysics();
+				}
+			}
+		}
+		AddInfo(FString::Printf(TEXT("Got up for %.2f s (%.2f s toward the crouch): pelvis from %.0f to %.0f cm (standing %.0f); lowest body centre %.1f cm"),
+			GettingUpSeconds, CrouchSeconds, LyingPelvis, PelvisAtEnd, StandingPelvis, LowestBody));
+		TestTrue(TEXT("Getting up takes GetUpCrouchSeconds + GetUpStandSeconds"), FMath::Abs(GettingUpSeconds - Sim.PhysicsBody->GetGetUpSeconds()) <= 3.f * Sim.Dt);
+		TestTrue(TEXT("The crouch part takes GetUpCrouchSeconds"), FMath::Abs(CrouchSeconds - Sim.Tuning->GetUpCrouchSeconds) <= 3.f * Sim.Dt);
+		TestTrue(TEXT("Every body stays simulated while getting up"), bSimulatedThroughout);
+		TestTrue(TEXT("The motors lift the pelvis most of the way to standing"), PelvisAtEnd > StandingPelvis - 25.f);
+		TestTrue(TEXT("No body goes under the floor on the way"), LowestBody > -2.f);
+		TestEqual(TEXT("The closing blend follows"), Sim.State(), ECSBodyState::Recovering);
+		TestTrue(TEXT("Control returns after the blend"), Sim.RunUntil(Sim.Tuning->RagdollRecoverSeconds + 0.5f, [&]() { return Sim.State() == ECSBodyState::Normal; }));
+		CheckStanding(*this, Sim, TEXT("After getting up"));
+	}
+	// With the pull at 0 the recovery is the blend alone, as it was before there was a get-up.
+	{
+		FBodySim Sim;
+		if (!Sim.Init(*this))
+		{
+			return false;
+		}
+		Sim.Tuning->GetUpStrength = 0.f;
+		Sim.Character->ApplyTuning();
+		Sim.PhysicsBody->EnterRagdoll();
+		Sim.Run(0.2f);
+		Sim.PhysicsBody->Recover();
+		TestEqual(TEXT("No pull: the recovery starts"), Sim.State(), ECSBodyState::Recovering);
+		TestFalse(TEXT("No pull: there is no getting up"), Sim.PhysicsBody->IsGettingUp());
+		TestEqual(TEXT("No pull: the recovery is the blend"), Sim.PhysicsBody->GetRecoverySeconds(), Sim.Tuning->RagdollRecoverSeconds);
+		TestTrue(TEXT("No pull: control returns"), Sim.RunUntil(Sim.Tuning->RagdollRecoverSeconds + 0.5f, [&]() { return Sim.State() == ECSBodyState::Normal; }));
+	}
 	return true;
 }
 

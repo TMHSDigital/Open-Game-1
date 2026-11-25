@@ -1,5 +1,7 @@
 #include "CSAnimInstance.h"
 
+#include "CSPhysicsBodyComponent.h"
+
 #include "CSCharacter.h"
 #include "CSMovementTuning.h"
 #include "GameFramework/Character.h"
@@ -99,6 +101,18 @@ void UCSAnimInstance::SetState(ECSLocomotionState NewState)
 	PoseIndex = int32(PoseForState(State));
 }
 
+float UCSAnimInstance::SplitStride(float NaturalRate, float RateMin, float RateMax, float ScaleMin, float ScaleMax, float& OutStrideScale)
+{
+	OutStrideScale = 1.f;
+	if (NaturalRate <= 0.f)
+	{
+		return NaturalRate;
+	}
+	const float Rate = FMath::Clamp(NaturalRate, FMath::Min(RateMin, RateMax), FMath::Max(RateMin, RateMax));
+	OutStrideScale = FMath::Clamp(NaturalRate / Rate, FMath::Min(ScaleMin, ScaleMax), FMath::Max(ScaleMin, ScaleMax));
+	return NaturalRate / OutStrideScale;
+}
+
 void UCSAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 {
 	Super::NativeUpdateAnimation(DeltaSeconds);
@@ -111,6 +125,7 @@ void UCSAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 		GroundSpeed = VerticalSpeed = 0.f;
 		LocomotionAxis = 0.f;
 		LocomotionPlayRate = 1.f;
+		StrideScale = 1.f;
 		bIsCrouching = bIsInAir = false;
 		SetState(ECSLocomotionState::Idle);
 		return;
@@ -120,6 +135,12 @@ void UCSAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	GroundSpeed = Velocity.Size2D();
 	VerticalSpeed = Velocity.Z;
 	bIsCrouching = Character->bIsCrouched;
+	if (const ACSCharacter* GettingUp = Cast<ACSCharacter>(Character))
+	{
+		// Getting up after a ragdoll goes by way of the crouch: the body is pulled toward this pose.
+		const UCSPhysicsBodyComponent* PhysicsBody = GettingUp->GetPhysicsBody();
+		bIsCrouching |= PhysicsBody && PhysicsBody->IsGetUpCrouch();
+	}
 	const bool bWasInAir = bIsInAir;
 	bIsInAir = Move->IsFalling();
 	StateTime += DeltaSeconds;
@@ -138,9 +159,17 @@ void UCSAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	// Blend position and play rate from the speed actually moved, so the feet match the ground.
 	const float StandingGaits[] = {Walk, Jog, Sprint};
 	const float CrouchGaits[] = {Crouch};
-	LocomotionPlayRate = bIsCrouching
-		? ComputeLocomotion(GroundSpeed, CrouchGaits, CrouchStride, Tuning->LocomotionRateMin, Tuning->LocomotionRateMax, LocomotionAxis)
-		: ComputeLocomotion(GroundSpeed, StandingGaits, GroundStride, Tuning->LocomotionRateMin, Tuning->LocomotionRateMax, LocomotionAxis);
+	// The rate the feet need, unclamped, then split between rate and the length of the steps.
+	const float NaturalRate = bIsCrouching
+		? ComputeLocomotion(GroundSpeed, CrouchGaits, CrouchStride, 0.01f, 100.f, LocomotionAxis)
+		: ComputeLocomotion(GroundSpeed, StandingGaits, GroundStride, 0.01f, 100.f, LocomotionAxis);
+	LocomotionPlayRate = SplitStride(NaturalRate, Tuning->StrideRateMin, Tuning->StrideRateMax, Tuning->StrideScaleMin, Tuning->StrideScaleMax, StrideScale);
+	LocomotionPlayRate = FMath::Clamp(LocomotionPlayRate, Tuning->LocomotionRateMin, Tuning->LocomotionRateMax);
+	if (bIsInAir || GroundSpeed < 1.f)
+	{
+		// Standing or off the ground there are no steps to change.
+		StrideScale = 1.f;
+	}
 
 	if (bIsInAir)
 	{

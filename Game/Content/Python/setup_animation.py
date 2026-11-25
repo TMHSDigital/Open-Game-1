@@ -44,6 +44,10 @@ ABP_BaseCharacter's AnimGraph: the pose for UCSAnimInstance::PoseIndex (POSES be
 ECSLocomotionPose order) -> Slot DefaultSlot -> Output Pose; the blend spaces read LocomotionAxis
 and LocomotionPlayRate.
 
+Graph only: with the environment variable CS_ANIM_GRAPH_ONLY=1 the script rebuilds just the
+animation Blueprint's graph from the assets that are already there (after a change to
+UCSAnimGraphBuilder, for example). It needs no pack and touches no clip, blend space or stride table.
+
 Safe to rerun: clips are reimported and retargeted over the old ones, the IK Rigs and retargeter
 are rebuilt, the blend spaces refilled and the AnimGraph rebuilt.
 
@@ -356,7 +360,7 @@ def make_anim_blueprint(skeleton, assets):
     abp = load_or_create(ABP, unreal.AnimBlueprint, factory)
     poses = [unreal.CSPoseSource(asset=assets[a], loop=loop, blend_in_seconds=blend) for a, loop, blend in POSES]
     result = unreal.CSAnimGraphBuilder.build_locomotion_graph(
-        abp, poses, "PoseIndex", "LocomotionAxis", "LocomotionPlayRate", "DefaultSlot")
+        abp, poses, "PoseIndex", "LocomotionAxis", "LocomotionPlayRate", "DefaultSlot", "StrideScale")
     if not result.success:
         fail(result.message)
     for line in result.message.splitlines():
@@ -439,4 +443,23 @@ def main():
     log("done")
 
 
-main()
+def graph_only():
+    """Rebuilds the animation Blueprint's graph from the assets already in the project."""
+    base_mesh = unreal.load_asset(BASE_MESH)
+    if base_mesh is None:
+        fail("no " + BASE_MESH)
+    assets = {}
+    for name, _, _ in POSES:
+        path = BASE + "/" + name if name in (BS_GROUND, BS_CROUCH) else RETARGETED + "/A_" + name
+        asset = unreal.load_asset(path)
+        if asset is None:
+            fail("no " + path + "; run the script without CS_ANIM_GRAPH_ONLY first")
+        assets[name] = asset
+    make_anim_blueprint(base_mesh.get_editor_property("skeleton"), assets)
+    log("graph rebuilt")
+
+
+if os.environ.get("CS_ANIM_GRAPH_ONLY") == "1":
+    graph_only()
+else:
+    main()

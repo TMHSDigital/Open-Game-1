@@ -16,6 +16,8 @@ public class CSCharacter : ModuleRules
 			"InputCore",
 			"PhysicsCore",  // FBodyInstanceCore (physics body states)
 			"Json",  // the tuning overrides file (CSTuningOverrides.cpp)
+			"AnimGraphRuntime",  // FAnimNode_SkeletalControlBase (CSAnimNode_StrideScale)
+			"AnimationCore",  // two-bone IK (CSAnimNode_StrideScale)
 		});
 	}
 }

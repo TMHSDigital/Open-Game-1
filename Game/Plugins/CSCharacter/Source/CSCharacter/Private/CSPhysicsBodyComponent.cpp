@@ -413,6 +413,7 @@ void UCSPhysicsBodyComponent::EnterRagdoll()
 
 	HitAges.Reset();
 	Snapshot.Reset();
+	bGettingUp = false;
 	Body->SetAllBodiesSimulatePhysics(true);
 	Body->SetEnableGravity(true);
 	Body->SetAllBodiesPhysicsBlendWeight(1.f);
@@ -738,6 +739,66 @@ bool UCSPhysicsBodyComponent::TryStandAt(const FVector& XY, float AroundZ, FVect
 	return true;
 }
 
+bool UCSPhysicsBodyComponent::IsGetUpCrouch() const
+{
+	return IsGettingUp() && StateSeconds < GetTuning().GetUpCrouchSeconds;
+}
+
+float UCSPhysicsBodyComponent::GetGetUpSeconds() const
+{
+	const UCSMovementTuning& T = GetTuning();
+	return T.GetUpStrength > 0.f ? FMath::Max(T.GetUpCrouchSeconds, 0.f) + FMath::Max(T.GetUpStandSeconds, 0.f) : 0.f;
+}
+
+float UCSPhysicsBodyComponent::GetRecoverySeconds() const
+{
+	return GetGetUpSeconds() + GetTuning().RagdollRecoverSeconds;
+}
+
+void UCSPhysicsBodyComponent::TakeSnapshot()
+{
+	Snapshot.SetNum(Body->Bodies.Num());
+	for (int32 i = 0; i < Body->Bodies.Num(); ++i)
+	{
+		const FBodyInstance* B = Body->Bodies[i];
+		Snapshot[i] = B && B->IsValidBodyInstance() ? B->GetUnrealWorldTransform() : FTransform::Identity;
+	}
+}
+
+void UCSPhysicsBodyComponent::ApplyGetUpMotors(float Ramp)
+{
+	if (!PhysicalAnimation || !Body)
+	{
+		return;
+	}
+	const float Scale = GetTuning().GetUpStrength * FMath::Clamp(Ramp, 0.f, 1.f);
+	PhysicalAnimation->SetStrengthMultiplyer(1.f);
+	// Every body, the pelvis and legs too: in Normal those follow the animation by being kinematic,
+	// here they are simulated and have to be pulled.
+	for (const FBodyInstance* B : Body->Bodies)
+	{
+		const FName Name = BodyName(B);
+		if (Name != NAME_None)
+		{
+			PhysicalAnimation->ApplyPhysicalAnimationSettings(Name, Scaled(NormalDataFor(Name), Scale));
+		}
+	}
+}
+
+void UCSPhysicsBodyComponent::BeginRecoveryBlend()
+{
+	bGettingUp = false;
+	RecoveryBlendStart = StateSeconds;
+	if (PhysicalAnimation)
+	{
+		PhysicalAnimation->SetStrengthMultiplyer(0.f);
+	}
+	// From here the bodies stay where they are (no gravity, no velocity) while the blend runs.
+	TakeSnapshot();
+	Body->SetEnableGravity(false);
+	HoldSnapshot();
+}
+
 void UCSPhysicsBodyComponent::HoldSnapshot()
 {
 	for (int32 i = 0; i < Body->Bodies.Num() && i < Snapshot.Num(); ++i)
@@ -796,14 +857,8 @@ bool UCSPhysicsBodyComponent::BeginRecovery()
 		UE_LOG(LogCSCharacter, Log, TEXT("%s: no standable spot found; recovering in the air at %s."), *Character->GetName(), *Stand.ToString());
 	}
 
-	// Snapshot the ragdoll pose: the bodies stay there (no gravity, no velocity) while the blend runs.
-	Snapshot.SetNum(Body->Bodies.Num());
-	for (int32 i = 0; i < Body->Bodies.Num(); ++i)
-	{
-		const FBodyInstance* B = Body->Bodies[i];
-		Snapshot[i] = B && B->IsValidBodyInstance() ? B->GetUnrealWorldTransform() : FTransform::Identity;
-	}
-	Body->SetEnableGravity(false);
+	// Where the bodies lie now: they must not move while the capsule is stood up below.
+	TakeSnapshot();
 	HoldSnapshot();
 
 	// Stand the capsule up, facing the way the body gets up. The mesh goes back to its place on the
@@ -818,14 +873,36 @@ bool UCSPhysicsBodyComponent::BeginRecovery()
 	}
 	Body->SetAllBodiesPhysicsBlendWeight(1.f);
 	SetState(ECSBodyState::Recovering);
+	if (GetGetUpSeconds() > 0.f && PhysicalAnimation)
+	{
+		// Get up first: the bodies stay simulated, with gravity, and are pulled toward the pose
+		// (TickRecovering). The closing blend follows.
+		bGettingUp = true;
+		Snapshot.Reset();
+		ApplyGetUpMotors(0.f);
+	}
+	else
+	{
+		BeginRecoveryBlend();
+	}
 	return true;
 }
 
 void UCSPhysicsBodyComponent::TickRecovering(float DeltaTime)
 {
 	const UCSMovementTuning& T = GetTuning();
+	if (bGettingUp)
+	{
+		if (StateSeconds < GetGetUpSeconds())
+		{
+			// The pull comes on over the first part of the crouch, so the body is gathered up and not snatched.
+			ApplyGetUpMotors(FMath::SmoothStep(0.f, 1.f, StateSeconds / FMath::Max(T.GetUpCrouchSeconds * 0.5f, 0.05f)));
+			return;
+		}
+		BeginRecoveryBlend();
+	}
 	HoldSnapshot();
-	const float Alpha = FMath::Clamp(StateSeconds / T.RagdollRecoverSeconds, 0.f, 1.f);
+	const float Alpha = FMath::Clamp((StateSeconds - RecoveryBlendStart) / T.RagdollRecoverSeconds, 0.f, 1.f);
 	if (Alpha >= 1.f - KINDA_SMALL_NUMBER)
 	{
 		FinishRecovery();
@@ -839,6 +916,20 @@ void UCSPhysicsBodyComponent::FinishRecovery()
 {
 	ACSCharacter* Character = GetCharacter();
 	Snapshot.Reset();
+	bGettingUp = false;
+	if (PhysicalAnimation)
+	{
+		// The pelvis and legs were given motors to get up with; they are kinematic again from here
+		// and EnterNormal only writes the upper body's.
+		for (const FBodyInstance* B : Body->Bodies)
+		{
+			const FName Name = BodyName(B);
+			if (Name != NAME_None && !IsInChain(Name, SimulatedRootBone))
+			{
+				PhysicalAnimation->ApplyPhysicalAnimationSettings(Name, Scaled(NormalDataFor(Name), 0.f));
+			}
+		}
+	}
 	// Back to the animated pose: every body kinematic and moved onto the pose at once, so the
 	// upper body starts Normal from the pose and not from where the ragdoll lay.
 	Body->SetAllBodiesPhysicsBlendWeight(0.f);

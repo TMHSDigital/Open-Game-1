@@ -12,6 +12,7 @@
 
 #include "CSCharacter.h"
 #include "CSDevTools.h"
+#include "CSPhysicsBodyComponent.h"
 #include "CSMoveSim.h"
 #include "CSMovementTuning.h"
 #include "EnhancedInputComponent.h"
@@ -308,7 +309,7 @@ bool FCSDevToolsOffDisablesKeysTest::RunTest(const FString& Parameters)
 			if (Character->IsRagdolled())
 			{
 				Rig.Fire(TEXT("DebugRagdoll"), ETriggerEvent::Started);
-				Sim.Run(FVector::ZeroVector, Tuning->RagdollRecoverSeconds + 0.2f);
+				Sim.Run(FVector::ZeroVector, Character->GetPhysicsBody()->GetRecoverySeconds() + 0.2f);
 				TestFalse(TEXT("R again: control returns after the recovery"), Character->IsRagdolled());
 			}
 

@@ -187,9 +187,30 @@ public:
 
 	// ----- Ragdoll -----
 
-	/** Seconds to blend from the settled ragdoll pose back to the movement pose. Must be positive. */
+	/**
+	 * Seconds of the last part of getting up: the blend from where the body has got to onto the
+	 * movement pose. With GetUpStrength at 0 it is the whole recovery, straight from the pose the
+	 * ragdoll lay in. Must be positive.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ragdoll", meta = (UIMin = "0.1", UIMax = "3", Units = "s"))
-	float RagdollRecoverSeconds = 0.5f;
+	float RagdollRecoverSeconds = 0.3f;
+
+	/**
+	 * How hard the body pulls itself up after a ragdoll: every body is driven toward the animated
+	 * pose by the Normal motors times this, with gravity and the floor still acting, first toward the
+	 * crouch pose (GetUpCrouchSeconds) and then toward standing (GetUpStandSeconds). 0: no pulling
+	 * up, only the blend (RagdollRecoverSeconds).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ragdoll", meta = (UIMin = "0", UIMax = "20"))
+	float GetUpStrength = 4.f;
+
+	/** Seconds the body is pulled toward the crouch pose when getting up. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ragdoll", meta = (UIMin = "0", UIMax = "3", Units = "s"))
+	float GetUpCrouchSeconds = 0.55f;
+
+	/** Seconds the body is then pulled toward the standing pose. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ragdoll", meta = (UIMin = "0", UIMax = "3", Units = "s"))
+	float GetUpStandSeconds = 0.5f;
 
 	/**
 	 * An impulse goes full ragdoll above this size (no spec value; default 500). Measured as the
@@ -306,6 +327,27 @@ public:
 	/** Fastest the walk, jog, sprint and crouch clips may play (see LocomotionRateMin). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Body", meta = (UIMin = "1", UIMax = "4"))
 	float LocomotionRateMax = 2.f;
+
+	/**
+	 * Stride: a clip that would have to play slower than StrideRateMin or faster than StrideRateMax
+	 * to match the ground takes shorter or longer steps instead (FCSAnimNode_StrideScale), as far as
+	 * StrideScaleMin and StrideScaleMax allow; what is left over is play rate again, so the feet
+	 * always match. Min and max both at 1 turns the stride off and leaves play rate alone.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Body", meta = (UIMin = "0.5", UIMax = "1"))
+	float StrideRateMin = 0.9f;
+
+	/** See StrideRateMin. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Body", meta = (UIMin = "1", UIMax = "2"))
+	float StrideRateMax = 1.15f;
+
+	/** The shortest the steps are made, as a share of the clip's own (see StrideRateMin). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Body", meta = (UIMin = "0.5", UIMax = "1"))
+	float StrideScaleMin = 0.75f;
+
+	/** The longest the steps are made, as a multiple of the clip's own (see StrideRateMin). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Body", meta = (UIMin = "1", UIMax = "2"))
+	float StrideScaleMax = 1.35f;
 
 	// ----- Contact hits (things that run into the character) -----
 

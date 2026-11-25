@@ -16,7 +16,7 @@
 		},
 		{
 			"Name": "CSCharacterEditor",
-			"Type": "Editor",
+			"Type": "UncookedOnly",
 			"LoadingPhase": "Default"
 		}
 	],

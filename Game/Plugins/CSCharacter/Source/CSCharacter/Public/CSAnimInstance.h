@@ -73,6 +73,10 @@ struct FCSStrideSample
  * LocomotionAxis is where the ground speed falls between the gait speeds in use, and
  * LocomotionPlayRate is the ground speed divided by the speed the blended clips cover at rate 1
  * (GroundStride, CrouchStride), so the feet match the ground whatever the gait speeds are tuned to.
+ *
+ * Stride: a clip far from the wanted speed would play visibly fast or slow, so the rate is kept
+ * inside a band and the rest is made up by the length of the steps (SplitStride, StrideScale, read
+ * by FCSAnimNode_StrideScale in the graph). Rate times stride is always the rate the feet need.
  */
 UCLASS(Blueprintable)
 class CSCHARACTER_API UCSAnimInstance : public UAnimInstance
@@ -103,6 +107,7 @@ public:
 	float GetGroundSpeed() const { return GroundSpeed; }
 	float GetLocomotionAxis() const { return LocomotionAxis; }
 	float GetLocomotionPlayRate() const { return LocomotionPlayRate; }
+	float GetStrideScale() const { return StrideScale; }
 
 	/**
 	 * Blend position and play rate for a ground speed.
@@ -118,6 +123,15 @@ public:
 	 */
 	static float ComputeLocomotion(float InGroundSpeed, TConstArrayView<float> GaitSpeeds, TConstArrayView<FCSStrideSample> Stride,
 		float RateMin, float RateMax, float& OutAxis);
+
+	/**
+	 * Splits the rate the feet need (NaturalRate, from ComputeLocomotion with wide limits) between
+	 * play rate and stride. The rate is held inside [RateMin, RateMax] and the stride takes the
+	 * rest, inside [ScaleMin, ScaleMax]; whatever the stride cannot take goes back to the rate.
+	 * Returns the play rate and sets OutStrideScale; their product is NaturalRate. A rate of 0 or
+	 * less (no stride table) is returned as it is, with a stride of 1.
+	 */
+	static float SplitStride(float NaturalRate, float RateMin, float RateMax, float ScaleMin, float ScaleMax, float& OutStrideScale);
 
 	/** The AnimGraph pose a state plays. */
 	static ECSLocomotionPose PoseForState(ECSLocomotionState InState);
@@ -139,6 +153,10 @@ protected:
 	/** Play rate of the Ground and Crouch blend spaces (see ComputeLocomotion). */
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "CS|Animation")
 	float LocomotionPlayRate = 1.f;
+
+	/** How much longer (above 1) or shorter the steps are than the clips' own (see SplitStride). 1 off the ground. */
+	UPROPERTY(Transient, BlueprintReadOnly, Category = "CS|Animation")
+	float StrideScale = 1.f;
 
 	/** Vertical speed, cm/s, up positive. */
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "CS|Animation")

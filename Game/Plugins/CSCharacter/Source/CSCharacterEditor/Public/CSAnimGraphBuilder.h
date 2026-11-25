@@ -86,8 +86,12 @@ public:
 	 * the Blueprint's parent class. Each pose restarts when it becomes
 	 * active (so one-shot sequences play from their start) and blends in over its BlendInSeconds.
 	 * Everything else in the AnimGraph is removed, so a rerun gives the same graph.
+	 *
+	 * With StrideScaleVariable set (a float member of the parent class), the blended pose goes
+	 * through a CS Stride Scale node driven by it before the slot:
+	 *   Blend Poses by int -> to component space -> CS Stride Scale -> to local space -> Slot
 	 */
 	UFUNCTION(BlueprintCallable, Category = "CS|Animation")
 	static FCSAnimBuildResult BuildLocomotionGraph(UAnimBlueprint* AnimBlueprint, const TArray<FCSPoseSource>& Poses,
-		FName PoseIndexVariable, FName SpeedVariable, FName PlayRateVariable, FName SlotName);
+		FName PoseIndexVariable, FName SpeedVariable, FName PlayRateVariable, FName SlotName, FName StrideScaleVariable = NAME_None);
 };

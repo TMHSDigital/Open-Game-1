@@ -5,6 +5,9 @@
 #include "Animation/BlendSpace.h"
 #include "AnimGraphNode_BlendListByInt.h"
 #include "AnimGraphNode_BlendSpacePlayer.h"
+#include "AnimGraphNode_ComponentToLocalSpace.h"
+#include "AnimGraphNode_CSStrideScale.h"
+#include "AnimGraphNode_LocalToComponentSpace.h"
 #include "AnimGraphNode_Root.h"
 #include "AnimGraphNode_SequencePlayer.h"
 #include "AnimGraphNode_Slot.h"
@@ -149,7 +152,7 @@ FCSAnimBuildResult UCSAnimGraphBuilder::SetBlendSpace1D(UBlendSpace* BlendSpace,
 }
 
 FCSAnimBuildResult UCSAnimGraphBuilder::BuildLocomotionGraph(UAnimBlueprint* AnimBlueprint, const TArray<FCSPoseSource>& Poses,
-	FName PoseIndexVariable, FName SpeedVariable, FName PlayRateVariable, FName SlotName)
+	FName PoseIndexVariable, FName SpeedVariable, FName PlayRateVariable, FName SlotName, FName StrideScaleVariable)
 {
 	using namespace CSAnimGraphBuilderPrivate;
 	if (!AnimBlueprint || Poses.Num() == 0)
@@ -233,9 +236,48 @@ FCSAnimBuildResult UCSAnimGraphBuilder::BuildLocomotionGraph(UAnimBlueprint* Ani
 	{
 		return Fail(TEXT("FAnimNode_BlendListBase has no ChildUpateMode property (engine changed?)."));
 	}
-	if (!Schema->TryCreateConnection(FirstOutput(List), SlotIn))
+	if (StrideScaleVariable.IsNone())
 	{
-		return Fail(TEXT("Could not connect the blend list to the slot."));
+		if (!Schema->TryCreateConnection(FirstOutput(List), SlotIn))
+		{
+			return Fail(TEXT("Could not connect the blend list to the slot."));
+		}
+	}
+	else
+	{
+		// Blend list -> component space -> stride scale -> local space -> slot.
+		FGraphNodeCreator<UAnimGraphNode_LocalToComponentSpace> ToComponentCreator(*Graph);
+		UAnimGraphNode_LocalToComponentSpace* ToComponent = ToComponentCreator.CreateNode();
+		ToComponent->NodePosX = X0 - 560;
+		ToComponent->NodePosY = Y0 + 160;
+		ToComponentCreator.Finalize();
+		FGraphNodeCreator<UAnimGraphNode_CSStrideScale> StrideCreator(*Graph);
+		UAnimGraphNode_CSStrideScale* Stride = StrideCreator.CreateNode();
+		Stride->NodePosX = X0 - 480;
+		Stride->NodePosY = Y0 + 160;
+		StrideCreator.Finalize();
+		FGraphNodeCreator<UAnimGraphNode_ComponentToLocalSpace> ToLocalCreator(*Graph);
+		UAnimGraphNode_ComponentToLocalSpace* ToLocal = ToLocalCreator.CreateNode();
+		ToLocal->NodePosX = X0 - 380;
+		ToLocal->NodePosY = Y0 + 160;
+		ToLocalCreator.Finalize();
+		UK2Node_VariableGet* GetStride = MakeGetter(*Graph, StrideScaleVariable, X0 - 700, Y0 + 260);
+
+		UEdGraphPin* ToComponentIn = ToComponent->FindPin(TEXT("LocalPose"), EGPD_Input);
+		UEdGraphPin* StrideIn = Stride->FindPin(TEXT("ComponentPose"), EGPD_Input);
+		UEdGraphPin* ScaleIn = Stride->FindPin(TEXT("StrideScale"), EGPD_Input);
+		UEdGraphPin* ToLocalIn = ToLocal->FindPin(TEXT("ComponentPose"), EGPD_Input);
+		UEdGraphPin* ScaleOut = GetStride->FindPin(StrideScaleVariable, EGPD_Output);
+		if (!ToComponentIn || !StrideIn || !ScaleIn || !ToLocalIn || !ScaleOut)
+		{
+			return Fail(TEXT("The stride scale nodes do not have the expected pins (engine changed?), or the stride variable is not a member of the parent class."));
+		}
+		if (!Schema->TryCreateConnection(FirstOutput(List), ToComponentIn) || !Schema->TryCreateConnection(FirstOutput(ToComponent), StrideIn)
+			|| !Schema->TryCreateConnection(ScaleOut, ScaleIn) || !Schema->TryCreateConnection(FirstOutput(Stride), ToLocalIn)
+			|| !Schema->TryCreateConnection(FirstOutput(ToLocal), SlotIn))
+		{
+			return Fail(TEXT("Could not connect the blend list through the stride scale to the slot."));
+		}
 	}
 	UK2Node_VariableGet* GetIndex = MakeGetter(*Graph, PoseIndexVariable, X0 - 900, Y0 - 150);
 	UEdGraphPin* IndexOut = GetIndex->FindPin(PoseIndexVariable, EGPD_Output);
@@ -322,7 +364,9 @@ FCSAnimBuildResult UCSAnimGraphBuilder::BuildLocomotionGraph(UAnimBlueprint* Ani
 
 	FCSAnimBuildResult Result;
 	Result.bSuccess = true;
-	Result.Message = FString::Printf(TEXT("%s: Blend Poses by %s -> Slot %s -> Output Pose%s"),
-		*AnimBlueprint->GetName(), *PoseIndexVariable.ToString(), *SlotName.ToString(), *Built);
+	Result.Message = FString::Printf(TEXT("%s: Blend Poses by %s ->%s Slot %s -> Output Pose%s"),
+		*AnimBlueprint->GetName(), *PoseIndexVariable.ToString(),
+		StrideScaleVariable.IsNone() ? TEXT("") : *FString::Printf(TEXT(" CS Stride Scale by %s ->"), *StrideScaleVariable.ToString()),
+		*SlotName.ToString(), *Built);
 	return Result;
 }

@@ -17,6 +17,7 @@
 #include "Components/BoxComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "CSAnimInstance.h"
+#include "CSAnimNode_StrideScale.h"
 #include "CSCharacter.h"
 #include "CSMovementTuning.h"
 #include "Engine/SkeletalMesh.h"
@@ -334,10 +335,49 @@ bool FCSAnimationFeetMatchGroundAfterSpeedChangeTest::RunTest(const FString& Par
 		const float Speed = Sim.Speed2D();
 		TestNearlyEqual(FString::Printf(TEXT("Jogs at the tuned %.0f cm/s"), JogSpeed), Speed, JogSpeed, 5.f);
 		TestNearlyEqual(FString::Printf(TEXT("At %.0f cm/s the blend sits on the jog clip"), JogSpeed), Anim->GetLocomotionAxis(), 2.f, 0.05f);
-		const float FootSpeed = Anim->GetLocomotionPlayRate() * Anim->GroundStride[2].StrideSpeed;
+		// What the feet cover: the clip's own stride speed, played at the rate, with steps of the stride scale.
+		const float FootSpeed = Anim->GetLocomotionPlayRate() * Anim->GetStrideScale() * Anim->GroundStride[2].StrideSpeed;
+		AddInfo(FString::Printf(TEXT("Jog at %.0f cm/s: clip stride %.0f cm/s, play rate %.2f, stride x%.2f"),
+			Speed, Anim->GroundStride[2].StrideSpeed, Anim->GetLocomotionPlayRate(), Anim->GetStrideScale()));
 		TestTrue(FString::Printf(TEXT("At %.0f cm/s the feet cover the ground speed (feet %.0f, ground %.0f)"), JogSpeed, FootSpeed, Speed),
 			FMath::Abs(FootSpeed - Speed) <= 0.02f * Speed);
+		// The stride takes its share before the rate leaves its band.
+		const bool bRateInBand = Anim->GetLocomotionPlayRate() >= Tuning->StrideRateMin - 0.01f && Anim->GetLocomotionPlayRate() <= Tuning->StrideRateMax + 0.01f;
+		const bool bStrideAtLimit = Anim->GetStrideScale() <= Tuning->StrideScaleMin + 0.01f || Anim->GetStrideScale() >= Tuning->StrideScaleMax - 0.01f;
+		TestTrue(FString::Printf(TEXT("At %.0f cm/s the rate stays in its band unless the stride is at its limit"), JogSpeed), bRateInBand || bStrideAtLimit);
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSAnimationStrideSplitTest, "CombatSimulator.CS.Animation.StrideTakesWhatTheRateShouldNot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FCSAnimationStrideSplitTest::RunTest(const FString& Parameters)
+{
+	// Band 0.9 to 1.15 for the rate, 0.75 to 1.35 for the stride.
+	float Stride = 0.f;
+	float Rate = UCSAnimInstance::SplitStride(1.f, 0.9f, 1.15f, 0.75f, 1.35f, Stride);
+	TestTrue(TEXT("A clip that fits is left alone"), FMath::IsNearlyEqual(Rate, 1.f) && FMath::IsNearlyEqual(Stride, 1.f));
+	Rate = UCSAnimInstance::SplitStride(1.1f, 0.9f, 1.15f, 0.75f, 1.35f, Stride);
+	TestTrue(TEXT("Inside the band the rate does it all"), FMath::IsNearlyEqual(Rate, 1.1f) && FMath::IsNearlyEqual(Stride, 1.f));
+	Rate = UCSAnimInstance::SplitStride(1.38f, 0.9f, 1.15f, 0.75f, 1.35f, Stride);
+	TestTrue(TEXT("Past the band the steps get longer and the rate stays at its limit"), FMath::IsNearlyEqual(Rate, 1.15f, 0.001f) && FMath::IsNearlyEqual(Stride, 1.2f, 0.001f));
+	Rate = UCSAnimInstance::SplitStride(0.72f, 0.9f, 1.15f, 0.75f, 1.35f, Stride);
+	TestTrue(TEXT("Below the band the steps get shorter"), FMath::IsNearlyEqual(Rate, 0.9f, 0.001f) && FMath::IsNearlyEqual(Stride, 0.8f, 0.001f));
+	Rate = UCSAnimInstance::SplitStride(1.85f, 0.9f, 1.15f, 0.75f, 1.35f, Stride);
+	TestTrue(TEXT("A stride at its limit hands the rest back to the rate"), FMath::IsNearlyEqual(Stride, 1.35f) && FMath::IsNearlyEqual(Rate * Stride, 1.85f, 0.001f));
+	TestTrue(TEXT("And that rate is less hurried than without the stride"), Rate < 1.85f && Rate > 1.15f);
+	Rate = UCSAnimInstance::SplitStride(1.5f, 1.f, 1.f, 1.f, 1.f, Stride);
+	TestTrue(TEXT("With the stride off the rate is what the feet need"), FMath::IsNearlyEqual(Rate, 1.5f) && FMath::IsNearlyEqual(Stride, 1.f));
+	Rate = UCSAnimInstance::SplitStride(0.f, 0.9f, 1.15f, 0.75f, 1.35f, Stride);
+	TestTrue(TEXT("No rate, no stride"), Rate == 0.f && FMath::IsNearlyEqual(Stride, 1.f));
+
+	// The node: a foot moves along the forward axis only, from under the hip.
+	const FVector Hip(10.f, 0.f, 90.f);
+	const FVector Forward(0.f, 1.f, 0.f);
+	TestTrue(TEXT("A foot ahead of the hip goes farther ahead"), FCSAnimNode_StrideScale::ScaleFoot(FVector(12.f, 40.f, 5.f), Hip, Forward, 1.25f).Equals(FVector(12.f, 50.f, 5.f), 0.001));
+	TestTrue(TEXT("A foot behind the hip goes farther behind"), FCSAnimNode_StrideScale::ScaleFoot(FVector(12.f, -40.f, 5.f), Hip, Forward, 1.25f).Equals(FVector(12.f, -50.f, 5.f), 0.001));
+	TestTrue(TEXT("A foot under the hip stays"), FCSAnimNode_StrideScale::ScaleFoot(FVector(12.f, 0.f, 5.f), Hip, Forward, 1.25f).Equals(FVector(12.f, 0.f, 5.f), 0.001));
+	TestTrue(TEXT("A shorter stride pulls the foot in"), FCSAnimNode_StrideScale::ScaleFoot(FVector(12.f, 40.f, 5.f), Hip, Forward, 0.75f).Equals(FVector(12.f, 30.f, 5.f), 0.001));
 	return true;
 }
 
