@@ -661,7 +661,8 @@ void UCSPlaytestRunner::BeginPlay()
 {
 	Super::BeginPlay();
 	FString Value;
-	if (!FParse::Value(FCommandLine::Get(), TEXT("CSPlaytest="), Value))
+	// Not stopping at a comma: the value is a comma-separated list of scenarios.
+	if (!FParse::Value(FCommandLine::Get(), TEXT("CSPlaytest="), Value, false))
 	{
 		SetComponentTickEnabled(false);
 		return;
@@ -673,7 +674,7 @@ void UCSPlaytestRunner::BeginPlay()
 		UE_LOG(LogCombatSimulator, Warning, TEXT("UCSPlaytestRunner: no scenario %s (there are: %s)"), *Name, *FString::Join(ScenarioNames(), TEXT(", ")));
 	}
 	FString Path;
-	if (!FParse::Value(FCommandLine::Get(), TEXT("CSPlaytestLog="), Path))
+	if (!FParse::Value(FCommandLine::Get(), TEXT("CSPlaytestLog="), Path, false))
 	{
 		Path = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("Playtest"), TEXT("events.jsonl"));
 	}

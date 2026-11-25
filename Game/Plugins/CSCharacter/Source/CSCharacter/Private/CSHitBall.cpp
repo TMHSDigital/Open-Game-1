@@ -1,6 +1,7 @@
 #include "CSHitBall.h"
 
 #include "Materials/MaterialInstanceDynamic.h"
+#include "Materials/MaterialInterface.h"
 
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -23,6 +24,14 @@ ACSHitBall::ACSHitBall()
 	if (Sphere.Succeeded())
 	{
 		Ball->SetStaticMesh(Sphere.Object);
+	}
+	// The sphere's own material is the engine default, which has no colour; the basic shape
+	// material has one (Color), which Throw sets so the ball stands out. /Engine/BasicShapes is always
+	// cooked (DefaultGame.ini).
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> Paintable(TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
+	if (Paintable.Succeeded())
+	{
+		Ball->SetMaterial(0, Paintable.Object);
 	}
 	Ball->SetWorldScale3D(FVector(2.f * RadiusCm / 100.f));
 	Ball->SetMobility(EComponentMobility::Movable);

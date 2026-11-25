@@ -28,7 +28,7 @@
 # Exit code: 0 when the game played to the end; 1 otherwise (the summary says how far it got).
 
 param(
-    [string]$Scenario = 'all',
+    [string[]]$Scenario = @('all'),
     [ValidateSet('Editor', 'Packaged')]
     [string]$Target = 'Editor',
     [string]$Map = '/Game/Maps/L_Plane',
@@ -45,6 +45,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\env.ps1"
 
+# -Scenario punch,stance arrives as a list; the game takes one comma-separated value.
+$Scenario = ($Scenario | ForEach-Object { $_ -split ',' } | Where-Object { $_ }) -join ','
 $Scenarios = @('locomotion', 'stance', 'punch', 'knockdown')
 if ($List) {
     $Scenarios | ForEach-Object { $_ }
@@ -149,11 +151,13 @@ $errTask = $ff.StandardError.ReadToEndAsync()
 # game's events are timed with. It is read from ffmpeg's log once recording has stopped.
 
 # ---------------------------------------------------------------- wait for the game
-if (-not $game.WaitForExit($TimeoutSeconds * 1000)) {
+# The process that owns the window: for a package the launched exe is a stub that starts the real
+# game and exits at once, so the launched process is not the one to wait for.
+$gameProc = [System.Diagnostics.Process]::GetProcessById($window.Id)
+if (-not $gameProc.WaitForExit($TimeoutSeconds * 1000)) {
     Write-Warning "The game did not finish in $TimeoutSeconds s; stopping it."
-    Get-Process -Id $game.Id -ErrorAction SilentlyContinue | Stop-Process -Force
+    if (-not $gameProc.HasExited) { $gameProc.Kill() }
 }
-Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Id -eq $window.Id } | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 500
 if (-not $ff.HasExited) {
     $ff.StandardInput.Write('q')

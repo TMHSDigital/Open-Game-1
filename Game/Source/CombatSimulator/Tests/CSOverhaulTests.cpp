@@ -85,6 +85,15 @@ bool FCSOverhaulLegYawTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Back and to the left: they turn right"), UCSAnimInstance::ComputeLegYaw(-135.f, 60.f, bBackward), 45.f);
 	TestTrue(TEXT("And that is backward"), bBackward);
 	TestEqual(TEXT("Angles wrap"), UCSAnimInstance::ComputeLegYaw(405.f, 60.f, bBackward), 45.f);
+	// The margin: near the side the answer depends on what it was.
+	UCSAnimInstance::ComputeLegYaw(100.f, 60.f, false, bBackward);
+	TestFalse(TEXT("At 100 degrees, forward stays forward"), bBackward);
+	UCSAnimInstance::ComputeLegYaw(100.f, 60.f, true, bBackward);
+	TestTrue(TEXT("At 100 degrees, backward stays backward"), bBackward);
+	UCSAnimInstance::ComputeLegYaw(115.f, 60.f, false, bBackward);
+	TestTrue(TEXT("Past 110 degrees it turns backward"), bBackward);
+	UCSAnimInstance::ComputeLegYaw(85.f, 60.f, true, bBackward);
+	TestFalse(TEXT("Below 90 degrees it turns forward"), bBackward);
 
 	// The pelvis turns about the vertical in place; a quarter turn sends its forward (+Y in the mesh) to -X.
 	const FTransform Pelvis(FQuat::Identity, FVector(1.f, 2.f, 95.f));

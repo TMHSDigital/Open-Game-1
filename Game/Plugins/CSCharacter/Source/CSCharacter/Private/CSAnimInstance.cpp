@@ -101,10 +101,10 @@ void UCSAnimInstance::SetState(ECSLocomotionState NewState)
 	PoseIndex = int32(PoseForState(State));
 }
 
-float UCSAnimInstance::ComputeLegYaw(float MoveAngle, float MaxYaw, bool& bOutBackward)
+float UCSAnimInstance::ComputeLegYaw(float MoveAngle, float MaxYaw, bool bWasBackward, bool& bOutBackward)
 {
 	const float Angle = FRotator::NormalizeAxis(MoveAngle);
-	bOutBackward = FMath::Abs(Angle) > 100.f;
+	bOutBackward = FMath::Abs(Angle) > (bWasBackward ? 90.f : 110.f);
 	const float FromFacing = bOutBackward ? Angle - FMath::Sign(Angle) * 180.f : Angle;
 	return FMath::Clamp(FromFacing, -FMath::Abs(MaxYaw), FMath::Abs(MaxYaw));
 }
@@ -199,12 +199,15 @@ void UCSAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 		const FVector Moving = Velocity.GetSafeNormal2D();
 		const float MoveAngle = FMath::RadiansToDegrees(FMath::Atan2(float(FVector::CrossProduct(Facing, Moving).Z), float(FVector::DotProduct(Facing, Moving))));
 		bool bBackward = false;
-		WantedLegYaw = ComputeLegYaw(MoveAngle, Tuning->LegYawMax, bBackward);
-		if (bBackward)
-		{
-			LocomotionPlayRate = -LocomotionPlayRate;
-		}
+		WantedLegYaw = ComputeLegYaw(MoveAngle, Tuning->LegYawMax, bStepsBackward, bBackward);
+		bStepsBackward = bBackward;
 	}
+	else
+	{
+		bStepsBackward = false;
+	}
+	StepDirection = FMath::FInterpTo(StepDirection, bStepsBackward ? -1.f : 1.f, DeltaSeconds, LegYawInterpSpeed);
+	LocomotionPlayRate *= StepDirection;
 	LegYaw = FMath::FInterpTo(LegYaw, WantedLegYaw, DeltaSeconds, LegYawInterpSpeed);
 
 	if (bIsInAir)

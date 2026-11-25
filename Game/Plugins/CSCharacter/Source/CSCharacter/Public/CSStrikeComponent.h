@@ -112,6 +112,10 @@ public:
 	 */
 	FVector GetAimPointOn(const ACSCharacter& Victim) const;
 
+	/** A character whose chest is higher or lower than this, cm, is on another floor and not a target. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "CS|Strike", meta = (ClampMin = "0", Units = "cm"))
+	float MaxTargetHeightDifference = 60.f;
+
 	/** The highest bone an aim point may reach. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "CS|Strike")
 	FName AimTopBone = TEXT("spine_05");

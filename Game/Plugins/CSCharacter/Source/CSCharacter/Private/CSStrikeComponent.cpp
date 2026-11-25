@@ -141,6 +141,12 @@ ACSCharacter* UCSStrikeComponent::FindTarget() const
 		{
 			continue;
 		}
+		// On another floor (a ledge above or below): not a target, or the step in would take the
+		// attacker off an edge or into a wall.
+		if (FMath::Abs(Chest.Z - From.Z) > MaxTargetHeightDifference)
+		{
+			continue;
+		}
 		const float Cos = float(FVector::DotProduct(To / Distance, Aim));
 		// At arm's length the cone opens to the side: an opponent at the shoulder (a stagger moves it
 		// there) is still the one in the fight, though no longer in front of the aim.
@@ -222,6 +228,17 @@ void UCSStrikeComponent::StepIn()
 		return;
 	}
 	const FVector Along = To.GetSafeNormal();
+	// No walkable floor a step ahead: stop rather than run off it.
+	FHitResult Floor;
+	const FVector Ahead = Character->GetActorLocation() + Along * (Character->GetSimpleCollisionRadius() + 30.f);
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(CSStrikeStepIn), false, Character);
+	const float Below = Character->GetSimpleCollisionHalfHeight() + Move->MaxStepHeight + 10.f;
+	if (!GetWorld()->LineTraceSingleByChannel(Floor, Ahead, Ahead - FVector(0.f, 0.f, Below), ECC_Visibility, Params)
+		|| !Move->IsWalkable(Floor))
+	{
+		bSteppingIn = false;
+		return;
+	}
 	const float Current = float(FVector::DotProduct(Move->Velocity, Along));
 	if (Current < T.PunchLungeSpeed)
 	{

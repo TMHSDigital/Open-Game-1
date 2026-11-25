@@ -121,11 +121,14 @@ public:
 	/**
 	 * Facing one way and moving another (MoveAngle: the way of movement from the facing, degrees,
 	 * positive to the right): how far to turn the legs, at most MaxYaw either way, and whether the
-	 * steps play backward. Up to 100 degrees the legs turn toward the movement; beyond that the
+	 * steps play backward. Toward the front the legs turn toward the movement; toward the back the
 	 * character is backing off, the steps play in reverse, and the legs turn by what is left of the
-	 * angle from straight back.
+	 * angle from straight back. The switch has a margin so an angle near the side does not flip it
+	 * every frame: backward from 110 degrees when it was forward, forward again below 90 when it
+	 * was backward (bWasBackward).
 	 */
-	static float ComputeLegYaw(float MoveAngle, float MaxYaw, bool& bOutBackward);
+	static float ComputeLegYaw(float MoveAngle, float MaxYaw, bool bWasBackward, bool& bOutBackward);
+	static float ComputeLegYaw(float MoveAngle, float MaxYaw, bool& bOutBackward) { return ComputeLegYaw(MoveAngle, MaxYaw, false, bOutBackward); }
 
 	/**
 	 * Blend position and play rate for a ground speed.
@@ -179,6 +182,11 @@ protected:
 	/** How far the legs are turned from the facing toward the way they move, degrees, positive right (see ComputeLegYaw). */
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "CS|Animation")
 	float LegYaw = 0.f;
+
+	/** The steps play backward (backing off); kept between updates for ComputeLegYaw's margin. */
+	bool bStepsBackward = false;
+	/** The play rate's sign, eased between 1 and -1 so a switch slows the steps through a stop instead of reversing them at once. */
+	float StepDirection = 1.f;
 
 	/** Vertical speed, cm/s, up positive. */
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "CS|Animation")
