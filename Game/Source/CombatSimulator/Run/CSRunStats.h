@@ -33,6 +33,8 @@ struct COMBATSIMULATOR_API FCSRunHits
 	int32 Knockdowns = 0;
 	/** Hits that changed nothing: the character was already down. */
 	int32 NoEffect = 0;
+	/** Hits taken on a guard (UCSGuardComponent). */
+	int32 Blocked = 0;
 	/** The largest hit, as the velocity change it stood for, cm/s. */
 	float Biggest = 0.f;
 	/** Sum of every hit's velocity change, cm/s. */
@@ -63,6 +65,14 @@ struct COMBATSIMULATOR_API FCSRunStats
 	/** Punches the player threw, and how many of them reached a character. */
 	int32 PunchesThrown = 0;
 	int32 PunchesLanded = 0;
+	/** The player's punches that were taken on a guard. */
+	int32 PunchesBlocked = 0;
+	/** The player's dodge steps. */
+	int32 Dodges = 0;
+	/** Punches the run's opponents threw, and how many of them reached the player or its guard. */
+	int32 OpponentPunches = 0;
+	int32 OpponentPunchesLanded = 0;
+	int32 OpponentPunchesBlocked = 0;
 	FCSRunHits Dealt;
 	FCSRunHits Taken;
 	/** Hits between others, counted only. */
@@ -73,6 +83,11 @@ struct COMBATSIMULATOR_API FCSRunStats
 	void RecordThrow() { ++BallsThrown; }
 	void RecordPunch() { ++PunchesThrown; }
 	void RecordPunchLanded() { ++PunchesLanded; }
+	void RecordPunchBlocked() { ++PunchesBlocked; }
+	void RecordDodge() { ++Dodges; }
+	void RecordOpponentPunch() { ++OpponentPunches; }
+	/** An opponent's punch reached the player: landed (Stagger, Ragdoll) or on the guard (Blocked). */
+	void RecordOpponentPunchResult(ECSContactResult Result);
 
 	/** Punches landed over punches thrown, 0 to 1. 0 without punches. */
 	float PunchAccuracy() const;

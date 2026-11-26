@@ -36,6 +36,8 @@ enum class ECSContactResult : uint8
 	Ignored,
 	Stagger,
 	Ragdoll,
+	/** Taken on the guard (UCSGuardComponent): a share of the force was absorbed and the rest rocked the body; not a landed hit. */
+	Blocked,
 };
 
 /** The last contact hit on a character, for the feel overlay. */

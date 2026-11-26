@@ -54,11 +54,16 @@ ACSCharacter* UCSHitFeedback::GetPlayer() const
 
 void UCSHitFeedback::HandleContact(ACSCharacter* Victim, AActor* Other, const FCSContactRecord& Hit)
 {
-	if (!Victim || Victim->GetWorld() != GetWorld() || (Hit.Result != ECSContactResult::Stagger && Hit.Result != ECSContactResult::Ragdoll))
+	if (!Victim || Victim->GetWorld() != GetWorld()
+		|| (Hit.Result != ECSContactResult::Stagger && Hit.Result != ECSContactResult::Ragdoll && Hit.Result != ECSContactResult::Blocked))
 	{
 		return;
 	}
-	StartFlash(Victim);
+	if (Hit.Result != ECSContactResult::Blocked)
+	{
+		// A blocked hit did not land: no flash, only the mark.
+		StartFlash(Victim);
+	}
 	const ACSCharacter* Player = GetPlayer();
 	if (!Player)
 	{
@@ -202,7 +207,8 @@ void UCSHitFeedback::TickComponent(float DeltaTime, ELevelTick TickType, FActorC
 
 FString UCSHitFeedback::DescribeMark(const FCSHitMark& Mark)
 {
-	const TCHAR* What = Mark.Result == ECSContactResult::Ragdoll ? TEXT("knockdown") : TEXT("stagger");
+	const TCHAR* What = Mark.Result == ECSContactResult::Ragdoll ? TEXT("knockdown")
+		: Mark.Result == ECSContactResult::Blocked ? TEXT("blocked") : TEXT("stagger");
 	return FString::Printf(TEXT("%d %s"), FMath::RoundToInt(Mark.Size), What);
 }
 
@@ -223,8 +229,9 @@ void UCSHitFeedback::DrawMarks(AHUD* HUD, UCanvas* Canvas)
 		}
 		const float Age = float(Now - Mark.Time) / FMath::Max(MarkSeconds, 0.01f);
 		const uint8 Alpha = uint8(255.f * FMath::Clamp(1.f - Age, 0.f, 1.f));
-		// Dealt: yellow, knockdowns orange; taken: red. Rises a little as it fades.
-		FColor Colour = Mark.bDealt ? (Mark.Result == ECSContactResult::Ragdoll ? FColor(255, 140, 20) : FColor(255, 230, 60)) : FColor(255, 70, 60);
+		// Dealt: yellow, knockdowns orange; taken: red; on a guard, either way: light blue. Rises a little as it fades.
+		FColor Colour = Mark.Result == ECSContactResult::Blocked ? FColor(120, 200, 255)
+			: Mark.bDealt ? (Mark.Result == ECSContactResult::Ragdoll ? FColor(255, 140, 20) : FColor(255, 230, 60)) : FColor(255, 70, 60);
 		Colour.A = Alpha;
 		const float X = float(Screen.X);
 		const float Y = float(Screen.Y) - 30.f * Age;

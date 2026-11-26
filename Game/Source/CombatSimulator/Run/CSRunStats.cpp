@@ -11,6 +11,9 @@ void FCSRunHits::Record(const FCSContactRecord& Hit)
 	case ECSContactResult::Ragdoll:
 		++Knockdowns;
 		break;
+	case ECSContactResult::Blocked:
+		++Blocked;
+		break;
 	default:
 		++NoEffect;
 		break;
@@ -67,6 +70,18 @@ void FCSRunStats::RecordHit(ECSRunHitSide Side, const FCSContactRecord& Hit, boo
 	}
 }
 
+void FCSRunStats::RecordOpponentPunchResult(ECSContactResult Result)
+{
+	if (Result == ECSContactResult::Stagger || Result == ECSContactResult::Ragdoll)
+	{
+		++OpponentPunchesLanded;
+	}
+	else if (Result == ECSContactResult::Blocked)
+	{
+		++OpponentPunchesBlocked;
+	}
+}
+
 float FCSRunStats::Accuracy() const
 {
 	return BallsThrown > 0 ? FMath::Min(1.f, float(BallHits) / float(BallsThrown)) : 0.f;
@@ -106,7 +121,11 @@ FString FCSRunStats::HudLine(float TimeLimit, int32 KnockdownGoal) const
 	{
 		Line += FString::Printf(TEXT(" / %d"), KnockdownGoal);
 	}
-	Line += FString::Printf(TEXT("   taken %d"), Taken.Hits);
+	Line += FString::Printf(TEXT("   taken %d"), Taken.Hits - Taken.Blocked);
+	if (Taken.Blocked > 0)
+	{
+		Line += FString::Printf(TEXT("   blocked %d"), Taken.Blocked);
+	}
 	return Line;
 }
 
@@ -117,10 +136,24 @@ TArray<FString> FCSRunStats::SummaryLines() const
 	if (PunchesThrown > 0)
 	{
 		Lines.Add(FString::Printf(TEXT("Punches: %d thrown, %d landed (%d%%)"), PunchesThrown, PunchesLanded, FMath::RoundToInt(PunchAccuracy() * 100.f)));
+		if (PunchesBlocked > 0)
+		{
+			Lines.Add(FString::Printf(TEXT("  %d taken on a guard"), PunchesBlocked));
+		}
 	}
 	else
 	{
 		Lines.Add(TEXT("Punches: none thrown"));
+	}
+	if (OpponentPunches > 0)
+	{
+		const int32 Missed = FMath::Max(0, OpponentPunches - OpponentPunchesLanded - OpponentPunchesBlocked);
+		Lines.Add(FString::Printf(TEXT("Their punches: %d thrown, %d landed, %d blocked, %d missed"), OpponentPunches,
+			OpponentPunchesLanded, OpponentPunchesBlocked, Missed));
+	}
+	if (Dodges > 0)
+	{
+		Lines.Add(FString::Printf(TEXT("Dodges: %d"), Dodges));
 	}
 	Lines.Add(FString::Printf(TEXT("Balls thrown: %d"), BallsThrown));
 	if (BallsThrown > 0)
@@ -129,7 +162,8 @@ TArray<FString> FCSRunStats::SummaryLines() const
 	}
 	auto Side = [&Lines](const TCHAR* Name, const FCSRunHits& H)
 	{
-		Lines.Add(FString::Printf(TEXT("%s: %d (%d staggers, %d knockdowns, %d with no effect)"), Name, H.Hits, H.Staggers, H.Knockdowns, H.NoEffect));
+		Lines.Add(FString::Printf(TEXT("%s: %d (%d staggers, %d knockdowns, %d with no effect%s)"), Name, H.Hits, H.Staggers, H.Knockdowns, H.NoEffect,
+			H.Blocked > 0 ? *FString::Printf(TEXT(", %d blocked"), H.Blocked) : TEXT("")));
 		if (H.Hits > 0)
 		{
 			Lines.Add(FString::Printf(TEXT("  biggest %d cm/s, average %d cm/s"), FMath::RoundToInt(H.Biggest), FMath::RoundToInt(H.Average())));

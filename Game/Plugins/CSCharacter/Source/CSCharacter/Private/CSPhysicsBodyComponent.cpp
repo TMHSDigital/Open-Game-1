@@ -4,6 +4,7 @@
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "CSCharacter.h"
+#include "CSGuardComponent.h"
 #include "CSCharacterLog.h"
 #include "CSDevTools.h"
 #include "CSHitBall.h"
@@ -1040,12 +1041,17 @@ ECSContactResult UCSPhysicsBodyComponent::ReceiveContact(AActor* OtherActor, FNa
 	}
 	// The character's own motion: its movement velocity (in Ragdoll the contact changes nothing anyway).
 	const FVector OurVelocity = State == ECSBodyState::Ragdoll ? FVector::ZeroVector : Character->GetVelocity();
-	const FVector Change = ComputeContactVelocityChange(OtherVelocity, OtherMass, ImpactPoint - OtherLocation, GetBodyMass(),
+	const FVector Full = ComputeContactVelocityChange(OtherVelocity, OtherMass, ImpactPoint - OtherLocation, GetBodyMass(),
 		T.MinContactSpeed, T.ContactImpulseScale * FMath::Max(ExtraScale, 0.f), T.ContactImpulseMax, OurVelocity);
-	if (Change.IsNearlyZero())
+	if (Full.IsNearlyZero())
 	{
 		return ECSContactResult::None;
 	}
+	// The guard takes most of a hit from in front; what is left still rocks the body. Its share is
+	// taken off the velocity change after the ceiling, so a guard always helps, however big the hit.
+	UCSGuardComponent* Guard = Character->GetGuard();
+	const bool bBlocked = Guard && Guard->Covers(OtherLocation);
+	const FVector Change = bBlocked ? Full * (1.f - FMath::Clamp(T.BlockAbsorb, 0.f, 1.f)) : Full;
 	FName BodyBone = FindBodyBone(Bone);
 	if (BodyBone == NAME_None)
 	{
@@ -1073,6 +1079,15 @@ ECSContactResult UCSPhysicsBodyComponent::ReceiveContact(AActor* OtherActor, FNa
 	else if (State == ECSBodyState::Recovering && !bRagdolls)
 	{
 		// Getting up: a hit below the threshold does nothing (as in ApplyImpulseAtBone).
+	}
+	else if (bBlocked && !bRagdolls)
+	{
+		if (!Change.IsNearlyZero())
+		{
+			ApplyImpulseAtBone(BodyBone, Change * GetBodyMass());
+		}
+		Result = ECSContactResult::Blocked;
+		Guard->NoteBlocked();
 	}
 	else
 	{

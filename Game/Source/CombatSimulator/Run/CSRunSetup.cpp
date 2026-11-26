@@ -11,6 +11,8 @@ namespace
 	const FName FormationKey(TEXT("Formation"));
 	const FName DistanceKey(TEXT("Distance"));
 	const FName SpacingKey(TEXT("Spacing"));
+	const FName OpponentsKey(TEXT("Opponents"));
+	const FName OpponentWindupKey(TEXT("OpponentWindup"));
 	const FName LaunchersKey(TEXT("Launchers"));
 	const FName TimeLimitKey(TEXT("TimeLimit"));
 	const FName KnockdownGoalKey(TEXT("KnockdownGoal"));
@@ -57,6 +59,10 @@ const TArray<FCSRunRow>& FCSRunSetup::Rows()
 		ChoiceRow(FormationKey, TEXT("Formation"), {TEXT("Line"), TEXT("Ring")}, 0, TEXT("Line: a row ahead of you. Ring: around you.")),
 		Row(DistanceKey, TEXT("Distance"), TEXT("cm"), 200.f, 2000.f, 50.f, 500.f, TEXT("From where you start to the dummies.")),
 		Row(SpacingKey, TEXT("Spacing"), TEXT("cm"), 100.f, 600.f, 25.f, 200.f, TEXT("Between neighbours in a line.")),
+		ChoiceRow(OpponentsKey, TEXT("Dummies do"), {TEXT("Stand still"), TEXT("Fight back")}, 0,
+			TEXT("Stand still: they take hits. Fight back: they close in and punch on a pattern; block (right mouse) or dodge (Q).")),
+		Row(OpponentWindupKey, TEXT("Their wind-up"), TEXT("s"), 0.2f, 1.5f, 0.05f, 0.7f,
+			TEXT("How long a fighting dummy draws its fist back before it punches: its tell. Shorter is harder.")),
 		Row(LaunchersKey, TEXT("Ball launchers"), TEXT(""), 0.f, float(MaxLaunchers), 1.f, 0.f, TEXT("Launchers around your start that throw balls at whoever stands on it.")),
 		Row(TimeLimitKey, TEXT("Time limit"), TEXT("s"), 0.f, 600.f, 5.f, 60.f, TEXT("The run ends after this long. 0: no limit.")),
 		Row(KnockdownGoalKey, TEXT("Knockdown goal"), TEXT(""), 0.f, 20.f, 1.f, 0.f, TEXT("The run ends when you have knocked down this many. 0: no goal.")),
@@ -75,6 +81,8 @@ float FCSRunSetup::GetValue(FName Key) const
 	if (Key == FormationKey) { return float(uint8(Formation)); }
 	if (Key == DistanceKey) { return Distance; }
 	if (Key == SpacingKey) { return Spacing; }
+	if (Key == OpponentsKey) { return float(uint8(Opponents)); }
+	if (Key == OpponentWindupKey) { return OpponentWindup; }
 	if (Key == LaunchersKey) { return float(Launchers); }
 	if (Key == TimeLimitKey) { return TimeLimit; }
 	if (Key == KnockdownGoalKey) { return float(KnockdownGoal); }
@@ -93,6 +101,8 @@ bool FCSRunSetup::SetValue(FName Key, float Value)
 	else if (Key == FormationKey) { Formation = ECSRunFormation(uint8(FMath::RoundToInt(V))); }
 	else if (Key == DistanceKey) { Distance = V; }
 	else if (Key == SpacingKey) { Spacing = V; }
+	else if (Key == OpponentsKey) { Opponents = ECSRunOpponents(uint8(FMath::RoundToInt(V))); }
+	else if (Key == OpponentWindupKey) { OpponentWindup = V; }
 	else if (Key == LaunchersKey) { Launchers = FMath::RoundToInt(V); }
 	else if (Key == TimeLimitKey) { TimeLimit = V; }
 	else if (Key == KnockdownGoalKey) { KnockdownGoal = FMath::RoundToInt(V); }
@@ -122,7 +132,8 @@ FString FCSRunSetup::DescribeValue(FName Key) const
 	{
 		return TEXT("none");
 	}
-	const FString Number = FString::FromInt(FMath::RoundToInt(Value));
+	// A row stepped in fractions (the wind-up) shows them: "0.7 s", not "1 s".
+	const FString Number = Found->Step < 1.f ? FString::SanitizeFloat(FMath::RoundToFloat(Value * 100.f) / 100.f) : FString::FromInt(FMath::RoundToInt(Value));
 	return Found->Unit.IsEmpty() ? Number : Number + TEXT(" ") + Found->Unit;
 }
 
@@ -141,6 +152,10 @@ FString FCSRunSetup::Describe() const
 	{
 		Parts.Add(FString::Printf(TEXT("%d %s %s at %d cm"), Dummies, Dummies == 1 ? TEXT("dummy") : TEXT("dummies"),
 			Formation == ECSRunFormation::Ring ? TEXT("in a ring") : TEXT("in a line"), FMath::RoundToInt(Distance)));
+		if (Opponents == ECSRunOpponents::FightBack)
+		{
+			Parts.Add(TEXT("fighting back (wind-up ") + DescribeValue(OpponentWindupKey) + TEXT(")"));
+		}
 	}
 	if (Launchers > 0)
 	{

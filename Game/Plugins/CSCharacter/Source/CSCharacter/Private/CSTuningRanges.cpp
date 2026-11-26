@@ -109,6 +109,12 @@ namespace
 		{TEXT("CombatFacingSeconds"), TEXT("Combat"), TEXT("s"), 0.f, 10.f, 0.1f},
 		{TEXT("CombatBackSpeedScale"), TEXT("Combat"), TEXT("x"), 0.3f, 1.f, 0.01f},
 		{TEXT("LegYawMax"), TEXT("Combat"), TEXT("deg"), 0.f, 90.f, 1.f},
+		{TEXT("BlockAbsorb"), TEXT("Defence"), TEXT("x"), 0.f, 1.f, 0.01f},
+		{TEXT("BlockAngle"), TEXT("Defence"), TEXT("deg"), 0.f, 180.f, 1.f},
+		{TEXT("BlockSpeedScale"), TEXT("Defence"), TEXT("x"), 0.1f, 1.f, 0.01f},
+		{TEXT("DodgeSpeed"), TEXT("Defence"), TEXT("cm/s"), 0.f, 1500.f, 10.f},
+		{TEXT("DodgeSeconds"), TEXT("Defence"), TEXT("s"), 0.f, 1.f, 0.01f},
+		{TEXT("DodgeCooldownSeconds"), TEXT("Defence"), TEXT("s"), 0.f, 3.f, 0.05f},
 		{TEXT("PunchMass"), TEXT("Punch"), TEXT("kg"), 1.f, 100.f, 0.5f},
 	};
 

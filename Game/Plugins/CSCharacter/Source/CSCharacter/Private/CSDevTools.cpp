@@ -462,6 +462,7 @@ FString UCSDevTools::DescribeLastContact(const ACSCharacter* Character, const TC
 	{
 	case ECSContactResult::Stagger: Result = TEXT("stagger"); break;
 	case ECSContactResult::Ragdoll: Result = TEXT("ragdoll"); break;
+	case ECSContactResult::Blocked: Result = TEXT("blocked"); break;
 	default: break;
 	}
 	return FString::Printf(TEXT("Hit %-6s %s  %.0f cm/s  %s  %.1f s ago"), Who, *Contact.Bone.ToString(), Contact.VelocityChange, Result,

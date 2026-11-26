@@ -8,6 +8,7 @@
 class UCameraComponent;
 class UCSCameraRig;
 class UCSDevTools;
+class UCSGuardComponent;
 class UCSPhysicsBodyComponent;
 class UCSStrikeComponent;
 class UPhysicalAnimationComponent;
@@ -134,10 +135,21 @@ public:
 	/** The melee attack: a punch steered through the physics body. */
 	UCSStrikeComponent* GetStrike() const { return Strike; }
 
+	/** The defence: block and dodge. */
+	UCSGuardComponent* GetGuard() const { return Guard; }
+
 	/**
-	 * Combat stance: a player's character faces its aim instead of the way it moves, while another
-	 * standing character is within CombatFacingRange, and for CombatFacingSeconds after that or after
-	 * an attack.
+	 * The dodge key: a quick step the way the character is moving, or straight back
+	 * (UCSGuardComponent::Dodge). Returns whether one started.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "CS|Guard")
+	bool DodgeStep();
+
+	/**
+	 * Combat stance: a controlled character (a player's, or an opponent's AI) faces its aim instead of
+	 * the way it moves, while another standing character is within CombatFacingRange, and for
+	 * CombatFacingSeconds after that or after an attack. A character with no controller (a dummy
+	 * standing still) never does.
 	 * Backing off is slower (CombatBackSpeedScale) and never a sprint. Worked out every tick.
 	 */
 	UFUNCTION(BlueprintPure, Category = "CS|Strike")
@@ -235,6 +247,14 @@ public:
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CS|Input")
 	TSoftObjectPtr<UInputAction> AttackAction;
 
+	/** Held: the guard is up (UCSGuardComponent). */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CS|Input")
+	TSoftObjectPtr<UInputAction> BlockAction;
+
+	/** A dodge step on press. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CS|Input")
+	TSoftObjectPtr<UInputAction> DodgeAction;
+
 	/** Dev tool: feel overlay. */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CS|Input")
 	TSoftObjectPtr<UInputAction> DebugOverlayAction;
@@ -311,6 +331,9 @@ private:
 	void OnCrouchStarted();
 	void OnToggleCameraStarted();
 	void OnAttackStarted();
+	void OnBlockStarted();
+	void OnBlockCompleted();
+	void OnDodgeStarted();
 	void OnDebugOverlayStarted();
 	void OnDebugRagdollStarted();
 	void OnDebugPushStarted();
@@ -330,6 +353,9 @@ private:
 
 	UPROPERTY(VisibleAnywhere, Category = "CS|Strike")
 	TObjectPtr<UCSStrikeComponent> Strike;
+
+	UPROPERTY(VisibleAnywhere, Category = "CS|Guard")
+	TObjectPtr<UCSGuardComponent> Guard;
 
 	bool bCombatStance = false;
 	/** World time of the last attack started; very negative before any. */

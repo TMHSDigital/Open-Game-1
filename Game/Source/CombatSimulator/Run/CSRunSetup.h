@@ -19,6 +19,15 @@ struct FCSRunRow
 	FString Help;
 };
 
+/** What the dummies of a run do. */
+enum class ECSRunOpponents : uint8
+{
+	/** Stand where they were put and take hits. */
+	StandStill,
+	/** Close in and punch on a pattern (ACSOpponentController). */
+	FightBack,
+};
+
 /** How the dummies of a run stand. */
 enum class ECSRunFormation : uint8
 {
@@ -56,6 +65,9 @@ struct COMBATSIMULATOR_API FCSRunSetup
 	float Distance = 500.f;
 	/** Between neighbours in a line, cm. */
 	float Spacing = 200.f;
+	ECSRunOpponents Opponents = ECSRunOpponents::StandStill;
+	/** How long a fighting dummy draws its fist back before a punch, s: the tell the player reads. */
+	float OpponentWindup = 0.7f;
 	/** Ball launchers around the player's start, aimed at it. */
 	int32 Launchers = 0;
 	/** The run ends after this long, s. 0: no limit. */

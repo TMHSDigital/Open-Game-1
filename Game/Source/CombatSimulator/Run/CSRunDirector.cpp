@@ -5,6 +5,7 @@
 #include "../CombatSimulator.h"
 #include "CSBallLauncher.h"
 #include "CSCharacter.h"
+#include "CSGuardComponent.h"
 #include "CSHitBall.h"
 #include "CSRunStore.h"
 #include "CSStrikeComponent.h"
@@ -43,6 +44,7 @@ void UCSRunDirector::BeginPlay()
 	ThrowHandle = ACSHitBall::OnThrown.AddUObject(this, &UCSRunDirector::HandleThrow);
 	StrikeStartedHandle = UCSStrikeComponent::OnStrikeStarted.AddUObject(this, &UCSRunDirector::HandleStrikeStarted);
 	StrikeLandedHandle = UCSStrikeComponent::OnStrikeLanded.AddUObject(this, &UCSRunDirector::HandleStrikeLanded);
+	DodgedHandle = UCSGuardComponent::OnDodged.AddUObject(this, &UCSRunDirector::HandleDodged);
 	HudHandle = AHUD::OnHUDPostRender.AddUObject(this, &UCSRunDirector::DrawHud);
 }
 
@@ -52,8 +54,10 @@ void UCSRunDirector::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	ACSHitBall::OnThrown.Remove(ThrowHandle);
 	UCSStrikeComponent::OnStrikeStarted.Remove(StrikeStartedHandle);
 	UCSStrikeComponent::OnStrikeLanded.Remove(StrikeLandedHandle);
+	UCSGuardComponent::OnDodged.Remove(DodgedHandle);
 	StrikeStartedHandle.Reset();
 	StrikeLandedHandle.Reset();
+	DodgedHandle.Reset();
 	AHUD::OnHUDPostRender.Remove(HudHandle);
 	ContactHandle.Reset();
 	ThrowHandle.Reset();
@@ -311,19 +315,50 @@ void UCSRunDirector::HandleThrow(ACSHitBall* Ball, AActor* Thrower)
 
 void UCSRunDirector::HandleStrikeStarted(ACSCharacter* Attacker)
 {
-	if (State == ECSRunState::Running && Attacker && Attacker->GetWorld() == GetWorld() && Attacker == GetPlayerCharacter())
+	if (State != ECSRunState::Running || !Attacker || Attacker->GetWorld() != GetWorld())
+	{
+		return;
+	}
+	if (Attacker == GetPlayerCharacter())
 	{
 		Stats.RecordPunch();
+	}
+	else if (Attacker->ActorHasTag(TEXT("RunDummy")))
+	{
+		Stats.RecordOpponentPunch();
 	}
 }
 
 void UCSRunDirector::HandleStrikeLanded(ACSCharacter* Attacker, AActor* Victim, ECSContactResult Result)
 {
-	// A prop that was punched is not a punch landed: Result is None for it.
-	if (State == ECSRunState::Running && Attacker && Attacker->GetWorld() == GetWorld() && Attacker == GetPlayerCharacter()
-		&& Result != ECSContactResult::None)
+	if (State != ECSRunState::Running || !Attacker || Attacker->GetWorld() != GetWorld())
 	{
-		Stats.RecordPunchLanded();
+		return;
+	}
+	const ACSCharacter* Player = GetPlayerCharacter();
+	if (Attacker == Player)
+	{
+		// A prop that was punched is not a punch landed: Result is None for it.
+		if (Result == ECSContactResult::Stagger || Result == ECSContactResult::Ragdoll)
+		{
+			Stats.RecordPunchLanded();
+		}
+		else if (Result == ECSContactResult::Blocked)
+		{
+			Stats.RecordPunchBlocked();
+		}
+	}
+	else if (Player && Victim == Player && Attacker->ActorHasTag(TEXT("RunDummy")))
+	{
+		Stats.RecordOpponentPunchResult(Result);
+	}
+}
+
+void UCSRunDirector::HandleDodged(ACSCharacter* Who)
+{
+	if (State == ECSRunState::Running && Who && Who->GetWorld() == GetWorld() && Who == GetPlayerCharacter())
+	{
+		Stats.RecordDodge();
 	}
 }
 

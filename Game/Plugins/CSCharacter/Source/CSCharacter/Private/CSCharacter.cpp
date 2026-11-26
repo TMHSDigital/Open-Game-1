@@ -9,6 +9,7 @@
 #include "CSCameraRig.h"
 #include "CSCharacterLog.h"
 #include "CSDevTools.h"
+#include "CSGuardComponent.h"
 #include "CSMovementTuning.h"
 #include "CSPhysicsBodyComponent.h"
 #include "CSStrikeComponent.h"
@@ -104,6 +105,7 @@ ACSCharacter::ACSCharacter(const FObjectInitializer& ObjectInitializer)
 	PhysicalAnimation = CreateDefaultSubobject<UPhysicalAnimationComponent>(TEXT("PhysicalAnimation"));
 	PhysicsBody = CreateDefaultSubobject<UCSPhysicsBodyComponent>(TEXT("PhysicsBody"));
 	Strike = CreateDefaultSubobject<UCSStrikeComponent>(TEXT("Strike"));
+	Guard = CreateDefaultSubobject<UCSGuardComponent>(TEXT("Guard"));
 }
 
 const UCSMovementTuning& ACSCharacter::GetActiveTuning() const
@@ -392,6 +394,15 @@ void ACSCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 	{
 		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnAttackStarted);
 	}
+	if (UInputAction* A = Load(BlockAction, TEXT("BlockAction")))
+	{
+		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnBlockStarted);
+		Input->BindAction(A, ETriggerEvent::Completed, this, &ACSCharacter::OnBlockCompleted);
+	}
+	if (UInputAction* A = Load(DodgeAction, TEXT("DodgeAction")))
+	{
+		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnDodgeStarted);
+	}
 	// Dev keys are always bound; UCSDevTools decides at press time whether they do anything, so a
 	// reload can turn bDevTools on or off (the reload key itself reads the source tuning).
 	if (UInputAction* A = Load(DebugOverlayAction, TEXT("DebugOverlayAction")))
@@ -447,12 +458,41 @@ bool ACSCharacter::Attack()
 	return true;
 }
 
+bool ACSCharacter::DodgeStep()
+{
+	// The way the movement keys point now; none held: straight back (the guard's default).
+	const FVector Wanted = GetCharacterMovement() ? GetCharacterMovement()->GetCurrentAcceleration() : FVector::ZeroVector;
+	return Guard && Guard->Dodge(Wanted);
+}
+
+void ACSCharacter::OnBlockStarted()
+{
+	if (Guard)
+	{
+		Guard->SetBlockHeld(true);
+	}
+}
+
+void ACSCharacter::OnBlockCompleted()
+{
+	if (Guard)
+	{
+		Guard->SetBlockHeld(false);
+	}
+}
+
+void ACSCharacter::OnDodgeStarted()
+{
+	DodgeStep();
+}
+
 void ACSCharacter::UpdateCombatStance()
 {
 	const UWorld* World = GetWorld();
 	const UCSMovementTuning& T = GetActiveTuning();
 	bool bStance = false;
-	if (World && IsPlayerControlled() && !bRagdolled)
+	// Any controller: the player's, or an opponent's AI. A dummy with none stands as it was placed.
+	if (World && GetController() && !bRagdolled)
 	{
 		const double Now = World->GetTimeSeconds();
 		if (T.CombatFacingRange > 0.f)
@@ -715,6 +755,11 @@ void ACSCharacter::Tick(float DeltaSeconds)
 			Cap = FMath::Min(Cap, T.JogSpeed);
 		}
 		Cap *= FMath::Lerp(1.f, T.CombatBackSpeedScale, Back);
+	}
+	if (Guard)
+	{
+		// The guard slows movement while it is up; a dodge sets the velocity and lifts the cap.
+		Cap = Guard->ApplyToMovement(*Move, Cap, T.JogSpeed);
 	}
 	Move->MaxWalkSpeed = Cap * SlopeSpeedFactor;
 

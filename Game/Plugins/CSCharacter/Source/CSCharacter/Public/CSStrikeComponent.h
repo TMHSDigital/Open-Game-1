@@ -48,13 +48,15 @@ DECLARE_MULTICAST_DELEGATE_ThreeParams(FCSStrikeLanded, ACSCharacter* /* Attacke
  * part it touched, and is seen by anything that listens for hits. A simulated prop in the way gets
  * the velocity change that momentum would give it, at most ContactImpulseMax. One strike hits one
  * character and each prop once. A character that is already down is passed over: the punch has not
- * landed on it and can still land on someone behind it.
+ * landed on it and can still land on someone behind it. A punch taken on a guard (result Blocked)
+ * ends there for that character: it is contact, not a landed hit (WasBlocked).
  *
  * Target: a punch goes for the nearest standing character in front of the aim (within
  * PunchAssistRange and PunchAssistAngle, the angle opening to 90 degrees within arm's length;
  * FindTarget). The aim is turned toward the point of its
  * body the player looks at (GetAimPointOn) when the punch starts and again when the strike starts, and while it is out of the arm's reach the
- * character steps in toward it at PunchLungeSpeed, from the start of the punch. With no target the punch goes straight along the aim.
+ * character steps in toward it at PunchLungeSpeed, from the start of the punch, to where it stood
+ * when the punch started (a target that steps away is not chased). With no target the punch goes straight along the aim.
  *
  * A strike cannot start while one is under way, while the character is ragdolled or getting up,
  * or without a physics body. Going down ends a strike at once.
@@ -91,6 +93,19 @@ public:
 
 	/** The strike under way, or the last one, hit a character. */
 	bool HasLanded() const { return bLanded; }
+
+	/** The strike under way, or the last one, was taken on a character's guard (UCSGuardComponent). */
+	bool WasBlocked() const { return bBlocked; }
+
+	/**
+	 * When zero or more: the wind-up lasts this long, seconds, instead of PunchWindupSeconds. An
+	 * opponent's slow wind-up is its tell (ACSOpponentController); the player's punch keeps the tuning.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "CS|Strike")
+	float WindupSecondsOverride = -1.f;
+
+	/** The wind-up length in use: WindupSecondsOverride when set, else PunchWindupSeconds. */
+	float GetWindupSeconds() const;
 
 	/** The farthest the fist got from the middle of the chest along the aim in the strike under way or the last one, cm. */
 	float GetPeakReach() const { return PeakReach; }
@@ -205,6 +220,7 @@ private:
 	bool bRightHand = false;
 	int32 StrikeCount = 0;
 	bool bLanded = false;
+	bool bBlocked = false;
 	float PeakReach = 0.f;
 	float PeakSpeed = 0.f;
 	/** The aim, fixed when the strike starts: turning the view mid-punch does not bend it. */
@@ -223,4 +239,8 @@ private:
 	/** Out of reach of the target: moves the character toward it at PunchLungeSpeed (or faster). In reach: stops stepping in. */
 	void StepIn();
 	bool bSteppingIn = false;
+	/** How far the step in follows the target from where it stood when the punch started, cm: a sway is followed, a dodge is not. */
+	float LungeLeash = 40.f;
+	/** Where the step in goes: the target's chest when the punch started (committed, so a dodge escapes it). */
+	FVector LungeGoal = FVector::ZeroVector;
 };

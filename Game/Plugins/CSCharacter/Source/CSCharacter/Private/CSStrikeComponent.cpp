@@ -50,6 +50,11 @@ bool UCSStrikeComponent::CanStrike() const
 	return State == ECSBodyState::Normal || State == ECSBodyState::Hit;
 }
 
+float UCSStrikeComponent::GetWindupSeconds() const
+{
+	return WindupSecondsOverride >= 0.f ? WindupSecondsOverride : GetTuning().PunchWindupSeconds;
+}
+
 bool UCSStrikeComponent::StartPunch()
 {
 	if (Phase != ECSStrikePhase::None || !CanStrike())
@@ -59,6 +64,7 @@ bool UCSStrikeComponent::StartPunch()
 	bRightHand = !bRightHand;
 	++StrikeCount;
 	bLanded = false;
+	bBlocked = false;
 	PeakReach = 0.f;
 	PeakSpeed = 0.f;
 	HitActors.Reset();
@@ -66,8 +72,13 @@ bool UCSStrikeComponent::StartPunch()
 	Target = FindTarget();
 	AimAtTarget();
 	bSteppingIn = Target.IsValid();
+	if (const ACSCharacter* Victim = Target.Get())
+	{
+		const USkeletalMeshComponent* VictimBody = Victim->GetMesh();
+		LungeGoal = VictimBody ? VictimBody->GetSocketLocation(ChestBone) : Victim->GetActorLocation();
+	}
 	bHasLastHand = false;
-	if (GetTuning().PunchWindupSeconds > 0.f)
+	if (GetWindupSeconds() > 0.f)
 	{
 		SetPhase(ECSStrikePhase::Windup);
 	}
@@ -218,11 +229,18 @@ void UCSStrikeComponent::StepIn()
 	}
 	// Out of reach: step in until the target's chest is within the arm's reach of this one. That is
 	// closer than the two bodies can stand (their capsules stop them first), so the step goes on
-	// until they meet or the strike ends, and the arm arrives with the body behind it.
+	// until they meet or the strike ends, and the arm arrives with the body behind it. The step goes
+	// to where the target's chest was when the punch started, give or take LungeLeash: a punch is
+	// committed, so a target that steps away (a dodge) is not chased.
+	// Followed while it sways (a stagger rocks the chest back and forth), but no farther than
+	// LungeLeash from where it stood: one that steps away for real is let go.
 	const USkeletalMeshComponent* VictimBody = Victim->GetMesh();
-	const FVector Chest = VictimBody ? VictimBody->GetSocketLocation(ChestBone) : Victim->GetActorLocation();
-	const FVector To = (Chest - GetChestLocation()) * FVector(1.f, 1.f, 0.f);
-	if (To.Size() <= T.PunchReach)
+	const FVector Live = VictimBody ? VictimBody->GetSocketLocation(ChestBone) : Victim->GetActorLocation();
+	const FVector Goal = LungeGoal + ((Live - LungeGoal) * FVector(1.f, 1.f, 0.f)).GetClampedToMaxSize(LungeLeash);
+	const FVector To = (Goal - GetChestLocation()) * FVector(1.f, 1.f, 0.f);
+	// Within reach, or already body to body: pushing on would only slide this body around the other.
+	const float Touching = Character->GetSimpleCollisionRadius() + Victim->GetSimpleCollisionRadius() + 2.f;
+	if (To.Size() <= T.PunchReach || FVector::Dist2D(Character->GetActorLocation(), Victim->GetActorLocation()) <= Touching)
 	{
 		bSteppingIn = false;
 		return;
@@ -331,7 +349,7 @@ void UCSStrikeComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 		Sweep();
 	}
 	PhaseSeconds += DeltaTime;
-	if (Phase == ECSStrikePhase::Windup && PhaseSeconds >= T.PunchWindupSeconds)
+	if (Phase == ECSStrikePhase::Windup && PhaseSeconds >= GetWindupSeconds())
 	{
 		BeginStrike();
 	}
@@ -347,7 +365,11 @@ void UCSStrikeComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 	}
 	if (Phase == ECSStrikePhase::Windup || Phase == ECSStrikePhase::Strike)
 	{
-		if (bSteppingIn)
+		// A wind-up drawn out longer than the punch's own (an opponent's tell) stands still and only
+		// steps in for the last PunchWindupSeconds of it: a step held through the whole tell would
+		// carry the body into the target and around its side.
+		const bool bLateEnough = Phase == ECSStrikePhase::Strike || GetWindupSeconds() - PhaseSeconds <= T.PunchWindupSeconds;
+		if (bSteppingIn && bLateEnough)
 		{
 			// Every frame until in reach: ground friction would stop a single push within the punch.
 			StepIn();
@@ -455,7 +477,7 @@ void UCSStrikeComponent::Sweep()
 		const FVector Point = Hit.bStartPenetrating ? From : FVector(Hit.ImpactPoint);
 		if (ACSCharacter* Victim = Cast<ACSCharacter>(Other))
 		{
-			if (bLanded)
+			if (bLanded || bBlocked)
 			{
 				continue; // one strike, one character
 			}
@@ -467,6 +489,13 @@ void UCSStrikeComponent::Sweep()
 			if (Result == ECSContactResult::Stagger || Result == ECSContactResult::Ragdoll)
 			{
 				bLanded = true;
+				HitActors.Add(Other);
+				OnStrikeLanded.Broadcast(Character, Victim, Result);
+			}
+			else if (Result == ECSContactResult::Blocked)
+			{
+				// Taken on the guard: the punch stops there and has not landed.
+				bBlocked = true;
 				HitActors.Add(Other);
 				OnStrikeLanded.Broadcast(Character, Victim, Result);
 			}

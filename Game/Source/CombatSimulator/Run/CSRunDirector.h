@@ -111,6 +111,7 @@ private:
 	void HandleThrow(ACSHitBall* Ball, AActor* Thrower);
 	void HandleStrikeStarted(ACSCharacter* Attacker);
 	void HandleStrikeLanded(ACSCharacter* Attacker, AActor* Victim, ECSContactResult Result);
+	void HandleDodged(ACSCharacter* Who);
 	void DrawHud(AHUD* HUD, UCanvas* Canvas);
 	void OpenResults();
 
@@ -137,5 +138,6 @@ private:
 	FDelegateHandle ThrowHandle;
 	FDelegateHandle StrikeStartedHandle;
 	FDelegateHandle StrikeLandedHandle;
+	FDelegateHandle DodgedHandle;
 	FDelegateHandle HudHandle;
 };

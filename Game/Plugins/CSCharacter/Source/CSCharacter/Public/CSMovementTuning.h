@@ -449,7 +449,7 @@ public:
 	// ----- Combat stance -----
 
 	/**
-	 * A player's character faces its aim, instead of the way it moves, while another standing
+	 * A controlled character (the player's, or an opponent's AI) faces its aim, instead of the way it moves, while another standing
 	 * character is within this far, cm, so it can back off and circle while facing it. 0: only
 	 * after an attack (CombatFacingSeconds).
 	 */
@@ -471,6 +471,32 @@ public:
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat", meta = (UIMin = "0", UIMax = "90", Units = "deg"))
 	float LegYawMax = 60.f;
+
+	// ----- Defence (UCSGuardComponent) -----
+
+	/** Share of a hit's force the guard takes when it covers the hit, 0 to 1. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Defence", meta = (UIMin = "0", UIMax = "1"))
+	float BlockAbsorb = 0.8f;
+
+	/** The guard covers hits from within this many degrees of the facing, either side. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Defence", meta = (UIMin = "0", UIMax = "180", Units = "deg"))
+	float BlockAngle = 70.f;
+
+	/** With the guard up, movement is at most this share of a jog. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Defence", meta = (UIMin = "0.1", UIMax = "1"))
+	float BlockSpeedScale = 0.5f;
+
+	/** Speed of a dodge step, cm/s. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Defence", meta = (UIMin = "0", UIMax = "1500", Units = "cm/s"))
+	float DodgeSpeed = 800.f;
+
+	/** How long a dodge step lasts, seconds. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Defence", meta = (UIMin = "0", UIMax = "1", Units = "s"))
+	float DodgeSeconds = 0.2f;
+
+	/** After a dodge ends, the next can start this much later, seconds. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Defence", meta = (UIMin = "0", UIMax = "3", Units = "s"))
+	float DodgeCooldownSeconds = 0.6f;
 
 	// ----- Dev tools -----
 

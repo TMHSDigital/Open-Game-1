@@ -4,12 +4,14 @@
 #include "../CSPlayerController.h"
 #include "../CSTargetDummy.h"
 #include "../CombatSimulator.h"
+#include "../Opponent/CSOpponentController.h"
 #include "../Run/CSRunDirector.h"
 #include "../Run/CSRunSetup.h"
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
 #include "CSCameraRig.h"
 #include "CSCharacter.h"
+#include "CSGuardComponent.h"
 #include "CSHitBall.h"
 #include "CSMovementTuning.h"
 #include "CSPhysicsBodyComponent.h"
@@ -139,18 +141,20 @@ namespace CSPlaytestScenarios
 	using FCtx = FCSPlaytestContext;
 
 	/** A silent step that starts a run with Dummies dummies Distance ahead and no time limit, and waits for it. */
-	FCSPlaytestStep SetUpRun(int32 Dummies, float Distance)
+	FCSPlaytestStep SetUpRun(int32 Dummies, float Distance, bool bFightBack = false, float Windup = 0.7f)
 	{
 		FCSPlaytestStep Step;
 		Step.Seconds = 1.6f;
 		Step.Camera = ECSReviewCamera::Player;
-		Step.OnStart = [Dummies, Distance](const FCtx& C)
+		Step.OnStart = [Dummies, Distance, bFightBack, Windup](const FCtx& C)
 		{
 			if (UCSRunDirector* Director = C.Mode ? C.Mode->GetRunDirector() : nullptr)
 			{
 				FCSRunSetup Setup;
 				Setup.SetValue(TEXT("Dummies"), float(Dummies));
 				Setup.SetValue(TEXT("Distance"), Distance);
+				Setup.SetValue(TEXT("Opponents"), bFightBack ? 1.f : 0.f);
+				Setup.SetValue(TEXT("OpponentWindup"), Windup);
 				Setup.SetValue(TEXT("TimeLimit"), 0.f);
 				Setup.SetValue(TEXT("KnockdownGoal"), 0.f);
 				FString Reason;
@@ -351,7 +355,8 @@ namespace CSPlaytestScenarios
 			if (Hit.Time >= StartTime)
 			{
 				C.Note(TEXT("last hit"), FString::Printf(TEXT("%.0f cm/s on %s (%s)"), Hit.VelocityChange, *Hit.Bone.ToString(),
-					Hit.Result == ECSContactResult::Ragdoll ? TEXT("knockdown") : Hit.Result == ECSContactResult::Stagger ? TEXT("stagger") : TEXT("no effect")));
+					Hit.Result == ECSContactResult::Ragdoll ? TEXT("knockdown") : Hit.Result == ECSContactResult::Stagger ? TEXT("stagger")
+					: Hit.Result == ECSContactResult::Blocked ? TEXT("blocked") : TEXT("no effect")));
 			}
 		}
 		if (const ACSCharacter* Self = C.Player())
@@ -467,6 +472,209 @@ namespace CSPlaytestScenarios
 		return Steps;
 	}
 
+	/** What the player does against an opponent in a fight step. */
+	enum class EDefend : uint8 { Stand, Block, Dodge, Trade };
+
+	/** The run's counts at the start of a fight step, to note what happened during it. */
+	struct FFightCounts
+	{
+		int32 Theirs = 0, TheirsLanded = 0, TheirsBlocked = 0, Mine = 0, MineLanded = 0, Dodges = 0;
+		void Take(const FCSRunStats& S)
+		{
+			Theirs = S.OpponentPunches;
+			TheirsLanded = S.OpponentPunchesLanded;
+			TheirsBlocked = S.OpponentPunchesBlocked;
+			Mine = S.PunchesThrown;
+			MineLanded = S.PunchesLanded;
+			Dodges = S.Dodges;
+		}
+	};
+
+	/** The opponent's controller, when the dummy fights. */
+	const ACSOpponentController* Opponent(const FCtx& C)
+	{
+		const ACSTargetDummy* Target = C.Dummy();
+		return Target ? Cast<ACSOpponentController>(Target->GetController()) : nullptr;
+	}
+
+	/**
+	 * A fight step: the player stands Distance from a dummy that fights back and, facing it, does
+	 * what Defend says: nothing, holds the block, dodges back late in each wind-up, or blocks and
+	 * punches back while the opponent recovers.
+	 */
+	FCSPlaytestStep Fight(const TCHAR* Label, float Seconds, EDefend Defend, ECSReviewCamera Camera = ECSReviewCamera::Side)
+	{
+		FCSPlaytestStep Step;
+		Step.Label = Label;
+		Step.Seconds = Seconds;
+		Step.Camera = Camera;
+		TSharedRef<FFightCounts> Before = MakeShared<FFightCounts>();
+		Step.OnStart = [Before](const FCtx& C)
+		{
+			C.PlaceAtDummy(300.f, 0.f);
+			if (ACSCharacter* Self = C.Player())
+			{
+				Self->SetGait(ECSGait::Jog);
+			}
+			if (const UCSRunDirector* Director = C.Mode ? C.Mode->GetRunDirector() : nullptr)
+			{
+				Before->Take(Director->GetStats());
+			}
+		};
+		Step.OnTick = [Defend](const FCtx& C, float Time, float DeltaTime)
+		{
+			ACSCharacter* Self = C.Player();
+			UCSGuardComponent* Guard = Self ? Self->GetGuard() : nullptr;
+			const ACSTargetDummy* Target = C.Dummy();
+			if (!Self || !Guard || !Target)
+			{
+				return;
+			}
+			C.AimAtDummy();
+			const UCSStrikeComponent* Theirs = Target->GetStrike();
+			switch (Defend)
+			{
+			case EDefend::Block:
+				Guard->SetBlockHeld(true);
+				break;
+			case EDefend::Dodge:
+				// Late in the tell, as a player who has learned it would: a step back as the fist comes.
+				if (Theirs && Theirs->GetPhase() == ECSStrikePhase::Windup
+					&& Theirs->GetPhaseSeconds() >= Theirs->GetWindupSeconds() - 0.2f)
+				{
+					Self->DodgeStep();
+				}
+				break;
+			case EDefend::Trade:
+			{
+				// Guard up, and punch back while it recovers from its own punches, when it is near.
+				const ACSOpponentController* Brain = Opponent(C);
+				const bool bOpening = Brain && Brain->GetOpponentState() == ECSOpponentState::Recover
+					&& FVector::Dist2D(Self->GetActorLocation(), Target->GetActorLocation()) < 200.f;
+				Guard->SetBlockHeld(!bOpening);
+				if (bOpening)
+				{
+					Self->Attack();
+				}
+				break;
+			}
+			default:
+				break;
+			}
+		};
+		Step.OnEnd = [Before](const FCtx& C)
+		{
+			if (ACSCharacter* Self = C.Player(); Self && Self->GetGuard())
+			{
+				Self->GetGuard()->SetBlockHeld(false);
+			}
+			const UCSRunDirector* Director = C.Mode ? C.Mode->GetRunDirector() : nullptr;
+			if (!Director)
+			{
+				return;
+			}
+			const FCSRunStats& S = Director->GetStats();
+			const int32 Thrown = S.OpponentPunches - Before->Theirs;
+			const int32 Landed = S.OpponentPunchesLanded - Before->TheirsLanded;
+			const int32 Blocked = S.OpponentPunchesBlocked - Before->TheirsBlocked;
+			C.Note(TEXT("their punches"), FString::Printf(TEXT("%d thrown, %d landed, %d blocked, %d missed"), Thrown, Landed, Blocked,
+				FMath::Max(0, Thrown - Landed - Blocked)));
+			C.Note(TEXT("dodges"), float(S.Dodges - Before->Dodges));
+			C.Note(TEXT("punches"), FString::Printf(TEXT("%d of %d landed"), S.PunchesLanded - Before->MineLanded, S.PunchesThrown - Before->Mine));
+		};
+		return Step;
+	}
+
+	TArray<FCSPlaytestStep> BuildFight()
+	{
+		TArray<FCSPlaytestStep> Steps;
+		Steps.Add(SetUpRun(1, 350.f, true, 0.7f));
+		Steps.Add(Fight(TEXT("it closes in and punches; the player stands"), 8.f, EDefend::Stand));
+		Steps.Add(Fight(TEXT("the player holds the block"), 8.f, EDefend::Block));
+		Steps.Add(Fight(TEXT("the player dodges back on the tell"), 8.f, EDefend::Dodge));
+		Steps.Add(Fight(TEXT("block, and punch back while it recovers"), 10.f, EDefend::Trade));
+		Steps.Add(Fight(TEXT("blocking, the player's camera"), 6.f, EDefend::Block, ECSReviewCamera::Player));
+		{
+			// It must not hit a player who is down.
+			FCSPlaytestStep Step;
+			Step.Label = TEXT("the player is down: it waits");
+			Step.Seconds = 6.f;
+			Step.Camera = ECSReviewCamera::Side;
+			TSharedRef<FFightCounts> Before = MakeShared<FFightCounts>();
+			TSharedRef<bool> bWaited = MakeShared<bool>(false);
+			// Its punches that landed while the player was down; -1 until the player is back up.
+			TSharedRef<int32> LandedWhileDown = MakeShared<int32>(-1);
+			Step.OnStart = [Before, bWaited, LandedWhileDown](const FCtx& C)
+			{
+				*bWaited = false;
+				*LandedWhileDown = -1;
+				C.PlaceAtDummy(200.f, 0.f);
+				if (ACSCharacter* Self = C.Player())
+				{
+					Self->SetRagdolled(true);
+				}
+				if (const UCSRunDirector* Director = C.Mode ? C.Mode->GetRunDirector() : nullptr)
+				{
+					Before->Take(Director->GetStats());
+				}
+			};
+			Step.OnTick = [Before, bWaited, LandedWhileDown](const FCtx& C, float Time, float)
+			{
+				ACSCharacter* Self = C.Player();
+				const UCSRunDirector* Director = C.Mode ? C.Mode->GetRunDirector() : nullptr;
+				const UCSPhysicsBodyComponent* Body = Self ? Self->GetPhysicsBody() : nullptr;
+				if (Director && Body && Time >= 2.5f && *LandedWhileDown < 0 && !Self->IsRagdolled() && Body->GetState() == ECSBodyState::Normal)
+				{
+					// Back on its feet: from here on it is a fair target again.
+					*LandedWhileDown = Director->GetStats().OpponentPunchesLanded - Before->TheirsLanded;
+				}
+				const ACSOpponentController* Brain = Opponent(C);
+				if (Brain && Brain->GetOpponentState() == ECSOpponentState::Wait)
+				{
+					*bWaited = true;
+				}
+				if (Self && Self->IsRagdolled() && Time >= 2.5f)
+				{
+					Self->SetRagdolled(false);
+				}
+			};
+			Step.OnEnd = [Before, bWaited, LandedWhileDown](const FCtx& C)
+			{
+				C.Note(TEXT("it waited"), *bWaited ? TEXT("yes") : TEXT("no"));
+				const UCSRunDirector* Director = C.Mode ? C.Mode->GetRunDirector() : nullptr;
+				const int32 Landed = *LandedWhileDown >= 0 ? *LandedWhileDown
+					: Director ? Director->GetStats().OpponentPunchesLanded - Before->TheirsLanded : 0;
+				C.Note(TEXT("their punches landed while down"), float(Landed));
+				C.Note(TEXT("back up"), *LandedWhileDown >= 0 ? TEXT("yes") : TEXT("no"));
+			};
+			Steps.Add(Step);
+		}
+		{
+			FCSPlaytestStep Step;
+			Step.Label = TEXT("the run ends: it stops");
+			Step.Seconds = 2.5f;
+			Step.Camera = ECSReviewCamera::Side;
+			Step.OnStart = [](const FCtx& C)
+			{
+				if (UCSRunDirector* Director = C.Mode ? C.Mode->GetRunDirector() : nullptr)
+				{
+					Director->EndRun(ECSRunEnd::Manual);
+				}
+			};
+			Step.OnEnd = [](const FCtx& C)
+			{
+				const ACSOpponentController* Brain = Opponent(C);
+				C.Note(TEXT("it stopped"), !Brain || Brain->GetOpponentState() == ECSOpponentState::Idle ? TEXT("yes") : TEXT("no"));
+				if (ACSPlayerController* PC = Cast<ACSPlayerController>(C.Controller))
+				{
+					PC->SetPauseScreenOpen(false);
+				}
+			};
+			Steps.Add(Step);
+		}
+		return Steps;
+	}
+
 	/** Watches a character's body through a step: whether it went down and when it was back up. */
 	void WatchBody(const FCtx& C, const ACSCharacter* Who, float Time, TSharedRef<TPair<float, float>> DownUp)
 	{
@@ -565,7 +773,7 @@ UCSPlaytestRunner::UCSPlaytestRunner()
 
 TArray<FString> UCSPlaytestRunner::ScenarioNames()
 {
-	return {TEXT("locomotion"), TEXT("stance"), TEXT("punch"), TEXT("knockdown")};
+	return {TEXT("locomotion"), TEXT("stance"), TEXT("punch"), TEXT("knockdown"), TEXT("fight")};
 }
 
 TArray<FCSPlaytestStep> UCSPlaytestRunner::BuildScenario(const FString& Name)
@@ -575,6 +783,7 @@ TArray<FCSPlaytestStep> UCSPlaytestRunner::BuildScenario(const FString& Name)
 	if (Name == TEXT("stance")) { return BuildStance(); }
 	if (Name == TEXT("punch")) { return BuildPunch(); }
 	if (Name == TEXT("knockdown")) { return BuildKnockdown(); }
+	if (Name == TEXT("fight")) { return BuildFight(); }
 	return {};
 }
 

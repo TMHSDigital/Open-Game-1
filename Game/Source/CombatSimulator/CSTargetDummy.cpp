@@ -2,6 +2,8 @@
 
 #include "CSGameMode.h"
 #include "CSMovementTuning.h"
+#include "Opponent/CSOpponentController.h"
+#include "Run/CSRunDirector.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -10,10 +12,11 @@
 ACSTargetDummy::ACSTargetDummy(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
-	// Nothing drives a dummy: no player and no AI controller.
+	// Nothing drives a dummy that stands still. One that fights back gets its controller when it
+	// starts to (EnsureController), so a dummy that never fights stays exactly the test bed it was.
 	AutoPossessPlayer = EAutoReceiveInput::Disabled;
 	AutoPossessAI = EAutoPossessAI::Disabled;
-	AIControllerClass = nullptr;
+	AIControllerClass = ACSOpponentController::StaticClass();
 	// Without a controller the movement component would not run at all: no gravity, no stagger shove.
 	GetCharacterMovement()->bRunPhysicsWithNoController = true;
 }
@@ -30,6 +33,12 @@ void ACSTargetDummy::BeginPlay()
 	}
 	Super::BeginPlay();
 	HomeTransform = GetActorTransform();
+	// A run's dummy is spawned once the run is set up: if the run fights back, it needs its controller.
+	const UCSRunDirector* Director = GetRunDirector();
+	if (bFightsBack || (Director && Director->GetSetup().Opponents == ECSRunOpponents::FightBack))
+	{
+		EnsureController();
+	}
 	// Several dummies on the same idle in perfect step look like copies: each plays a little
 	// faster or slower, so they drift apart within a few seconds.
 	if (USkeletalMeshComponent* Body = GetMesh())
@@ -54,4 +63,44 @@ void ACSTargetDummy::BeginPlay()
 			}
 		}
 	}
+}
+
+const UCSRunDirector* ACSTargetDummy::GetRunDirector() const
+{
+	const UWorld* World = GetWorld();
+	const ACSGameMode* Mode = World ? Cast<ACSGameMode>(World->GetAuthGameMode()) : nullptr;
+	return Mode && ActorHasTag(TEXT("RunDummy")) ? Mode->GetRunDirector() : nullptr;
+}
+
+void ACSTargetDummy::EnsureController()
+{
+	if (!GetController() && HasActorBegunPlay())
+	{
+		SpawnDefaultController();
+	}
+}
+
+void ACSTargetDummy::SetFightsBack(bool bInFightsBack)
+{
+	bFightsBack = bInFightsBack;
+	if (bFightsBack)
+	{
+		EnsureController();
+	}
+}
+
+bool ACSTargetDummy::WantsToFight() const
+{
+	if (bFightsBack)
+	{
+		return true;
+	}
+	const UCSRunDirector* Director = GetRunDirector();
+	return Director && Director->GetState() == ECSRunState::Running && Director->GetSetup().Opponents == ECSRunOpponents::FightBack;
+}
+
+float ACSTargetDummy::GetOpponentWindupSeconds() const
+{
+	const UCSRunDirector* Director = GetRunDirector();
+	return Director && Director->GetSetup().Opponents == ECSRunOpponents::FightBack ? Director->GetSetup().OpponentWindup : OpponentWindupSeconds;
 }

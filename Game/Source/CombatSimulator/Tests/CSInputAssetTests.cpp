@@ -43,6 +43,8 @@ namespace CSInputAssetTests
 			{TEXT("IA_Walk"), T::Boolean, {EKeys::LeftAlt}, EKeys::Gamepad_LeftShoulder, &ACSCharacter::WalkAction},
 			{TEXT("IA_ToggleCamera"), T::Boolean, {EKeys::V}, EKeys::Gamepad_RightThumbstick, &ACSCharacter::ToggleCameraAction},
 			{TEXT("IA_Attack"), T::Boolean, {EKeys::LeftMouseButton}, EKeys::Gamepad_RightTrigger, &ACSCharacter::AttackAction},
+			{TEXT("IA_Block"), T::Boolean, {EKeys::RightMouseButton}, EKeys::Gamepad_LeftTrigger, &ACSCharacter::BlockAction},
+			{TEXT("IA_Dodge"), T::Boolean, {EKeys::Q}, EKeys::Gamepad_FaceButton_Left, &ACSCharacter::DodgeAction},
 			{TEXT("IA_DebugOverlay"), T::Boolean, {EKeys::F1}, EKeys::Gamepad_Special_Left, &ACSCharacter::DebugOverlayAction},
 			{TEXT("IA_DebugRagdoll"), T::Boolean, {EKeys::R}, EKeys::Gamepad_DPad_Down, &ACSCharacter::DebugRagdollAction},
 			{TEXT("IA_DebugPush"), T::Boolean, {EKeys::P}, EKeys::Gamepad_DPad_Up, &ACSCharacter::DebugPushAction},
