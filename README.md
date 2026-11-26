@@ -36,7 +36,7 @@ Every design decision, every work session and every Steam build is recorded in t
 | **Engine** | Unreal Engine 5.8, C++ project in [`Game/`](Game/): a start plane, a movement gym and a capture stage |
 | **Latest block** | [Decision 0019](docs/decisions/0019-next-block-an-opponent-that-fights-back-with-a-block-and-a-d.md): an opponent that fights back, with a block and a dodge |
 | **Steam** | Build 0.1.10 is live on the private development branch; the game is not publicly available yet ([setup checklist](docs/steam/SETUP-CHECKLIST.md), [build history](https://tmhsdigital.github.io/Open-Game-1/builds.html)) |
-| **Latest devlog** | [An opponent that fights back](docs/devlog/2026-11-25-04-an-opponent-that-fights-back-a-patterned.md) |
+| **Latest devlog** | [Make updating the docs part of every session](docs/devlog/2026-11-26-02-make-updating-the-docs-part-of-every-ses.md) |
 
 ## In the build
 
@@ -88,7 +88,7 @@ flowchart LR
 ```
 
 - **Decisions are written down before they are acted on.** Open questions live in [`docs/OPEN-DECISIONS.md`](docs/OPEN-DECISIONS.md) and as Issues. Settled ones become numbered records in [`docs/decisions/`](docs/decisions/), listing only the options that were actually weighed.
-- **Sessions leave a record.** A session ends with a devlog entry, fixed-camera stills of the current build and, when recorded, a short clip. Anything captured from the desktop is checked for secrets before it can be published.
+- **Sessions leave a record.** A session ends with a devlog entry, fixed-camera stills of the current build and, when recorded, a short clip. It cannot end until the docs are up to date: the README's status names the newest decision, build and devlog entry, and a session that changed code changed the docs too. Anything captured from the desktop is checked for secrets before it can be published.
 - **The game is play-tested on a recording.** The game plays itself through scripted scenarios (moving, the combat stance, punches, knockdowns, a fight) with a camera that frames the whole body, and logs what happened. A script records it and cuts a clip, a contact sheet and a summary for each segment, so a change is judged by watching it, not only by tests.
 - **Releases are gated.** One local command checks the tree, runs the tests, scans for secrets, packages a Shipping build, uploads it to Steam's password-protected `development` branch and records it. Promotion to the public `default` branch is always done by hand in Steamworks.
 - **Nothing private gets in.** A secrets scanner runs before every commit (through the commit hook, see [Setting up a clone](#setting-up-a-clone)), in CI and before every release. Steam App and Depot IDs, keys, account names, unpublished release notes and Steamworks partner-page screenshots never enter the repository.

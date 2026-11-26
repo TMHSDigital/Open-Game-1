@@ -488,3 +488,72 @@ def test_commits_lists_the_range_in_order_with_full_messages(repo):
     commits = session._commits(repo, start)
     assert [c[0].split(" ", 1)[1] for c in commits] == ["feat: change 1", "feat: change 2"]
     assert commits[1][1] == "feat: change 2\n\nBody line 2.\n\nTrailer: 2"
+
+
+
+def _docs_repo(repo: Path) -> None:
+    """A repository with a README, a decision and a build ledger, all current."""
+    (repo / "docs/decisions").mkdir(parents=True, exist_ok=True)
+    (repo / "docs/decisions/0001-first.md").write_text("# 0001\n", "utf-8")
+    (repo / "docs/steam").mkdir(parents=True, exist_ok=True)
+    (repo / "docs/steam/BUILDS.md").write_text(
+        "| version | build_id |\n|---|---|\n| 0.1.1 | 1 |\n| 0.1.2 | 2 |\n", "utf-8")
+    (repo / "README.md").write_text(
+        "| **Latest block** | [0001](docs/decisions/0001-first.md) |\n| **Steam** | Build 0.1.2 is live |\n", "utf-8")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "docs: readme")
+
+
+def _point_readme_at(repo: Path, sid_slug: str) -> None:
+    text = (repo / "README.md").read_text("utf-8")
+    (repo / "README.md").write_text(text + f"| **Latest devlog** | [x](docs/devlog/{sid_slug}.md) |\n", "utf-8")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "docs: point the readme at the session")
+
+
+def test_end_refuses_when_readme_misses_this_session(repo, capsys):
+    _docs_repo(repo)
+    session.start(repo, "Docs check", today=DAY)
+    assert session.end(repo, today=DAY) == 1
+    err = capsys.readouterr().err
+    assert "not this session's entry (docs/devlog/2026-11-22-01-docs-check.md)" in err
+    assert "nothing written" in err
+    assert git(repo, "log", "-1", "--format=%s") == "docs: readme"
+
+
+def test_end_passes_with_current_docs(repo):
+    _docs_repo(repo)
+    session.start(repo, "Docs check", today=DAY)
+    _point_readme_at(repo, "2026-11-22-01-docs-check")
+    assert session.end(repo, today=DAY) == 0
+
+
+def test_end_refuses_a_new_decision_or_build_the_readme_does_not_name(repo, capsys):
+    _docs_repo(repo)
+    session.start(repo, "Docs check", today=DAY)
+    _point_readme_at(repo, "2026-11-22-01-docs-check")
+    (repo / "docs/decisions/0002-second.md").write_text("# 0002\n", "utf-8")
+    with (repo / "docs/steam/BUILDS.md").open("a", encoding="utf-8") as f:
+        f.write("| 0.1.3 | 3 |\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "docs: decision and build")
+    assert session.end(repo, today=DAY) == 1
+    err = capsys.readouterr().err
+    assert "newest decision (0002-second.md)" in err
+    assert "newest Steam build (0.1.3)" in err
+
+
+def test_end_refuses_code_changes_without_doc_changes(repo, capsys):
+    _docs_repo(repo)
+    session.start(repo, "Docs check", today=DAY)
+    (repo / "Game/Source").mkdir(parents=True)
+    commit(repo, "feat: code", "Game/Source/A.cpp")
+    assert session.end(repo, today=DAY) == 1
+    assert "but no doc did" in capsys.readouterr().err
+
+
+def test_end_docs_ok_ends_anyway_and_says_so(repo, capsys):
+    _docs_repo(repo)
+    session.start(repo, "Docs check", today=DAY)
+    assert session.end(repo, today=DAY, docs_ok=True) == 0
+    assert "NOTE: --docs-ok" in capsys.readouterr().err

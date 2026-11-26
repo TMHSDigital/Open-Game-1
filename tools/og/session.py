@@ -283,10 +283,62 @@ def _merge_index(existing: str, rows: list[str]) -> str:
     return existing + "".join(r + "\n" for r in new)
 
 
+# Where the docs live, and what counts as a change that should be documented (the owner's rule:
+# the docs are updated every session, not only when asked).
+DOC_PATHS = ("README.md", "CLAUDE.md", "docs/WORKFLOWS.md", "docs/TOOLS.md", "docs/systems/",
+             "docs/steam/BUILD-WORKFLOW.md", ".claude/skills/")
+CODE_PATHS = ("Game/Source/", "Game/Plugins/", "Game/Content/Python/", "Game/Config/", "tools/")
+
+
+def _is_doc(path: str) -> bool:
+    return path.startswith(DOC_PATHS) or (path.startswith("Game/Plugins/") and path.endswith("README.md"))
+
+
+def _changed_paths(repo: Path, start_sha: str) -> list[str]:
+    """Files changed since the session started, committed or not."""
+    rng = [] if start_sha == EMPTY_TREE else [start_sha]
+    committed = _git(repo, "diff", "--name-only", *rng, "HEAD", check=False).splitlines() if rng else []
+    pending = _git(repo, "status", "--porcelain", check=False).splitlines()
+    return sorted({p.strip() for p in committed} | {line[3:].strip().strip('"') for line in pending if len(line) > 3})
+
+
+def stale_docs(repo: Path, state: dict) -> list[str]:
+    """What the docs still say wrong at the end of a session; empty when they are up to date.
+
+    The README's status names the newest decision, the newest Steam build and this session's
+    devlog entry; and a session that changed code or tools changed some doc too. A repository
+    without a README (a test fixture) has nothing to check.
+    """
+    readme = repo / "README.md"
+    if not readme.is_file():
+        return []
+    text = readme.read_text("utf-8")
+    problems: list[str] = []
+    decisions = sorted(p.name for p in (repo / "docs" / "decisions").glob("[0-9][0-9][0-9][0-9]-*.md"))
+    if decisions and decisions[-1] not in text:
+        problems.append(f"README.md does not link the newest decision ({decisions[-1]}).")
+    builds = repo / "docs" / "steam" / "BUILDS.md"
+    if builds.is_file():
+        rows = [line.split("|")[1].strip() for line in builds.read_text("utf-8").splitlines()
+                if re.match(r"^\|\s*\d+\.\d+\.\d+\s*\|", line)]
+        if rows and f"Build {rows[-1]} " not in text:
+            problems.append(f"README.md does not name the newest Steam build ({rows[-1]}).")
+    entry = f"docs/devlog/{state['id']}-{state.get('slug', '')}.md"
+    if state.get("slug") and entry not in text:
+        problems.append(f"README.md's latest devlog is not this session's entry ({entry}).")
+    changed = _changed_paths(repo, state["start_sha"])
+    code = [p for p in changed if p.startswith(CODE_PATHS) and not _is_doc(p)]
+    if code and not any(_is_doc(p) for p in changed):
+        problems.append(f"{len(code)} code or tool file(s) changed this session (for example {code[0]}) "
+                        "but no doc did: README.md, docs/WORKFLOWS.md, docs/TOOLS.md, docs/systems/, "
+                        "a plugin README or a skill.")
+    return problems
+
+
 def end(repo: Path, capture: bool = False, clip: Path | None = None,
         contact_sheet: Path | None = None, capture_dir: Path | None = None,
         commit: bool = True, co_author: str | None = None,
-        today: datetime.date | None = None, no_ocr_ok: bool = False) -> int:
+        today: datetime.date | None = None, no_ocr_ok: bool = False, docs_ok: bool = False) -> int:
     repo = Path(repo)
     if clip and not Path(clip).is_file():
         print(f"og session: clip not found: {clip}", file=sys.stderr)
@@ -307,6 +359,16 @@ def end(repo: Path, capture: bool = False, clip: Path | None = None,
     state, warning = _resolve_start(repo, today or datetime.date.today())
     if warning:
         print(f"WARNING: {warning}", file=sys.stderr)
+    stale = stale_docs(repo, state)
+    if stale and not docs_ok:
+        for problem in stale:
+            print(f"og session: {problem}", file=sys.stderr)
+        print("Refusing to end the session with the docs out of date; nothing written. Update "
+              "them (and commit), or pass --docs-ok if the owner says they are fine as they are.",
+              file=sys.stderr)
+        return 1
+    for problem in stale:
+        print(f"NOTE: --docs-ok: ending with: {problem}", file=sys.stderr)
 
     # 1. gather and scan source images before anything is written to docs/.
     sources: list[tuple[str, Path]] = []
@@ -516,7 +578,7 @@ def _run_session(args) -> int:
         return end(repo, capture=args.capture, clip=args.clip,
                    contact_sheet=args.contact_sheet, capture_dir=args.capture_dir,
                    commit=not args.no_commit, co_author=args.co_author,
-                   no_ocr_ok=args.no_ocr_ok)
+                   no_ocr_ok=args.no_ocr_ok, docs_ok=args.docs_ok)
     except SessionError as exc:
         print(f"og session: {exc}", file=sys.stderr)
         return 1
@@ -548,6 +610,8 @@ def add_parser(sub) -> None:
     e.add_argument("--no-ocr-ok", action="store_true",
                    help="publish the clip or contact sheet without .ocr.txt (owner checked it)")
     e.add_argument("--no-commit", action="store_true")
+    e.add_argument("--docs-ok", action="store_true",
+                   help="end even though the docs look out of date (owner's call)")
     e.add_argument("--co-author", help="full 'Co-Authored-By: ...' trailer line")
     m = sub.add_parser("milestone", help="tag a milestone and write its page")
     m.add_argument("n", type=int)

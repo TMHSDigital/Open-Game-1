@@ -21,6 +21,16 @@ Rules:
 4. It prints the id, then every open item from `docs/steam/SETUP-CHECKLIST.md` (if that file exists). Mention open items to the user.
 5. If recording, write the screencast session id into `_scratch/session.json` as `screencast_session`.
 
+## Update the docs (every session, before End)
+
+The owner's rule: the docs are brought up to date every session, not only when asked. Before ending:
+
+- `README.md` status table: the newest decision under "Latest block", the newest build from `docs/steam/BUILDS.md` under "Steam" ("Build X.Y.Z is live ..."), and this session's entry under "Latest devlog" (`docs/devlog/<id>-<slug>.md`, the file `start` created). Update "In the build" and the controls when the game changed.
+- `docs/WORKFLOWS.md` for any routine, key or step that changed; `docs/TOOLS.md` for any tool or script; `docs/systems/README.md` for any system added or changed; the plugin README for plugin changes; a skill when its routine changed (the `playtest` scenarios, for example).
+- Commit the docs before `end`.
+
+`og session end` checks this and refuses to end, writing nothing, when the README misses the newest decision, the newest build or this session's entry, or when code or tools changed this session and no doc did. Only the owner can waive it (`--docs-ok`).
+
 ## End
 
 Skip steps 1 to 4 if there is no recording.
