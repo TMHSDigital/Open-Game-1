@@ -1,6 +1,8 @@
 #include "CSHitFeedback.h"
 
 #include "CSCharacter.h"
+#include "CSStaminaComponent.h"
+#include "EngineUtils.h"
 #include "CSStrikeComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/Canvas.h"
@@ -212,9 +214,53 @@ FString UCSHitFeedback::DescribeMark(const FCSHitMark& Mark)
 	return FString::Printf(TEXT("%d %s"), FMath::RoundToInt(Mark.Size), What);
 }
 
+void UCSHitFeedback::DrawStamina(UCanvas* Canvas)
+{
+	const ACSCharacter* Player = GetPlayer();
+	auto Bar = [Canvas](float X, float Y, float Width, float Height, const UCSStaminaComponent& Stamina)
+	{
+		const FLinearColor Fill = Stamina.IsExhausted() ? FLinearColor(0.9f, 0.15f, 0.1f) : FLinearColor(0.95f, 0.85f, 0.3f);
+		Canvas->K2_DrawBox(FVector2D(X - 1.f, Y - 1.f), FVector2D(Width + 2.f, Height + 2.f), 1.f, FLinearColor(0.f, 0.f, 0.f, 0.6f));
+		Canvas->K2_DrawTexture(nullptr, FVector2D(X, Y), FVector2D(Width * Stamina.GetShare(), Height), FVector2D::ZeroVector,
+			FVector2D::UnitVector, Fill);
+	};
+	const bool bFighting = Player && Player->IsInCombatStance();
+	if (const UCSStaminaComponent* Mine = Player ? Player->GetStamina() : nullptr;
+		Mine && Mine->IsEnabled() && (bFighting || Mine->GetShare() < 0.999f))
+	{
+		const float Scale = FMath::Max(1.f, Canvas->ClipY / 720.f);
+		const float Width = 240.f * Scale;
+		Bar((Canvas->ClipX - Width) * 0.5f, Canvas->ClipY * 0.86f, Width, 8.f * Scale, *Mine);
+	}
+	for (TActorIterator<ACSCharacter> It(GetWorld()); It; ++It)
+	{
+		const ACSCharacter* Other = *It;
+		const UCSStaminaComponent* Theirs = Other->GetStamina();
+		// Only a character that fights (one with a controller of its own): a dummy standing still spends nothing.
+		if (Other == Player || !Theirs || !Theirs->IsEnabled() || !Other->GetController() || Other->IsRagdolled()
+			|| !(bFighting || Theirs->GetShare() < 0.999f))
+		{
+			continue;
+		}
+		const USkeletalMeshComponent* Body = Other->GetMesh();
+		const FVector Over = (Body ? Body->GetSocketLocation(TEXT("head")) : Other->GetActorLocation()) + FVector(0.f, 0.f, 30.f);
+		const FVector Screen = Canvas->Project(Over);
+		if (Screen.Z <= 0.f)
+		{
+			continue;
+		}
+		Bar(float(Screen.X) - 30.f, float(Screen.Y), 60.f, 5.f, *Theirs);
+	}
+}
+
 void UCSHitFeedback::DrawMarks(AHUD* HUD, UCanvas* Canvas)
 {
-	if (!HUD || !Canvas || HUD->GetWorld() != GetWorld() || Marks.IsEmpty() || !GEngine || GetWorld()->IsPaused())
+	if (!HUD || !Canvas || HUD->GetWorld() != GetWorld() || !GEngine || GetWorld()->IsPaused())
+	{
+		return;
+	}
+	DrawStamina(Canvas);
+	if (Marks.IsEmpty())
 	{
 		return;
 	}

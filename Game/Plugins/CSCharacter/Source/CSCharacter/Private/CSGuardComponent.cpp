@@ -4,6 +4,7 @@
 #include "CSCharacter.h"
 #include "CSMovementTuning.h"
 #include "CSPhysicsBodyComponent.h"
+#include "CSStaminaComponent.h"
 #include "CSStrikeComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -57,6 +58,11 @@ bool UCSGuardComponent::IsGuardUp() const
 		return false;
 	}
 	const ACSCharacter* Character = GetCharacter();
+	// Out of stamina: the arms will not hold the guard until some has come back.
+	if (const UCSStaminaComponent* Stamina = Character ? Character->GetStamina() : nullptr; Stamina && Stamina->IsExhausted())
+	{
+		return false;
+	}
 	const UCSStrikeComponent* Strike = Character ? Character->GetStrike() : nullptr;
 	// A punch out opens the guard until the arm is on its way back.
 	return !Strike || Strike->GetPhase() == ECSStrikePhase::None || Strike->GetPhase() == ECSStrikePhase::Recover;
@@ -105,6 +111,15 @@ bool UCSGuardComponent::Dodge(const FVector& Direction)
 	if (Strike && (Strike->GetPhase() == ECSStrikePhase::Windup || Strike->GetPhase() == ECSStrikePhase::Strike))
 	{
 		return false;
+	}
+	UCSStaminaComponent* Stamina = Character->GetStamina();
+	if (Stamina && !Stamina->CanAfford(T.DodgeStaminaCost))
+	{
+		return false;
+	}
+	if (Stamina)
+	{
+		Stamina->Spend(T.DodgeStaminaCost);
 	}
 	const FVector Flat = Direction.GetSafeNormal2D();
 	DodgeDirection = Flat.IsNearlyZero() ? -Character->GetActorForwardVector().GetSafeNormal2D() : Flat;

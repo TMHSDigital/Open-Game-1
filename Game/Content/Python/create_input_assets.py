@@ -3,7 +3,7 @@
 Makes or refreshes:
   IA_Move, IA_Look, IA_LookStick  Axis2D actions (look is split by device so the mouse and the stick
                                   each have their own sensitivity setting)
-  IA_Jump, IA_Sprint, IA_Crouch, IA_Walk, IA_ToggleCamera, IA_Attack, IA_Block, IA_Dodge, IA_Pause,
+  IA_Jump, IA_Sprint, IA_Crouch, IA_Walk, IA_ToggleCamera, IA_Attack, IA_Block, IA_Dodge, IA_Kick, IA_Pause,
   IA_DebugOverlay, IA_DebugRagdoll, IA_DebugPush, IA_DebugReload, IA_DebugMapSwitch,
   IA_DebugThrow, IA_DebugReset
                                   Boolean actions (no triggers: pressed is Started, released is
@@ -56,6 +56,7 @@ ACTIONS = {
     "IA_Attack": BOOLEAN,
     "IA_Block": BOOLEAN,
     "IA_Dodge": BOOLEAN,
+    "IA_Kick": BOOLEAN,
     "IA_Pause": BOOLEAN,
     "IA_DebugOverlay": BOOLEAN,
     "IA_DebugRagdoll": BOOLEAN,
@@ -94,6 +95,9 @@ KEYS = [
     ("IA_Block", "Gamepad_LeftTrigger", []),
     ("IA_Dodge", "Q", []),
     ("IA_Dodge", "Gamepad_FaceButton_Left", []),
+    # The kick (decision 0020).
+    ("IA_Kick", "F", []),
+    ("IA_Kick", "Gamepad_RightShoulder", []),
     # Pause screen. Tab as well: Escape ends Play in the editor.
     ("IA_Pause", "Escape", []),
     ("IA_Pause", "Tab", []),

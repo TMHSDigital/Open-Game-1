@@ -3,12 +3,14 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "CSTuningOverrides.h"
+#include "CSStrikeMove.h"
 #include "CSCharacter.generated.h"
 
 class UCameraComponent;
 class UCSCameraRig;
 class UCSDevTools;
 class UCSGuardComponent;
+class UCSStaminaComponent;
 class UCSPhysicsBodyComponent;
 class UCSStrikeComponent;
 class UPhysicalAnimationComponent;
@@ -138,6 +140,24 @@ public:
 	/** The defence: block and dodge. */
 	UCSGuardComponent* GetGuard() const { return Guard; }
 
+	/** Stamina: what strikes, dodges and blocked hits cost (decision 0020). */
+	UCSStaminaComponent* GetStamina() const { return Stamina; }
+
+	/** Throws Move (UCSStrikeComponent::StartMove), as the keys do. Returns whether it started. */
+	UFUNCTION(BlueprintCallable, Category = "CS|Strike")
+	bool StrikeWith(ECSStrikeMove Move);
+
+	/** The kick key: a front kick with the rear leg. */
+	UFUNCTION(BlueprintCallable, Category = "CS|Strike")
+	bool Kick() { return StrikeWith(ECSStrikeMove::Kick); }
+
+	/**
+	 * What the attack key throws now: a hook from the side the movement keys point to when moving
+	 * sideways in the combat stance (Sideways: the movement's share across the facing, -1 left to 1
+	 * right; a hook when its size is at least 0.7), else the punch (a jab, or the straight of a one-two).
+	 */
+	static bool PickHook(bool bInStance, float Sideways, ECSStrikeMove& OutHook);
+
 	/**
 	 * The dodge key: a quick step the way the character is moving, or straight back
 	 * (UCSGuardComponent::Dodge). Returns whether one started.
@@ -155,7 +175,7 @@ public:
 	UFUNCTION(BlueprintPure, Category = "CS|Strike")
 	bool IsInCombatStance() const { return bCombatStance; }
 
-	/** The attack key: throws a punch (UCSStrikeComponent::StartPunch). Returns whether one started. */
+	/** The attack key: a hook while moving sideways in the stance (PickHook), else a punch (UCSStrikeComponent::StartPunch). Returns whether one started. */
 	UFUNCTION(BlueprintCallable, Category = "CS|Strike")
 	bool Attack();
 
@@ -247,6 +267,10 @@ public:
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CS|Input")
 	TSoftObjectPtr<UInputAction> AttackAction;
 
+	/** A front kick on press. */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CS|Input")
+	TSoftObjectPtr<UInputAction> KickAction;
+
 	/** Held: the guard is up (UCSGuardComponent). */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CS|Input")
 	TSoftObjectPtr<UInputAction> BlockAction;
@@ -334,6 +358,7 @@ private:
 	void OnBlockStarted();
 	void OnBlockCompleted();
 	void OnDodgeStarted();
+	void OnKickStarted();
 	void OnDebugOverlayStarted();
 	void OnDebugRagdollStarted();
 	void OnDebugPushStarted();
@@ -356,6 +381,9 @@ private:
 
 	UPROPERTY(VisibleAnywhere, Category = "CS|Guard")
 	TObjectPtr<UCSGuardComponent> Guard;
+
+	UPROPERTY(VisibleAnywhere, Category = "CS|Stamina")
+	TObjectPtr<UCSStaminaComponent> Stamina;
 
 	bool bCombatStance = false;
 	/** World time of the last attack started; very negative before any. */

@@ -32,23 +32,26 @@ Every design decision, every work session and every Steam build is recorded in t
 
 | | |
 |---|---|
-| **Phase** | Early prototype. Movement, a physics body that staggers and falls, simulation runs, a punch, a block and a dodge, and an opponent that fights back. Stand-in animation clips, no art direction yet. |
+| **Phase** | Early prototype. Movement, a physics body that staggers and falls, simulation runs, five strikes (jab, straight, two hooks, a kick), a block and a dodge, stamina, and an opponent that fights back. Stand-in animation clips, no art direction yet. |
 | **Engine** | Unreal Engine 5.8, C++ project in [`Game/`](Game/): a start plane, a movement gym and a capture stage |
-| **Latest block** | [Decision 0019](docs/decisions/0019-next-block-an-opponent-that-fights-back-with-a-block-and-a-d.md): an opponent that fights back, with a block and a dodge |
+| **Latest block** | [Decision 0020](docs/decisions/0020-next-block-more-attacks-and-stamina.md): more attacks and stamina |
 | **Steam** | Build 0.1.10 is live on the private development branch; the game is not publicly available yet ([setup checklist](docs/steam/SETUP-CHECKLIST.md), [build history](https://tmhsdigital.github.io/Open-Game-1/builds.html)) |
-| **Latest devlog** | [Fix the devlog placeholder and close out](docs/devlog/2026-11-26-03-fix-the-devlog-placeholder-and-close-out.md) |
+| **Latest devlog** | [Attacks and stamina](docs/devlog/2026-11-26-04-attacks-and-stamina-and-the-opponent-s-w.md) |
 
 ## In the build
 
 - **A character with weight.** Walk, jog, a sprint that builds up, crouch and jump, with first and third person on one key. The upper body is simulated: hits stagger it, big ones knock it down, and it gets back up.
-- **Simulation runs.** The pause screen's Run tab sets a run up: the map, how many dummies, where they stand, whether they stand still or fight back and how long their wind-up is, ball launchers, a time limit and a knockdown goal. A run ends with its results: hits dealt and taken, punches landed and blocked, their punches, dodges.
-- **A punch, a block and a dodge.** The punch goes for the nearest opponent in front of you and steps in when it is out of reach. Near an opponent you face it and back off slower. The block takes most of a hit from in front; the dodge is a quick step with no immunity.
-- **An opponent that fights back.** It closes in, draws its fist back slowly (its tell), punches, backs off and circles. It waits while you are down.
+- **Simulation runs.** The pause screen's Run tab sets a run up: the map, how many dummies, where they stand, whether they stand still or fight back and how long their wind-up is, stamina on or off and how fast it recovers, ball launchers, a time limit and a knockdown goal. A run ends with its results: hits dealt and taken, strikes by move (landed of thrown), punches blocked, their punches, dodges, and how often you ran out of stamina.
+- **Strikes, a block and a dodge.** The attack key throws a jab, and pressed again straight after, a straight: a one-two. Pressed while moving sideways near an opponent it throws a hook from that side. The kick key throws a front kick: slow, far and heavy. Every strike goes for the nearest opponent in front of you and steps in when it is out of reach. Near an opponent you face it and back off slower. The block takes most of a hit from in front; the dodge is a quick step with no immunity.
+- **Stamina.** Strikes, dodges and hits taken on the guard cost stamina, shown as a bar under the middle of the screen (and over a fighting opponent's head). It comes back after a short pause. Out of it, strikes are slower and weaker and the guard drops until some is back.
+- **An opponent that fights back.** It closes in, draws back slowly (its tell) and throws a jab, a one-two, a hook or a kick in a fixed order, backs off and circles. It holds off when its stamina is low and waits while you are down.
 
 | Do | Keyboard and mouse | Gamepad |
 |---|---|---|
 | Move, look | WASD, mouse | Left stick, right stick |
-| Punch | Left mouse | Right trigger |
+| Jab, then straight (a one-two) | Left mouse | Right trigger |
+| Hook | Left mouse while moving left or right near an opponent | Right trigger with the left stick sideways |
+| Kick | F | RB / right shoulder |
 | Block (hold) | Right mouse | Left trigger |
 | Dodge | Q | X / left face button |
 | Jump, sprint, walk, crouch | Space, Left Shift, Left Alt, Left Ctrl | A, L3, LB, B |

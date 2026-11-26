@@ -69,6 +69,13 @@ struct COMBATSIMULATOR_API FCSRunStats
 	int32 PunchesBlocked = 0;
 	/** The player's dodge steps. */
 	int32 Dodges = 0;
+	/** The player's strikes by move ("jab", "kick", ...): thrown and landed. */
+	TMap<FString, int32> MovesThrown;
+	TMap<FString, int32> MovesLanded;
+	/** The player's strikes thrown without enough stamina. */
+	int32 TiredStrikes = 0;
+	/** Times the player ran out of stamina. */
+	int32 Exhausted = 0;
 	/** Punches the run's opponents threw, and how many of them reached the player or its guard. */
 	int32 OpponentPunches = 0;
 	int32 OpponentPunchesLanded = 0;
@@ -83,6 +90,11 @@ struct COMBATSIMULATOR_API FCSRunStats
 	void RecordThrow() { ++BallsThrown; }
 	void RecordPunch() { ++PunchesThrown; }
 	void RecordPunchLanded() { ++PunchesLanded; }
+	/** A strike of the player's by move (FCSStrikeMoveData::Describe), thrown or landed, and whether it was thrown tired. */
+	void RecordMove(const FString& Move, bool bTired) { ++MovesThrown.FindOrAdd(Move); TiredStrikes += bTired ? 1 : 0; }
+	void RecordMoveLanded(const FString& Move) { ++MovesLanded.FindOrAdd(Move); }
+	/** "jab 3/5, straight 1/2, kick 1/1" (landed/thrown), in the order moves were first thrown; empty without strikes. */
+	FString DescribeMoves() const;
 	void RecordPunchBlocked() { ++PunchesBlocked; }
 	void RecordDodge() { ++Dodges; }
 	void RecordOpponentPunch() { ++OpponentPunches; }

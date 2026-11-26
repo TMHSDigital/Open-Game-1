@@ -6,6 +6,7 @@
 #include "CSBallLauncher.h"
 #include "CSCharacter.h"
 #include "CSGuardComponent.h"
+#include "CSStaminaComponent.h"
 #include "CSHitBall.h"
 #include "CSRunStore.h"
 #include "CSStrikeComponent.h"
@@ -45,6 +46,7 @@ void UCSRunDirector::BeginPlay()
 	StrikeStartedHandle = UCSStrikeComponent::OnStrikeStarted.AddUObject(this, &UCSRunDirector::HandleStrikeStarted);
 	StrikeLandedHandle = UCSStrikeComponent::OnStrikeLanded.AddUObject(this, &UCSRunDirector::HandleStrikeLanded);
 	DodgedHandle = UCSGuardComponent::OnDodged.AddUObject(this, &UCSRunDirector::HandleDodged);
+	ExhaustedHandle = UCSStaminaComponent::OnExhausted.AddUObject(this, &UCSRunDirector::HandleExhausted);
 	HudHandle = AHUD::OnHUDPostRender.AddUObject(this, &UCSRunDirector::DrawHud);
 }
 
@@ -55,9 +57,11 @@ void UCSRunDirector::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	UCSStrikeComponent::OnStrikeStarted.Remove(StrikeStartedHandle);
 	UCSStrikeComponent::OnStrikeLanded.Remove(StrikeLandedHandle);
 	UCSGuardComponent::OnDodged.Remove(DodgedHandle);
+	UCSStaminaComponent::OnExhausted.Remove(ExhaustedHandle);
 	StrikeStartedHandle.Reset();
 	StrikeLandedHandle.Reset();
 	DodgedHandle.Reset();
+	ExhaustedHandle.Reset();
 	AHUD::OnHUDPostRender.Remove(HudHandle);
 	ContactHandle.Reset();
 	ThrowHandle.Reset();
@@ -139,6 +143,8 @@ void UCSRunDirector::BeginRunHere(const FCSRunSetup& InSetup)
 		}
 	}
 	ResultsAt = 0.0;
+	// The player starts the run fresh, on the run's stamina; the run's dummies read it as they spawn.
+	ApplyStamina(GetPlayerCharacter(), true);
 	UE_LOG(LogCombatSimulator, Log, TEXT("UCSRunDirector: run started: %s"), *Setup.Describe());
 	// Leaving Ended for Running again must be announced too, so go through Idle when restarting.
 	State = ECSRunState::Idle;
@@ -186,6 +192,7 @@ void UCSRunDirector::LeaveRun()
 	{
 		Mode->ResetPlaygroundToMap();
 	}
+	ApplyStamina(GetPlayerCharacter(), false);
 	EndReason = ECSRunEnd::None;
 	ResultsAt = 0.0;
 	UE_LOG(LogCombatSimulator, Log, TEXT("UCSRunDirector: run left; the map is as it was made"));
@@ -322,6 +329,10 @@ void UCSRunDirector::HandleStrikeStarted(ACSCharacter* Attacker)
 	if (Attacker == GetPlayerCharacter())
 	{
 		Stats.RecordPunch();
+		if (const UCSStrikeComponent* Strike = Attacker->GetStrike())
+		{
+			Stats.RecordMove(FCSStrikeMoveData::Describe(Strike->GetMove()), Strike->WasTired());
+		}
 	}
 	else if (Attacker->ActorHasTag(TEXT("RunDummy")))
 	{
@@ -342,6 +353,10 @@ void UCSRunDirector::HandleStrikeLanded(ACSCharacter* Attacker, AActor* Victim, 
 		if (Result == ECSContactResult::Stagger || Result == ECSContactResult::Ragdoll)
 		{
 			Stats.RecordPunchLanded();
+			if (const UCSStrikeComponent* Strike = Attacker->GetStrike())
+			{
+				Stats.RecordMoveLanded(FCSStrikeMoveData::Describe(Strike->GetMove()));
+			}
 		}
 		else if (Result == ECSContactResult::Blocked)
 		{
@@ -351,6 +366,24 @@ void UCSRunDirector::HandleStrikeLanded(ACSCharacter* Attacker, AActor* Victim, 
 	else if (Player && Victim == Player && Attacker->ActorHasTag(TEXT("RunDummy")))
 	{
 		Stats.RecordOpponentPunchResult(Result);
+	}
+}
+
+void UCSRunDirector::HandleExhausted(ACSCharacter* Who)
+{
+	if (State == ECSRunState::Running && Who && Who->GetWorld() == GetWorld() && Who == GetPlayerCharacter())
+	{
+		++Stats.Exhausted;
+	}
+}
+
+void UCSRunDirector::ApplyStamina(ACSCharacter* Character, bool bRun) const
+{
+	if (UCSStaminaComponent* Stamina = Character ? Character->GetStamina() : nullptr)
+	{
+		Stamina->SetEnabled(!bRun || Setup.bStamina);
+		Stamina->SetRegenScale(bRun ? Setup.StaminaRecovery : 1.f);
+		Stamina->Refill();
 	}
 }
 

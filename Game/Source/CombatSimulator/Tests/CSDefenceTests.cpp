@@ -295,6 +295,9 @@ bool FCSDefenceFightScenarioTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("Down: it waited"), Field(TEXT("the player is down: it waits"), TEXT("it waited")), FString(TEXT("yes")));
 		TestEqual(TEXT("Down: it did not hit the player"), FCString::Atof(*Field(TEXT("the player is down: it waits"), TEXT("their punches landed while down"))), 0.f);
 		TestEqual(TEXT("Down: the player got back up"), Field(TEXT("the player is down: it waits"), TEXT("back up")), FString(TEXT("yes")));
+		const TCHAR* NoStamina = TEXT("blocking with no stamina: the guard gives way");
+		TestEqual(TEXT("No stamina: the guard was down"), Field(NoStamina, TEXT("guard was up")), FString(TEXT("no")));
+		TestTrue(TEXT("No stamina: its strikes got through"), CountBefore(Field(NoStamina, TEXT("their punches")), TEXT("landed")) >= 1);
 		TestEqual(TEXT("The run ended: it stopped"), Field(TEXT("the run ends: it stops"), TEXT("it stopped")), FString(TEXT("yes")));
 		return true;
 	}));

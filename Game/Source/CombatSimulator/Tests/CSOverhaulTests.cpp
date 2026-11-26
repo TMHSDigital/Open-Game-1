@@ -223,7 +223,8 @@ bool FCSOverhaulPunchesLandTest::RunTest(const FString& Parameters)
 				return true;
 			}
 			TestTrue(FString::Printf(TEXT("%s: the dummy is the target"), Case.Name), Strike->FindTarget() == C.Dummy());
-			TestTrue(FString::Printf(TEXT("%s: the punch starts"), Case.Name), Player->Attack());
+			// The straight: the punch as tuned (the attack key opens with a jab, too short to step in from far).
+			TestTrue(FString::Printf(TEXT("%s: the punch starts"), Case.Name), Player->StrikeWith(ECSStrikeMove::Straight));
 			Run->Next();
 			return false;
 		}

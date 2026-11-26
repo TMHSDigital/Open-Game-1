@@ -112,6 +112,9 @@ private:
 	void HandleStrikeStarted(ACSCharacter* Attacker);
 	void HandleStrikeLanded(ACSCharacter* Attacker, AActor* Victim, ECSContactResult Result);
 	void HandleDodged(ACSCharacter* Who);
+	void HandleExhausted(ACSCharacter* Who);
+	/** The run's stamina settings on Character (all on, at the usual rate, when no run is set up). */
+	void ApplyStamina(ACSCharacter* Character, bool bRun) const;
 	void DrawHud(AHUD* HUD, UCanvas* Canvas);
 	void OpenResults();
 
@@ -139,5 +142,6 @@ private:
 	FDelegateHandle StrikeStartedHandle;
 	FDelegateHandle StrikeLandedHandle;
 	FDelegateHandle DodgedHandle;
+	FDelegateHandle ExhaustedHandle;
 	FDelegateHandle HudHandle;
 };

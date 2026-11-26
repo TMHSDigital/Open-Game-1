@@ -2,10 +2,21 @@
 
 #include "CoreMinimal.h"
 #include "AIController.h"
+#include "CSStrikeMove.h"
 #include "CSOpponentController.generated.h"
 
 class ACSCharacter;
 class ACSTargetDummy;
+
+/** One attack of an opponent's pattern: the strikes it throws in a row. */
+USTRUCT(BlueprintType)
+struct COMBATSIMULATOR_API FCSOpponentAttack
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "CS|Opponent")
+	TArray<ECSStrikeMove> Moves;
+};
 
 /** What an opponent is doing. */
 UENUM(BlueprintType)
@@ -33,8 +44,10 @@ enum class ECSOpponentState : uint8
  * The brain of a dummy that fights back (decision 0019): a small state machine on a pattern the
  * player can learn, adapted from the telegraphed opponent of slap-boxing-simulator (Game-Systems).
  *
- * The cycle: close in to AttackDistance, punch (the Pattern says how many punches this time, then
- * the next entry), recover, back off, circle, and close in again. The punch is the player's own
+ * The cycle: close in to AttackDistance (farther for an attack that opens with a kick), throw the
+ * Pattern's next attack (a jab, a one-two, a hook, a kick: decision 0020), recover, back off,
+ * circle, and close in again. With too little stamina for the next attack it circles until it has
+ * enough, so a tired opponent backs off instead of throwing weak strikes. The punch is the player's own
  * (UCSStrikeComponent, with the same target assist and step-in); only its wind-up is the
  * opponent's (WindupSeconds), drawn out so it can be read: that is the tell, and the one knob that
  * makes it easier or harder. It never hits a target that is down (Wait), and stops while it is
@@ -60,16 +73,26 @@ public:
 	/** The character it fights: the nearest player-controlled character; null when there is none. */
 	ACSCharacter* FindOpponentTarget() const;
 
+	/** Starts over: any strike under way is called off and it closes in again (a play-test segment, a reset). */
+	void Restart();
+
 	/** Punches it has started since play began. */
 	int32 GetPunchesThrown() const { return PunchesThrown; }
 
-	/** How many punches each attack throws, in turn, round and round. */
+	/** The attacks it throws, in turn, round and round. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "CS|Opponent")
-	TArray<int32> Pattern = {1, 1, 2};
+	TArray<FCSOpponentAttack> Pattern;
+
+	/** The pattern every opponent starts with: a jab, a one-two, a right hook, a kick, a jab and a left hook. */
+	static TArray<FCSOpponentAttack> DefaultPattern();
 
 	/** Closer than this (centre to centre, seen from above) it starts an attack, cm. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "CS|Opponent", meta = (Units = "cm"))
-	float AttackDistance = 140.f;
+	float AttackDistance = 125.f;
+
+	/** An attack that opens with a kick starts this much farther out, cm: the leg reaches farther. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "CS|Opponent", meta = (Units = "cm"))
+	float KickExtraDistance = 25.f;
 
 	/** It fights a target within this far, cm. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "CS|Opponent", meta = (Units = "cm"))
@@ -108,13 +131,17 @@ private:
 	void Enter(ECSOpponentState NewState);
 	/** Moves the pawn along Direction (flattened) this tick. */
 	void MoveAlong(ACSCharacter& Self, const FVector& Direction) const;
-	/** Starts the next punch of the attack; false when the strike would not start. */
+	/** Throws the attack's next strike; false when there is none left or it would not start. */
 	bool Punch(ACSCharacter& Self);
+	/** The attack the pattern is on. */
+	const FCSOpponentAttack& NextAttack() const;
 
 	ECSOpponentState OpponentState = ECSOpponentState::Idle;
 	float StateSeconds = 0.f;
 	int32 PatternIndex = 0;
-	int32 PunchesLeft = 0;
+	/** The attack under way and how far into it. */
+	FCSOpponentAttack Attack;
+	int32 MoveIndex = 0;
 	int32 PunchesThrown = 0;
 	float CircleSign = 1.f;
 	float CircleFor = 1.f;

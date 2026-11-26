@@ -2,6 +2,7 @@
 
 #include "CSGameMode.h"
 #include "CSMovementTuning.h"
+#include "CSStaminaComponent.h"
 #include "Opponent/CSOpponentController.h"
 #include "Run/CSRunDirector.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -38,6 +39,12 @@ void ACSTargetDummy::BeginPlay()
 	if (bFightsBack || (Director && Director->GetSetup().Opponents == ECSRunOpponents::FightBack))
 	{
 		EnsureController();
+	}
+	if (Director && GetStamina())
+	{
+		// A run's dummy runs on the run's stamina, like the player.
+		GetStamina()->SetEnabled(Director->GetSetup().bStamina);
+		GetStamina()->SetRegenScale(Director->GetSetup().StaminaRecovery);
 	}
 	// Several dummies on the same idle in perfect step look like copies: each plays a little
 	// faster or slower, so they drift apart within a few seconds.

@@ -82,6 +82,17 @@ void FCSRunStats::RecordOpponentPunchResult(ECSContactResult Result)
 	}
 }
 
+FString FCSRunStats::DescribeMoves() const
+{
+	TArray<FString> Parts;
+	for (const TPair<FString, int32>& Pair : MovesThrown)
+	{
+		const int32* Landed = MovesLanded.Find(Pair.Key);
+		Parts.Add(FString::Printf(TEXT("%s %d/%d"), *Pair.Key, Landed ? *Landed : 0, Pair.Value));
+	}
+	return FString::Join(Parts, TEXT(", "));
+}
+
 float FCSRunStats::Accuracy() const
 {
 	return BallsThrown > 0 ? FMath::Min(1.f, float(BallHits) / float(BallsThrown)) : 0.f;
@@ -140,6 +151,14 @@ TArray<FString> FCSRunStats::SummaryLines() const
 		{
 			Lines.Add(FString::Printf(TEXT("  %d taken on a guard"), PunchesBlocked));
 		}
+		if (!MovesThrown.IsEmpty())
+		{
+			Lines.Add(TEXT("  by move, landed of thrown: ") + DescribeMoves());
+		}
+		if (TiredStrikes > 0)
+		{
+			Lines.Add(FString::Printf(TEXT("  %d thrown tired"), TiredStrikes));
+		}
 	}
 	else
 	{
@@ -154,6 +173,10 @@ TArray<FString> FCSRunStats::SummaryLines() const
 	if (Dodges > 0)
 	{
 		Lines.Add(FString::Printf(TEXT("Dodges: %d"), Dodges));
+	}
+	if (Exhausted > 0)
+	{
+		Lines.Add(FString::Printf(TEXT("Out of stamina: %d %s"), Exhausted, Exhausted == 1 ? TEXT("time") : TEXT("times")));
 	}
 	Lines.Add(FString::Printf(TEXT("Balls thrown: %d"), BallsThrown));
 	if (BallsThrown > 0)

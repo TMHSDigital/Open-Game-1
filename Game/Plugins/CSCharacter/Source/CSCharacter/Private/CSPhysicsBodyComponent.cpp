@@ -5,6 +5,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "CSCharacter.h"
 #include "CSGuardComponent.h"
+#include "CSStaminaComponent.h"
 #include "CSCharacterLog.h"
 #include "CSDevTools.h"
 #include "CSHitBall.h"
@@ -282,11 +283,14 @@ void UCSPhysicsBodyComponent::ApplyMotors()
 	for (const FBodyInstance* B : Body->Bodies)
 	{
 		const FName Name = BodyName(B);
-		if (Name == NAME_None || !IsInChain(Name, SimulatedRootBone))
+		const bool bExtra = ExtraSimulatedRoots.ContainsByPredicate([this, Name](FName Root) { return IsInChain(Name, Root); });
+		if (Name == NAME_None || (!IsInChain(Name, SimulatedRootBone) && !bExtra))
 		{
 			continue;
 		}
-		FPhysicalAnimationData Data = NormalDataFor(Name);
+		// A limb simulated for a move (a kicking leg) is held only loosely to its pose, at the hit
+		// profile: the move steers it, and Normal-strength motors would hold the foot to the floor.
+		FPhysicalAnimationData Data = bExtra && !IsInChain(Name, SimulatedRootBone) ? T.HitProfile : NormalDataFor(Name);
 		if (const float* Age = HitAges.Find(Name))
 		{
 			Data = Blend(Data, T.HitProfile, HitWeight(*Age, T));
@@ -298,6 +302,7 @@ void UCSPhysicsBodyComponent::ApplyMotors()
 void UCSPhysicsBodyComponent::EnterNormal()
 {
 	// Pelvis and legs animated (kinematic); the upper body simulated and driven to the pose.
+	ExtraSimulatedRoots.Reset();
 	Body->SetAllBodiesSimulatePhysics(false);
 	Body->SetEnableGravity(true);
 	Body->SetAllBodiesBelowSimulatePhysics(SimulatedRootBone, true, true);
@@ -309,6 +314,31 @@ void UCSPhysicsBodyComponent::EnterNormal()
 	}
 	HitAges.Reset();
 	ApplyMotors();
+}
+
+void UCSPhysicsBodyComponent::SetLimbSimulated(FName Root, bool bSimulate)
+{
+	if (!HasPhysicsBody() || Root == NAME_None || Body->GetBoneIndex(Root) == INDEX_NONE)
+	{
+		return;
+	}
+	if (bSimulate)
+	{
+		if ((State != ECSBodyState::Normal && State != ECSBodyState::Hit) || ExtraSimulatedRoots.Contains(Root))
+		{
+			return;
+		}
+		ExtraSimulatedRoots.Add(Root);
+		Body->SetAllBodiesBelowSimulatePhysics(Root, true, true);
+		Body->SetAllBodiesBelowPhysicsBlendWeight(Root, 1.f, false, true);
+		ApplyMotors();
+	}
+	else if (ExtraSimulatedRoots.Remove(Root) > 0 && (State == ECSBodyState::Normal || State == ECSBodyState::Hit))
+	{
+		// Back on the animation. The motors have held the leg near its pose, so the hand-back is small.
+		Body->SetAllBodiesBelowSimulatePhysics(Root, false, true);
+		Body->SetAllBodiesBelowPhysicsBlendWeight(Root, 0.f, false, true);
+	}
 }
 
 void UCSPhysicsBodyComponent::ApplyImpulseAtBone(FName Bone, FVector Impulse)
@@ -415,6 +445,7 @@ void UCSPhysicsBodyComponent::EnterRagdoll()
 	HitAges.Reset();
 	Snapshot.Reset();
 	bGettingUp = false;
+	ExtraSimulatedRoots.Reset();
 	Body->SetAllBodiesSimulatePhysics(true);
 	Body->SetEnableGravity(true);
 	Body->SetAllBodiesPhysicsBlendWeight(1.f);
@@ -1088,6 +1119,11 @@ ECSContactResult UCSPhysicsBodyComponent::ReceiveContact(AActor* OtherActor, FNa
 		}
 		Result = ECSContactResult::Blocked;
 		Guard->NoteBlocked();
+		// Holding a hit off costs stamina by how much the guard took.
+		if (UCSStaminaComponent* Stamina = Character->GetStamina())
+		{
+			Stamina->Spend(float((Full - Change).Size()) * T.BlockStaminaCost);
+		}
 	}
 	else
 	{

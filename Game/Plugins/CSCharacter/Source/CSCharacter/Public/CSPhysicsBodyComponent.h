@@ -204,6 +204,17 @@ public:
 	UFUNCTION(BlueprintPure, Category = "CS|Body")
 	bool HasPhysicsBody() const;
 
+	/**
+	 * Simulates the chain from Root down (a leg, for a kick) on top of the Normal body, pulled to the
+	 * animated pose by the Normal motors like the upper body, so something can steer it; false puts
+	 * it back on the animation. Only while standing (Normal or Hit); going down or getting up clears
+	 * it. The other leg stays animated, so the character keeps its footing.
+	 */
+	void SetLimbSimulated(FName Root, bool bSimulate);
+
+	/** Root is simulated by SetLimbSimulated now. */
+	bool IsLimbSimulated(FName Root) const { return ExtraSimulatedRoots.Contains(Root); }
+
 	/** Mass of all bodies, kg (0 without a physics body). */
 	UFUNCTION(BlueprintPure, Category = "CS|Body")
 	float GetBodyMass() const;
@@ -268,6 +279,9 @@ protected:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
 private:
+	/** Chains simulated on top of the Normal body (SetLimbSimulated). */
+	TArray<FName> ExtraSimulatedRoots;
+
 	ACSCharacter* GetCharacter() const;
 	const UCSMovementTuning& GetTuning() const;
 	void SetState(ECSBodyState NewState);

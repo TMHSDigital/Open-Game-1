@@ -4,6 +4,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "CSCharacter.h"
 #include "CSPhysicsBodyComponent.h"
+#include "CSStaminaComponent.h"
 #include "CSStrikeComponent.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -13,6 +14,25 @@ ACSOpponentController::ACSOpponentController()
 	PrimaryActorTick.bCanEverTick = true;
 	// The control rotation turns toward the focal point; the body follows it through the combat stance.
 	bSetControlRotationFromPawnOrientation = false;
+	Pattern = DefaultPattern();
+}
+
+TArray<FCSOpponentAttack> ACSOpponentController::DefaultPattern()
+{
+	auto Of = [](std::initializer_list<ECSStrikeMove> Moves)
+	{
+		FCSOpponentAttack Out;
+		Out.Moves = Moves;
+		return Out;
+	};
+	using M = ECSStrikeMove;
+	return {Of({M::Jab}), Of({M::Jab, M::Straight}), Of({M::HookRight}), Of({M::Kick}), Of({M::Jab, M::HookLeft})};
+}
+
+const FCSOpponentAttack& ACSOpponentController::NextAttack() const
+{
+	static const FCSOpponentAttack Jab = []() { FCSOpponentAttack A; A.Moves = {ECSStrikeMove::Jab}; return A; }();
+	return Pattern.IsEmpty() || Pattern[PatternIndex % Pattern.Num()].Moves.IsEmpty() ? Jab : Pattern[PatternIndex % Pattern.Num()];
 }
 
 void ACSOpponentController::OnPossess(APawn* InPawn)
@@ -50,6 +70,17 @@ ACSCharacter* ACSOpponentController::FindOpponentTarget() const
 	return Best;
 }
 
+void ACSOpponentController::Restart()
+{
+	if (const ACSCharacter* Self = Cast<ACSCharacter>(GetPawn()); Self && Self->GetStrike())
+	{
+		Self->GetStrike()->Cancel();
+	}
+	Attack = FCSOpponentAttack();
+	MoveIndex = 0;
+	Enter(ECSOpponentState::Idle);
+}
+
 void ACSOpponentController::Enter(ECSOpponentState NewState)
 {
 	OpponentState = NewState;
@@ -72,11 +103,11 @@ void ACSOpponentController::MoveAlong(ACSCharacter& Self, const FVector& Directi
 
 bool ACSOpponentController::Punch(ACSCharacter& Self)
 {
-	if (!Self.Attack())
+	if (!Attack.Moves.IsValidIndex(MoveIndex) || !Self.StrikeWith(Attack.Moves[MoveIndex]))
 	{
 		return false;
 	}
-	--PunchesLeft;
+	++MoveIndex;
 	++PunchesThrown;
 	return true;
 }
@@ -160,23 +191,39 @@ void ACSOpponentController::Tick(float DeltaSeconds)
 		Enter(ECSOpponentState::Close);
 		[[fallthrough]];
 	case ECSOpponentState::Close:
-		if (Distance > AttackDistance)
+	{
+		const FCSOpponentAttack& Next = NextAttack();
+		const float Reach = AttackDistance + (Next.Moves[0] == ECSStrikeMove::Kick ? KickExtraDistance : 0.f);
+		if (Distance > Reach)
 		{
 			Self->SetGait(Distance > JogDistance ? ECSGait::Jog : ECSGait::Walk);
 			MoveAlong(*Self, Toward);
 			break;
 		}
-		PunchesLeft = Pattern.IsEmpty() ? 1 : FMath::Max(1, Pattern[PatternIndex % Pattern.Num()]);
+		// Not enough stamina for the whole attack: hold off and get it back first.
+		float Cost = 0.f;
+		for (const ECSStrikeMove Move : Next.Moves)
+		{
+			Cost += Strike ? Strike->GetMoveData(Move).StaminaCost : 0.f;
+		}
+		if (const UCSStaminaComponent* Stamina = Self->GetStamina(); Stamina && !Stamina->CanAfford(Cost))
+		{
+			Enter(ECSOpponentState::BackOff);
+			break;
+		}
+		Attack = Next;
+		MoveIndex = 0;
 		++PatternIndex;
 		Enter(ECSOpponentState::Attack);
 		Punch(*Self);
 		break;
+	}
 	case ECSOpponentState::Attack:
 		if (bStrikeBusy)
 		{
 			break;
 		}
-		if (PunchesLeft > 0 && Punch(*Self))
+		if (MoveIndex < Attack.Moves.Num() && Punch(*Self))
 		{
 			break;
 		}

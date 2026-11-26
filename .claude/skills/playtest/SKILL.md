@@ -37,7 +37,9 @@ Each step has a label, which starts a segment, a duration and a camera. Steps no
 | `stance` | Facing a dummy while walking in, backing off and circling; notes how far the body is off the dummy. |
 | `punch` | Punches from 70, 100 and 150 cm, from the side, with the body turned, from the player camera and first person, a combo and a punch on the move; notes landed and missed, hit size and bone; then the end of a run and the delayed results. |
 | `knockdown` | A dummy knocked down by a heavy ball, and the player knocked down from the side, the front and its own camera; notes when they went down and got up. |
-| `fight` | A dummy that fights back (decision 0019): the player stands, holds the block, dodges back on the tell, blocks and punches back, blocks from its own camera, lies down (the opponent must wait), and the run ends (it must stop); notes their punches thrown, landed, blocked and missed, the dodges and the player's punches. |
+| `moves` | Every strike at a dummy (jab, straight, both hooks from 75 cm, a kick from 100 and 150 cm), then the attack key as a player presses it (a one-two, then a hook moving right); notes landed and the hit, and the moves thrown. |
+| `stamina` | Straights as fast as they go until stamina runs out (notes how many were thrown tired and the first and last fist speeds), the guard with no stamina, and a rest (stamina before and after). |
+| `fight` | A dummy that fights back (decisions 0019 and 0020), throwing jabs, one-twos, hooks and kicks: the player stands, holds the block, dodges back on the tell, blocks and punches back, blocks from its own camera, blocks with no stamina (the guard must give way), lies down (the opponent must wait), and the run ends (it must stop); notes their punches thrown, landed, blocked and missed, the dodges and the player's punches. |
 
 The review cameras are:
 

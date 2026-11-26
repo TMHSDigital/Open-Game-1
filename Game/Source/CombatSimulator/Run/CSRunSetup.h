@@ -68,6 +68,10 @@ struct COMBATSIMULATOR_API FCSRunSetup
 	ECSRunOpponents Opponents = ECSRunOpponents::StandStill;
 	/** How long a fighting dummy draws its fist back before a punch, s: the tell the player reads. */
 	float OpponentWindup = 0.7f;
+	/** Strikes, dodges and blocked hits cost stamina (UCSStaminaComponent). Off: nothing is spent. */
+	bool bStamina = true;
+	/** Times the tuning's stamina recovery. */
+	float StaminaRecovery = 1.f;
 	/** Ball launchers around the player's start, aimed at it. */
 	int32 Launchers = 0;
 	/** The run ends after this long, s. 0: no limit. */

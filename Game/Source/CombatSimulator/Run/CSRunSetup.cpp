@@ -13,6 +13,8 @@ namespace
 	const FName SpacingKey(TEXT("Spacing"));
 	const FName OpponentsKey(TEXT("Opponents"));
 	const FName OpponentWindupKey(TEXT("OpponentWindup"));
+	const FName StaminaKey(TEXT("Stamina"));
+	const FName StaminaRecoveryKey(TEXT("StaminaRecovery"));
 	const FName LaunchersKey(TEXT("Launchers"));
 	const FName TimeLimitKey(TEXT("TimeLimit"));
 	const FName KnockdownGoalKey(TEXT("KnockdownGoal"));
@@ -63,6 +65,10 @@ const TArray<FCSRunRow>& FCSRunSetup::Rows()
 			TEXT("Stand still: they take hits. Fight back: they close in and punch on a pattern; block (right mouse) or dodge (Q).")),
 		Row(OpponentWindupKey, TEXT("Their wind-up"), TEXT("s"), 0.2f, 1.5f, 0.05f, 0.7f,
 			TEXT("How long a fighting dummy draws its fist back before it punches: its tell. Shorter is harder.")),
+		ChoiceRow(StaminaKey, TEXT("Stamina"), {TEXT("Off"), TEXT("On")}, 1,
+			TEXT("On: strikes, dodges and blocked hits cost stamina for everyone; out of it, strikes are weak and the guard drops.")),
+		Row(StaminaRecoveryKey, TEXT("Stamina recovery"), TEXT("x"), 0.25f, 3.f, 0.25f, 1.f,
+			TEXT("How fast stamina comes back, times the usual rate.")),
 		Row(LaunchersKey, TEXT("Ball launchers"), TEXT(""), 0.f, float(MaxLaunchers), 1.f, 0.f, TEXT("Launchers around your start that throw balls at whoever stands on it.")),
 		Row(TimeLimitKey, TEXT("Time limit"), TEXT("s"), 0.f, 600.f, 5.f, 60.f, TEXT("The run ends after this long. 0: no limit.")),
 		Row(KnockdownGoalKey, TEXT("Knockdown goal"), TEXT(""), 0.f, 20.f, 1.f, 0.f, TEXT("The run ends when you have knocked down this many. 0: no goal.")),
@@ -83,6 +89,8 @@ float FCSRunSetup::GetValue(FName Key) const
 	if (Key == SpacingKey) { return Spacing; }
 	if (Key == OpponentsKey) { return float(uint8(Opponents)); }
 	if (Key == OpponentWindupKey) { return OpponentWindup; }
+	if (Key == StaminaKey) { return bStamina ? 1.f : 0.f; }
+	if (Key == StaminaRecoveryKey) { return StaminaRecovery; }
 	if (Key == LaunchersKey) { return float(Launchers); }
 	if (Key == TimeLimitKey) { return TimeLimit; }
 	if (Key == KnockdownGoalKey) { return float(KnockdownGoal); }
@@ -103,6 +111,8 @@ bool FCSRunSetup::SetValue(FName Key, float Value)
 	else if (Key == SpacingKey) { Spacing = V; }
 	else if (Key == OpponentsKey) { Opponents = ECSRunOpponents(uint8(FMath::RoundToInt(V))); }
 	else if (Key == OpponentWindupKey) { OpponentWindup = V; }
+	else if (Key == StaminaKey) { bStamina = V > 0.5f; }
+	else if (Key == StaminaRecoveryKey) { StaminaRecovery = V; }
 	else if (Key == LaunchersKey) { Launchers = FMath::RoundToInt(V); }
 	else if (Key == TimeLimitKey) { TimeLimit = V; }
 	else if (Key == KnockdownGoalKey) { KnockdownGoal = FMath::RoundToInt(V); }
@@ -160,6 +170,14 @@ FString FCSRunSetup::Describe() const
 	if (Launchers > 0)
 	{
 		Parts.Add(FString::Printf(TEXT("%d %s"), Launchers, Launchers == 1 ? TEXT("launcher") : TEXT("launchers")));
+	}
+	if (!bStamina)
+	{
+		Parts.Add(TEXT("stamina off"));
+	}
+	else if (IsChanged(StaminaRecoveryKey))
+	{
+		Parts.Add(TEXT("stamina recovery ") + DescribeValue(StaminaRecoveryKey));
 	}
 	Parts.Add(TimeLimit > 0.f ? FString::Printf(TEXT("%d s"), FMath::RoundToInt(TimeLimit)) : FString(TEXT("no time limit")));
 	if (KnockdownGoal > 0)

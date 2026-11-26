@@ -93,6 +93,12 @@ private:
 	void UpdateFlashes(double Now);
 	void EndHitStop();
 	void DrawMarks(AHUD* HUD, UCanvas* Canvas);
+	/**
+	 * Stamina bars: the player's under the middle of the screen, and one over the head of each
+	 * character that fights back. Each is drawn while it is not full or the player is in the
+	 * combat stance; red while exhausted (the guard is down).
+	 */
+	void DrawStamina(UCanvas* Canvas);
 
 	TMap<TWeakObjectPtr<ACSCharacter>, FFlash> Flashes;
 	TArray<FCSHitMark> Marks;

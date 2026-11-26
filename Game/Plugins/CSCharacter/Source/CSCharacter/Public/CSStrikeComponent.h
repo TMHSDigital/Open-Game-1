@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "CSPhysicsBodyComponent.h"
+#include "CSStrikeMove.h"
 #include "CSStrikeComponent.generated.h"
 
 class ACSCharacter;
@@ -61,6 +62,13 @@ DECLARE_MULTICAST_DELEGATE_ThreeParams(FCSStrikeLanded, ACSCharacter* /* Attacke
  * A strike cannot start while one is under way, while the character is ragdolled or getting up,
  * or without a physics body. Going down ends a strike at once.
  *
+ * Moves (decision 0020): every strike is one of Moves (a jab, a straight, a hook from either side,
+ * a kick), which scales the punch tuning: its times, reach, speed and weight. A hook's fist comes
+ * around from the side; a kick simulates the rear leg for its length
+ * (UCSPhysicsBodyComponent::SetLimbSimulated) and steers the foot as a punch steers the fist. Each
+ * costs stamina (UCSStaminaComponent); one thrown without enough is tired: its speed and weight are
+ * times TiredStrikeScale and its wind-up divided by it.
+ *
  * Tuning (UCSMovementTuning, group Punch): PunchWindupSeconds, PunchStrikeSeconds,
  * PunchRecoverSeconds, PunchReach, PunchSpeed, PunchLean, PunchMass.
  */
@@ -72,9 +80,41 @@ class CSCHARACTER_API UCSStrikeComponent : public UActorComponent
 public:
 	UCSStrikeComponent();
 
-	/** Throws a punch with the hand that did not throw the last one. False when a strike cannot start (see the class comment). */
+	/**
+	 * The attack key's punch: a jab, or a straight right after a jab (within ComboSeconds of the
+	 * jab's end), so pressing again throws a one-two. False when a strike cannot start.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "CS|Strike")
 	bool StartPunch();
+
+	/** Throws Move. False when a strike cannot start (see the class comment). */
+	UFUNCTION(BlueprintCallable, Category = "CS|Strike")
+	bool StartMove(ECSStrikeMove Move);
+
+	/** The move under way, or the last one. */
+	ECSStrikeMove GetMove() const { return MoveRow.Move; }
+
+	/** The row a move uses. */
+	const FCSStrikeMoveData& GetMoveData(ECSStrikeMove Move) const;
+
+	/** The strike under way, or the last one, was thrown without enough stamina. */
+	bool WasTired() const { return bTired; }
+
+	/** One row per move, in ECSStrikeMove order (FCSStrikeMoveData::Defaults). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "CS|Strike")
+	TArray<FCSStrikeMoveData> Moves;
+
+	/** A punch within this long of a jab's end is the straight that follows it, seconds. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "CS|Strike", meta = (ClampMin = "0", Units = "s"))
+	float ComboSeconds = 1.2f;
+
+	/** The bones of the kicking (right) leg: foot, calf, thigh (the simulated chain's root). */
+	UPROPERTY(EditAnywhere, Category = "CS|Strike")
+	FName KickBones[3] = {TEXT("foot_r"), TEXT("calf_r"), TEXT("thigh_r")};
+
+	/** Radius of the swept foot, cm. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "CS|Strike", meta = (ClampMin = "1", Units = "cm"))
+	float FootRadius = 15.f;
 
 	/** Ends the strike under way without a recovery. */
 	void Cancel();
@@ -85,7 +125,7 @@ public:
 	/** Seconds in the current phase. */
 	float GetPhaseSeconds() const { return PhaseSeconds; }
 
-	/** The strike under way, or the last one, is with the right hand. */
+	/** The strike under way, or the last one, is with the right hand (or leg). */
 	bool IsRightHand() const { return bRightHand; }
 
 	/** Strikes started since play began. */
@@ -104,7 +144,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "CS|Strike")
 	float WindupSecondsOverride = -1.f;
 
-	/** The wind-up length in use: WindupSecondsOverride when set, else PunchWindupSeconds. */
+	/** The wind-up length in use: WindupSecondsOverride when set, else PunchWindupSeconds; times the move's scale, longer when tired. */
 	float GetWindupSeconds() const;
 
 	/** Other can be this character's target: anyone for a player, only a player for a character the game drives. */
@@ -156,6 +196,20 @@ public:
 	 * in any other phase.
 	 */
 	static FVector ComputeHandTarget(ECSStrikePhase InPhase, const FVector& Shoulder, const FVector& Chest, const FVector& Aim, float Reach);
+
+	/**
+	 * Where a hook's fist is steered: out to its side (Outward) of the shoulder in Windup; in Strike,
+	 * Reach along the aim from Chest and swept across from 40 cm outward to 10 cm inward over the
+	 * strike (Progress 0 to 1), so it arrives from the side.
+	 */
+	static FVector ComputeHookTarget(ECSStrikePhase InPhase, const FVector& Shoulder, const FVector& Chest, const FVector& Aim,
+		const FVector& Outward, float Reach, float Progress);
+
+	/**
+	 * Where a kick's foot is steered, from the hip (the thigh bone): chambered, knee up, in Windup;
+	 * Reach out along the level aim at about hip height in Strike; under the hip otherwise.
+	 */
+	static FVector ComputeKickTarget(ECSStrikePhase InPhase, const FVector& Hip, const FVector& Aim, float Reach);
 
 	/**
 	 * The velocity that takes the fist from Hand to Target in one frame of DeltaTime, at most
@@ -214,6 +268,24 @@ private:
 	/** Sweeps the fist's path since the last frame and delivers what it meets. */
 	void Sweep();
 	int32 HandIndex() const { return bRightHand ? 0 : 1; }
+	/** The move's effective values (the punch tuning times the move's scales, and tired). */
+	float MoveStrikeSeconds() const;
+	float MoveRecoverSeconds() const;
+	float MoveReach() const;
+	float MoveSpeed() const;
+	float MoveMass() const;
+	/** The striking end (fist or foot), the limb part behind it and the limb's root. */
+	FName LimbEnd() const { return MoveRow.bLeg ? KickBones[0] : HandBones[HandIndex()]; }
+	FName LimbMid() const { return MoveRow.bLeg ? KickBones[1] : ForearmBones[HandIndex()]; }
+	FName LimbRoot() const { return MoveRow.bLeg ? KickBones[2] : ShoulderBones[HandIndex()]; }
+	/** Puts a kicking leg back on the animation. */
+	void EndLeg();
+
+	/** The row of the move under way, or the last one. */
+	FCSStrikeMoveData MoveRow;
+	bool bTired = false;
+	/** World time the last strike ended, for the one-two. */
+	double LastEndTime = -1000.0;
 	/** The point between the shoulders. */
 	FVector GetChestLocation() const;
 

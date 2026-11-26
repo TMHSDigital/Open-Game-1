@@ -3,6 +3,7 @@
 #include "CSCharacter.h"
 #include "CSCharacterLog.h"
 #include "CSMovementTuning.h"
+#include "CSStaminaComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -19,6 +20,51 @@ UCSStrikeComponent::UCSStrikeComponent()
 	PrimaryComponentTick.TickGroup = TG_PrePhysics;
 	// Only while a strike is under way (SetPhase): every character has this component, dummies too.
 	PrimaryComponentTick.bStartWithTickEnabled = false;
+	Moves = FCSStrikeMoveData::Defaults();
+	MoveRow = Moves[int32(ECSStrikeMove::Straight)];
+}
+
+const FCSStrikeMoveData& UCSStrikeComponent::GetMoveData(ECSStrikeMove Move) const
+{
+	const int32 Index = int32(Move);
+	if (Moves.IsValidIndex(Index) && Moves[Index].Move == Move)
+	{
+		return Moves[Index];
+	}
+	// Rows edited out of order: find it; none at all: the defaults.
+	if (const FCSStrikeMoveData* Found = Moves.FindByPredicate([Move](const FCSStrikeMoveData& Row) { return Row.Move == Move; }))
+	{
+		return *Found;
+	}
+	static const TArray<FCSStrikeMoveData> Fallback = FCSStrikeMoveData::Defaults();
+	return Fallback[Index];
+}
+
+float UCSStrikeComponent::MoveStrikeSeconds() const
+{
+	return GetTuning().PunchStrikeSeconds * MoveRow.StrikeScale;
+}
+
+float UCSStrikeComponent::MoveRecoverSeconds() const
+{
+	return GetTuning().PunchRecoverSeconds * MoveRow.RecoverScale;
+}
+
+float UCSStrikeComponent::MoveReach() const
+{
+	return GetTuning().PunchReach * MoveRow.ReachScale;
+}
+
+float UCSStrikeComponent::MoveSpeed() const
+{
+	const UCSMovementTuning& T = GetTuning();
+	return T.PunchSpeed * MoveRow.SpeedScale * (bTired ? FMath::Clamp(T.TiredStrikeScale, 0.1f, 1.f) : 1.f);
+}
+
+float UCSStrikeComponent::MoveMass() const
+{
+	const UCSMovementTuning& T = GetTuning();
+	return T.PunchMass * MoveRow.MassScale * (bTired ? FMath::Clamp(T.TiredStrikeScale, 0.1f, 1.f) : 1.f);
 }
 
 ACSCharacter* UCSStrikeComponent::GetCharacter() const
@@ -60,16 +106,39 @@ bool UCSStrikeComponent::IsFoe(const ACSCharacter& Other) const
 
 float UCSStrikeComponent::GetWindupSeconds() const
 {
-	return WindupSecondsOverride >= 0.f ? WindupSecondsOverride : GetTuning().PunchWindupSeconds;
+	const UCSMovementTuning& T = GetTuning();
+	const float Base = WindupSecondsOverride >= 0.f ? WindupSecondsOverride : T.PunchWindupSeconds;
+	return Base * MoveRow.WindupScale / (bTired ? FMath::Clamp(T.TiredStrikeScale, 0.1f, 1.f) : 1.f);
 }
 
 bool UCSStrikeComponent::StartPunch()
+{
+	// A one-two: a straight right after a jab, else a jab.
+	const UWorld* World = GetWorld();
+	const bool bAfterJab = StrikeCount > 0 && MoveRow.Move == ECSStrikeMove::Jab && World
+		&& World->GetTimeSeconds() - LastEndTime <= ComboSeconds;
+	return StartMove(bAfterJab ? ECSStrikeMove::Straight : ECSStrikeMove::Jab);
+}
+
+bool UCSStrikeComponent::StartMove(ECSStrikeMove Move)
 {
 	if (Phase != ECSStrikePhase::None || !CanStrike())
 	{
 		return false;
 	}
-	bRightHand = !bRightHand;
+	ACSCharacter* Character = GetCharacter();
+	MoveRow = GetMoveData(Move);
+	bRightHand = MoveRow.bRightSide;
+	// Thrown either way; without enough stamina it is thrown tired.
+	UCSStaminaComponent* Stamina = Character ? Character->GetStamina() : nullptr;
+	bTired = Stamina && !Stamina->Spend(MoveRow.StaminaCost);
+	if (MoveRow.bLeg)
+	{
+		if (UCSPhysicsBodyComponent* Physics = Character ? Character->GetPhysicsBody() : nullptr)
+		{
+			Physics->SetLimbSimulated(KickBones[2], true);
+		}
+	}
 	++StrikeCount;
 	bLanded = false;
 	bBlocked = false;
@@ -108,8 +177,7 @@ void UCSStrikeComponent::ReleaseArm()
 	{
 		return;
 	}
-	const int32 Index = HandIndex();
-	for (const FName Bone : {HandBones[Index], ForearmBones[Index]})
+	for (const FName Bone : {LimbEnd(), LimbMid()})
 	{
 		FBodyInstance* Part = Body->GetBodyInstance(Bone);
 		if (Part && Part->IsValidBodyInstance() && Part->IsInstanceSimulatingPhysics())
@@ -125,11 +193,32 @@ void UCSStrikeComponent::Cancel()
 	SetPhase(ECSStrikePhase::None);
 }
 
+void UCSStrikeComponent::EndLeg()
+{
+	const ACSCharacter* Character = GetCharacter();
+	if (UCSPhysicsBodyComponent* Physics = Character ? Character->GetPhysicsBody() : nullptr)
+	{
+		Physics->SetLimbSimulated(KickBones[2], false);
+	}
+}
+
 void UCSStrikeComponent::SetPhase(ECSStrikePhase NewPhase)
 {
+	const bool bEnding = Phase != ECSStrikePhase::None && NewPhase == ECSStrikePhase::None;
 	Phase = NewPhase;
 	PhaseSeconds = 0.f;
 	SetComponentTickEnabled(NewPhase != ECSStrikePhase::None);
+	if (bEnding)
+	{
+		if (const UWorld* World = GetWorld())
+		{
+			LastEndTime = World->GetTimeSeconds();
+		}
+		if (MoveRow.bLeg)
+		{
+			EndLeg();
+		}
+	}
 }
 
 ACSCharacter* UCSStrikeComponent::FindTarget() const
@@ -246,7 +335,9 @@ void UCSStrikeComponent::StepIn()
 	const FVector Live = VictimBody ? VictimBody->GetSocketLocation(ChestBone) : Victim->GetActorLocation();
 	const FVector Goal = LungeGoal + ((Live - LungeGoal) * FVector(1.f, 1.f, 0.f)).GetClampedToMaxSize(LungeLeash);
 	const FVector To = (Goal - GetChestLocation()) * FVector(1.f, 1.f, 0.f);
-	if (To.Size() <= T.PunchReach)
+	// A kick goes out from the hip, which is behind the chest when the body leans back over the
+	// standing leg: it steps in closer than its full reach, or the foot arrives short.
+	if (To.Size() <= MoveReach() * (MoveRow.bLeg ? 0.85f : 1.f))
 	{
 		bSteppingIn = false;
 		return;
@@ -289,7 +380,7 @@ FVector UCSStrikeComponent::GetAimDirection() const
 FVector UCSStrikeComponent::GetHandLocation() const
 {
 	const USkeletalMeshComponent* Body = GetBody();
-	return Body ? Body->GetSocketLocation(HandBones[StrikeCount > 0 ? HandIndex() : 0]) : FVector::ZeroVector;
+	return Body ? Body->GetSocketLocation(StrikeCount > 0 ? LimbEnd() : HandBones[0]) : FVector::ZeroVector;
 }
 
 FVector UCSStrikeComponent::GetFistLocation() const
@@ -299,9 +390,16 @@ FVector UCSStrikeComponent::GetFistLocation() const
 	{
 		return FVector::ZeroVector;
 	}
-	const int32 Index = StrikeCount > 0 ? HandIndex() : 0;
-	const FVector Hand = Body->GetSocketLocation(HandBones[Index]);
-	const FVector Along = (Hand - Body->GetSocketLocation(ForearmBones[Index])).GetSafeNormal();
+	const FName End = StrikeCount > 0 ? LimbEnd() : HandBones[0];
+	const FName Mid = StrikeCount > 0 ? LimbMid() : ForearmBones[0];
+	const FVector Hand = Body->GetSocketLocation(End);
+	// The middle of the fist is past the wrist along the forearm; for a kick the ankle itself, which
+	// leads a front kick, with the foot sweep's larger radius around it.
+	if (StrikeCount > 0 && MoveRow.bLeg)
+	{
+		return Hand;
+	}
+	const FVector Along = (Hand - Body->GetSocketLocation(Mid)).GetSafeNormal();
 	return Hand + Along * FistOffset;
 }
 
@@ -322,6 +420,37 @@ FVector UCSStrikeComponent::ComputeHandTarget(ECSStrikePhase InPhase, const FVec
 		return Chest + Aim * Reach;
 	default:
 		return Shoulder;
+	}
+}
+
+FVector UCSStrikeComponent::ComputeHookTarget(ECSStrikePhase InPhase, const FVector& Shoulder, const FVector& Chest, const FVector& Aim,
+	const FVector& Outward, float Reach, float Progress)
+{
+	switch (InPhase)
+	{
+	case ECSStrikePhase::Windup:
+		// Cocked out to the side, elbow up: the hook's tell.
+		return Shoulder + Outward * 22.f + Aim * 6.f;
+	case ECSStrikePhase::Strike:
+		return Chest + Aim * Reach + Outward * FMath::Lerp(40.f, -10.f, FMath::Clamp(Progress, 0.f, 1.f));
+	default:
+		return Shoulder;
+	}
+}
+
+FVector UCSStrikeComponent::ComputeKickTarget(ECSStrikePhase InPhase, const FVector& Hip, const FVector& Aim, float Reach)
+{
+	const FVector Level = Aim.GetSafeNormal2D().IsNearlyZero() ? FVector::ForwardVector : Aim.GetSafeNormal2D();
+	switch (InPhase)
+	{
+	case ECSStrikePhase::Windup:
+		// Chambered: the knee comes up and forward, the foot under it.
+		return Hip + Level * 30.f - FVector(0.f, 0.f, 40.f);
+	case ECSStrikePhase::Strike:
+		// Straight out at about hip height: into the body of someone standing.
+		return Hip + Level * Reach - FVector(0.f, 0.f, 5.f);
+	default:
+		return Hip - FVector(0.f, 0.f, 90.f);
 	}
 }
 
@@ -359,12 +488,12 @@ void UCSStrikeComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 	{
 		BeginStrike();
 	}
-	else if (Phase == ECSStrikePhase::Strike && PhaseSeconds >= T.PunchStrikeSeconds)
+	else if (Phase == ECSStrikePhase::Strike && PhaseSeconds >= MoveStrikeSeconds())
 	{
 		SetPhase(ECSStrikePhase::Recover);
 		ReleaseArm();
 	}
-	else if (Phase == ECSStrikePhase::Recover && PhaseSeconds >= T.PunchRecoverSeconds)
+	else if (Phase == ECSStrikePhase::Recover && PhaseSeconds >= MoveRecoverSeconds())
 	{
 		SetPhase(ECSStrikePhase::None);
 		return;
@@ -374,7 +503,7 @@ void UCSStrikeComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 		// A wind-up drawn out longer than the punch's own (an opponent's tell) stands still and only
 		// steps in for the last PunchWindupSeconds of it: a step held through the whole tell would
 		// carry the body into the target and around its side.
-		const bool bLateEnough = Phase == ECSStrikePhase::Strike || GetWindupSeconds() - PhaseSeconds <= T.PunchWindupSeconds;
+		const bool bLateEnough = Phase == ECSStrikePhase::Strike || GetWindupSeconds() - PhaseSeconds <= T.PunchWindupSeconds * MoveRow.WindupScale;
 		if (bSteppingIn && bLateEnough)
 		{
 			// Every frame until in reach: ground friction would stop a single push within the punch.
@@ -392,28 +521,55 @@ void UCSStrikeComponent::Drive(float DeltaTime)
 	{
 		return;
 	}
-	const int32 Index = HandIndex();
-	FBodyInstance* Fist = Body->GetBodyInstance(HandBones[Index]);
+	FBodyInstance* Fist = Body->GetBodyInstance(LimbEnd());
 	if (!Fist || !Fist->IsValidBodyInstance() || !Fist->IsInstanceSimulatingPhysics())
 	{
-		// A physics asset with no hand body: the forearm carries the fist.
-		Fist = Body->GetBodyInstance(ForearmBones[Index]);
+		// A physics asset with no hand (or foot) body: the forearm (or calf) carries it.
+		Fist = Body->GetBodyInstance(LimbMid());
 	}
 	if (!Fist || !Fist->IsValidBodyInstance() || !Fist->IsInstanceSimulatingPhysics())
 	{
 		return;
 	}
 	const UCSMovementTuning& T = GetTuning();
-	const FVector Shoulder = Body->GetSocketLocation(ShoulderBones[Index]);
-	const FVector Hand = Body->GetSocketLocation(HandBones[Index]);
-	const FVector HandGoal = ComputeHandTarget(Phase, Shoulder, GetChestLocation(), StrikeAim, T.PunchReach);
+	const FVector Root = Body->GetSocketLocation(LimbRoot());
+	const FVector Hand = Body->GetSocketLocation(LimbEnd());
+	FVector HandGoal;
+	if (MoveRow.bLeg)
+	{
+		HandGoal = ComputeKickTarget(Phase, Root, StrikeAim, MoveReach());
+	}
+	else if (MoveRow.bHook)
+	{
+		const FVector Level = StrikeAim.GetSafeNormal2D();
+		const FVector Outward = FVector::CrossProduct(FVector::UpVector, Level) * (bRightHand ? 1.f : -1.f);
+		HandGoal = ComputeHookTarget(Phase, Root, GetChestLocation(), StrikeAim, Outward, MoveReach(),
+			PhaseSeconds / FMath::Max(MoveStrikeSeconds(), 0.01f));
+	}
+	else
+	{
+		HandGoal = ComputeHandTarget(Phase, Root, GetChestLocation(), StrikeAim, MoveReach());
+	}
 	// The draw back is unhurried; only the strike is at full speed.
-	const float Speed = Phase == ECSStrikePhase::Strike ? T.PunchSpeed : T.PunchSpeed * 0.5f;
+	const float Speed = Phase == ECSStrikePhase::Strike ? MoveSpeed() : MoveSpeed() * 0.5f;
 	Fist->SetLinearVelocity(ComputeDriveVelocity(Hand, HandGoal, DeltaTime, Speed, Character->GetVelocity()), false);
+	if (MoveRow.bLeg)
+	{
+		// The knee leads a kick: up and forward between the hip and the foot. Steering the foot alone
+		// drags the leg out straight along the floor.
+		FBodyInstance* Shin = Body->GetBodyInstance(LimbMid());
+		if (Shin && Shin->IsValidBodyInstance() && Shin->IsInstanceSimulatingPhysics())
+		{
+			const FVector Level = StrikeAim.GetSafeNormal2D();
+			const FVector KneeGoal = (Root + HandGoal) * 0.5 + Level * 15.f + FVector(0.f, 0.f, 15.f);
+			Shin->SetLinearVelocity(ComputeDriveVelocity(Body->GetSocketLocation(LimbMid()), KneeGoal, DeltaTime, Speed, Character->GetVelocity()), false);
+		}
+	}
 
 	// The lean: during the strike the chest moves along the aim at PunchLean or faster. Only what is
 	// missing is added, so a chest already going that way (a hit from behind, a run) is left alone.
-	FBodyInstance* Chest = Phase == ECSStrikePhase::Strike && T.PunchLean > 0.f ? Body->GetBodyInstance(ChestBone) : nullptr;
+	// Not for a kick: leaning the chest in over a kick would tip the body onto the standing leg.
+	FBodyInstance* Chest = Phase == ECSStrikePhase::Strike && T.PunchLean > 0.f && !MoveRow.bLeg ? Body->GetBodyInstance(ChestBone) : nullptr;
 	if (Chest && Chest->IsValidBodyInstance() && Chest->IsInstanceSimulatingPhysics())
 	{
 		const FVector Current = Chest->GetUnrealWorldVelocity();
@@ -439,7 +595,8 @@ void UCSStrikeComponent::Sweep()
 	const float DeltaTime = World->GetDeltaSeconds();
 	// Farther than the fist can go in a frame: the character was moved (a reset, a teleport). The
 	// gap is not a path the fist travelled, so it is neither swept nor measured.
-	const float Plausible = (T.PunchSpeed * 2.f + float(Character->GetVelocity().Size())) * DeltaTime + FistRadius + 30.f;
+	const float Radius = MoveRow.bLeg ? FootRadius : FistRadius;
+	const float Plausible = (MoveSpeed() * 2.f + float(Character->GetVelocity().Size())) * DeltaTime + Radius + 30.f;
 	if (bHasLastHand && FVector::Dist(LastHandLocation, Hand) > Plausible)
 	{
 		bHasLastHand = false;
@@ -466,12 +623,12 @@ void UCSStrikeComponent::Sweep()
 	TArray<FHitResult> Hits;
 	// A sweep of no length finds nothing in some cases; a hair's length finds what the fist is in.
 	const FVector To = From.Equals(Hand, 0.01f) ? Hand + StrikeAim * 0.1f : Hand;
-	World->SweepMultiByObjectType(Hits, From, To, FQuat::Identity, Objects, FCollisionShape::MakeSphere(FistRadius), Params);
+	World->SweepMultiByObjectType(Hits, From, To, FQuat::Identity, Objects, FCollisionShape::MakeSphere(Radius), Params);
 
 	// What arrives: the weight behind the fist at the fastest the fist has been, along the aim. Held
 	// between half the driven speed and the most the drive can give, so one odd frame (a hitch, a
 	// joint snapping) cannot make the hit.
-	const FVector Velocity = StrikeAim * FMath::Clamp(PeakSpeed, T.PunchSpeed * 0.5f, T.PunchSpeed + T.PunchLean);
+	const FVector Velocity = StrikeAim * FMath::Clamp(PeakSpeed, MoveSpeed() * 0.5f, MoveSpeed() + T.PunchLean);
 	for (const FHitResult& Hit : Hits)
 	{
 		AActor* Other = Hit.GetActor();
@@ -487,10 +644,17 @@ void UCSStrikeComponent::Sweep()
 			{
 				continue; // one strike, one character; and not on the attacker's own side
 			}
+			// A front kick goes to the body (from the upper thigh up): brushing the other's knees, shins
+			// or feet on the way up is not it.
+			const USkeletalMeshComponent* VictimMesh = Victim->GetMesh();
+			if (MoveRow.bLeg && VictimMesh && Point.Z < VictimMesh->GetSocketLocation(TEXT("pelvis")).Z - 35.f)
+			{
+				continue;
+			}
 			UCSPhysicsBodyComponent* Physics = Victim->GetPhysicsBody();
 			const FName Bone = Component == Victim->GetMesh() ? Hit.BoneName : NAME_None;
 			const ECSContactResult Result = Physics
-				? Physics->ReceiveContact(Character, Bone, Velocity, T.PunchMass, Point - StrikeAim * 30.f, Point, 1.f, true)
+				? Physics->ReceiveContact(Character, Bone, Velocity, MoveMass(), Point - StrikeAim * 30.f, Point, 1.f, true)
 				: ECSContactResult::None;
 			if (Result == ECSContactResult::Stagger || Result == ECSContactResult::Ragdoll)
 			{
@@ -524,7 +688,7 @@ void UCSStrikeComponent::Sweep()
 			const float Mass = Struck && Struck->IsValidBodyInstance() ? Struck->GetBodyMass() : Component->GetMass();
 			if (Mass > UE_SMALL_NUMBER)
 			{
-				const FVector Change = (Velocity * (T.PunchMass / Mass)).GetClampedToMaxSize(T.ContactImpulseMax);
+				const FVector Change = (Velocity * (MoveMass() / Mass)).GetClampedToMaxSize(T.ContactImpulseMax);
 				Component->AddImpulseAtLocation(Change * Mass, Point, Hit.BoneName);
 			}
 			OnStrikeLanded.Broadcast(Character, Other, ECSContactResult::None);

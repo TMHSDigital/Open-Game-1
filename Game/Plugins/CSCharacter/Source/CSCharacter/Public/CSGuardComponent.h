@@ -15,7 +15,8 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FCSDodged, ACSCharacter* /* Who */);
  * The defence of a CS character: a block that is held and a dodge that is pressed.
  *
  * Block. While the block is held the guard is up (IsGuardUp), unless the character is down or
- * getting up, is dodging, or has a punch out: a punch thrown from the guard opens it until the arm
+ * getting up, is dodging, is out of stamina (UCSStaminaComponent::IsExhausted; a blocked hit costs
+ * stamina, so a guard held under a beating gives way), or has a punch out: a punch thrown from the guard opens it until the arm
  * is back (strike phase None or Recover). With the guard up both fists are steered every frame to
  * points in front of the head, through the physics body as the punch steers one (no clip), and
  * movement is held to BlockSpeedScale of at most a jog. A hit from in front (within BlockAngle of
@@ -26,7 +27,8 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FCSDodged, ACSCharacter* /* Who */);
  *
  * Dodge. A press starts a quick step: for DodgeSeconds the character moves at DodgeSpeed along the
  * way it was moving, or straight back when it was not, then DodgeCooldownSeconds must pass before
- * the next. Only on the ground, standing (body Normal or Hit), and not during a punch; no punch
+ * the next. It costs DodgeStaminaCost and does not start without it. Only on the ground, standing
+ * (body Normal or Hit), and not during a punch; no punch
  * starts during it. It ends early at an edge (no walkable floor ahead), so it never launches the
  * character off a ledge. It is a real
  * step with no immunity: a punch misses because the body is no longer where it was going.

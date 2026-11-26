@@ -8,7 +8,8 @@ The playable character for Combat Simulator, as a self-contained Unreal Engine 5
 - `UCSMovementTuning`: one validated data asset with every feel value; the character runs on an applied copy, and a reload re-applies the asset.
 - `UCSCameraRig`: first and third person on one key, with the head hidden from the owner only.
 - `UCSPhysicsBodyComponent`: a physics-driven body on top of the animation: sway, stagger, ragdoll and recovery. Every hit, from a punch, a ball or a body, enters through `ReceiveContact`, which reports Stagger, Ragdoll, Blocked (taken on a guard) or Ignored.
-- `UCSStrikeComponent`: the punch, steered through the physics body with no clip. It finds the nearest opponent in front of the aim, aims at the point of its body the player looks at, and steps in while out of reach. An opponent's slower wind-up is set through `WindupSecondsOverride`.
+- `UCSStrikeComponent`: the strikes, steered through the physics body with no clip: a jab, a straight, a hook from either side and a kick, each a row of `Moves` (`FCSStrikeMoveData`) that scales the punch tuning. It finds the nearest opponent in front of the aim, aims at the point of its body the player looks at, and steps in while out of reach. A kick simulates the leg for its length. An opponent's slower wind-up is set through `WindupSecondsOverride`.
+- `UCSStaminaComponent`: stamina spent by strikes, dodges and blocked hits; out of it, strikes are tired and the guard drops.
 - `UCSGuardComponent`: the block (fists steered in front of the head; a share of a hit from in front is absorbed) and the dodge (a quick step with a cooldown, no immunity).
 - Combat stance on `ACSCharacter`: a controlled character near another faces its aim, backs off slower, and `FCSAnimNode_LegYaw` turns the legs toward the way they move or plays the steps backward.
 - `ACSHitBall` and `ACSBallLauncher`: a thrown ball that hits through `ReceiveContact`, and a launcher that throws one at a marked square.

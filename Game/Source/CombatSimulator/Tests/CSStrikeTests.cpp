@@ -169,7 +169,8 @@ bool FCSStrikePunchTest::RunTest(const FString& Parameters)
 				FVector::DotProduct(Strike->GetAimDirection(), (Dummy->GetActorLocation() - Player->GetActorLocation()).GetSafeNormal2D()) > 0.99f);
 			TestTrue(TEXT("The attack starts a punch"), Player->Attack());
 			TestTrue(TEXT("It begins by drawing back"), Strike->GetPhase() == ECSStrikePhase::Windup);
-			TestTrue(TEXT("The first punch is with the right hand"), Strike->IsRightHand());
+			TestTrue(TEXT("The first punch is a jab"), Strike->GetMove() == ECSStrikeMove::Jab);
+			TestFalse(TEXT("With the lead (left) hand"), Strike->IsRightHand());
 			TestFalse(TEXT("A second punch cannot start during the first"), Player->Attack());
 			TestEqual(TEXT("One strike so far"), Strike->GetStrikeCount(), 1);
 			TestEqual(TEXT("The run counted the punch"), Stats.PunchesThrown, 1);
@@ -208,7 +209,8 @@ bool FCSStrikePunchTest::RunTest(const FString& Parameters)
 				return false;
 			}
 			TestTrue(TEXT("A second punch starts once the first is over"), Player->Attack());
-			TestFalse(TEXT("With the other hand"), Strike->IsRightHand());
+			TestTrue(TEXT("Straight after a jab it is the straight of a one-two"), Strike->GetMove() == ECSStrikeMove::Straight);
+			TestTrue(TEXT("With the other (rear, right) hand"), Strike->IsRightHand());
 			Run->Next();
 			return false;
 		}

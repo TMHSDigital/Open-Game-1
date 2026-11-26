@@ -498,6 +498,36 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Defence", meta = (UIMin = "0", UIMax = "3", Units = "s"))
 	float DodgeCooldownSeconds = 0.6f;
 
+	// ----- Stamina (UCSStaminaComponent) -----
+
+	/** Full stamina. A strike's cost is in its move (FCSStrikeMoveData::StaminaCost). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Stamina", meta = (UIMin = "10", UIMax = "300"))
+	float StaminaMax = 100.f;
+
+	/** Recovered per second once StaminaRegenDelay has passed since the last spend. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Stamina", meta = (UIMin = "0", UIMax = "100"))
+	float StaminaRegen = 25.f;
+
+	/** Seconds after spending before stamina starts to come back. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Stamina", meta = (UIMin = "0", UIMax = "3", Units = "s"))
+	float StaminaRegenDelay = 0.6f;
+
+	/** A strike thrown without enough stamina: its speed and weight times this, its wind-up divided by it. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Stamina", meta = (UIMin = "0.2", UIMax = "1"))
+	float TiredStrikeScale = 0.6f;
+
+	/** A hit taken on the guard costs this much stamina per cm/s of velocity change the guard absorbed. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Stamina", meta = (UIMin = "0", UIMax = "0.5"))
+	float BlockStaminaCost = 0.06f;
+
+	/** A dodge costs this much; without it the dodge does not start. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Stamina", meta = (UIMin = "0", UIMax = "50"))
+	float DodgeStaminaCost = 12.f;
+
+	/** After running out, the guard comes back at this share of full stamina. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Stamina", meta = (UIMin = "0", UIMax = "1"))
+	float GuardReturnShare = 0.3f;
+
 	// ----- Dev tools -----
 
 	/** Ragdoll and push keys, debug overlay and the tuning reload command are active. On until launch. */

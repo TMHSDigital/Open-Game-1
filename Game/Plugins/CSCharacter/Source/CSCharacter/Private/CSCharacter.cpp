@@ -10,6 +10,7 @@
 #include "CSCharacterLog.h"
 #include "CSDevTools.h"
 #include "CSGuardComponent.h"
+#include "CSStaminaComponent.h"
 #include "CSMovementTuning.h"
 #include "CSPhysicsBodyComponent.h"
 #include "CSStrikeComponent.h"
@@ -106,6 +107,7 @@ ACSCharacter::ACSCharacter(const FObjectInitializer& ObjectInitializer)
 	PhysicsBody = CreateDefaultSubobject<UCSPhysicsBodyComponent>(TEXT("PhysicsBody"));
 	Strike = CreateDefaultSubobject<UCSStrikeComponent>(TEXT("Strike"));
 	Guard = CreateDefaultSubobject<UCSGuardComponent>(TEXT("Guard"));
+	Stamina = CreateDefaultSubobject<UCSStaminaComponent>(TEXT("Stamina"));
 }
 
 const UCSMovementTuning& ACSCharacter::GetActiveTuning() const
@@ -394,6 +396,10 @@ void ACSCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 	{
 		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnAttackStarted);
 	}
+	if (UInputAction* A = Load(KickAction, TEXT("KickAction")))
+	{
+		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnKickStarted);
+	}
 	if (UInputAction* A = Load(BlockAction, TEXT("BlockAction")))
 	{
 		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnBlockStarted);
@@ -448,15 +454,51 @@ void ACSCharacter::OnMove(const FInputActionValue& Value)
 	AddMovementInput(Basis.GetUnitAxis(EAxis::Y), Axis.X);
 }
 
+bool ACSCharacter::PickHook(bool bInStance, float Sideways, ECSStrikeMove& OutHook)
+{
+	if (!bInStance || FMath::Abs(Sideways) < 0.7f)
+	{
+		return false;
+	}
+	OutHook = Sideways > 0.f ? ECSStrikeMove::HookRight : ECSStrikeMove::HookLeft;
+	return true;
+}
+
 bool ACSCharacter::Attack()
 {
 	// Mid-dodge the body is carried by the dodge: a punch would aim at nothing and lose its step in.
-	if (!Strike || (Guard && Guard->IsDodging()) || !Strike->StartPunch())
+	if (!Strike || (Guard && Guard->IsDodging()))
+	{
+		return false;
+	}
+	const FVector Wanted = GetCharacterMovement() ? GetCharacterMovement()->GetCurrentAcceleration().GetSafeNormal2D() : FVector::ZeroVector;
+	const float Sideways = float(FVector::DotProduct(Wanted, GetActorRightVector().GetSafeNormal2D()));
+	ECSStrikeMove Hook = ECSStrikeMove::HookRight;
+	if (PickHook(bCombatStance && !Wanted.IsNearlyZero(), Sideways, Hook))
+	{
+		return StrikeWith(Hook);
+	}
+	if (!Strike->StartPunch())
 	{
 		return false;
 	}
 	LastAttackTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
 	return true;
+}
+
+bool ACSCharacter::StrikeWith(ECSStrikeMove Move)
+{
+	if (!Strike || (Guard && Guard->IsDodging()) || !Strike->StartMove(Move))
+	{
+		return false;
+	}
+	LastAttackTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+	return true;
+}
+
+void ACSCharacter::OnKickStarted()
+{
+	Kick();
 }
 
 bool ACSCharacter::DodgeStep()

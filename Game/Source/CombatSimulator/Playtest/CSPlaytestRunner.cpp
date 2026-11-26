@@ -12,6 +12,7 @@
 #include "CSCameraRig.h"
 #include "CSCharacter.h"
 #include "CSGuardComponent.h"
+#include "CSStaminaComponent.h"
 #include "CSHitBall.h"
 #include "CSMovementTuning.h"
 #include "CSPhysicsBodyComponent.h"
@@ -406,7 +407,16 @@ namespace CSPlaytestScenarios
 				{
 					if (ACSCharacter* Self = C.Player())
 					{
-						Self->Attack();
+						// One punch: the straight, the punch as tuned (the attack key would open with a
+						// jab, which is too short to step in from far). Several: the attack key, one-twos.
+						if (Times.Num() > 1)
+						{
+							Self->Attack();
+						}
+						else
+						{
+							Self->StrikeWith(ECSStrikeMove::Straight);
+						}
 					}
 				}
 			}
@@ -512,6 +522,14 @@ namespace CSPlaytestScenarios
 		Step.OnStart = [Before](const FCtx& C)
 		{
 			C.PlaceAtDummy(300.f, 0.f);
+			// A punch it was throwing at where the player stood before is not part of this segment.
+			if (const ACSTargetDummy* Target = C.Dummy())
+			{
+				if (ACSOpponentController* Brain = Cast<ACSOpponentController>(Target->GetController()))
+				{
+					Brain->Restart();
+				}
+			}
 			if (ACSCharacter* Self = C.Player())
 			{
 				Self->SetGait(ECSGait::Jog);
@@ -585,6 +603,206 @@ namespace CSPlaytestScenarios
 		return Step;
 	}
 
+	/** One strike of each move at the dummy, from Distance: notes whether it landed and how big the hit was. */
+	FCSPlaytestStep Move(ECSStrikeMove Strike, float Distance)
+	{
+		FCSPlaytestStep Step;
+		Step.Label = FString::Printf(TEXT("%s from %d cm"), *FCSStrikeMoveData::Describe(Strike), FMath::RoundToInt(Distance));
+		Step.Seconds = 2.2f;
+		Step.Camera = ECSReviewCamera::Side;
+		struct FCounts { int32 Thrown = 0; int32 Landed = 0; double Start = 0.0; };
+		TSharedRef<FCounts> Counts = MakeShared<FCounts>();
+		Step.OnStart = [Distance, Counts](const FCtx& C)
+		{
+			C.PlaceAtDummy(Distance, 0.f);
+			if (ACSCharacter* Self = C.Player(); Self && Self->GetStamina())
+			{
+				Self->GetStamina()->Refill();
+			}
+			const UCSRunDirector* Director = C.Mode ? C.Mode->GetRunDirector() : nullptr;
+			Counts->Thrown = Director ? Director->GetStats().PunchesThrown : 0;
+			Counts->Landed = Director ? Director->GetStats().PunchesLanded : 0;
+			Counts->Start = C.World->GetTimeSeconds();
+		};
+		Step.OnTick = [Strike](const FCtx& C, float Time, float DeltaTime)
+		{
+			if (Time >= 0.5f && Time - DeltaTime < 0.5f)
+			{
+				if (ACSCharacter* Self = C.Player())
+				{
+					Self->StrikeWith(Strike);
+				}
+			}
+		};
+		Step.OnEnd = [Counts](const FCtx& C)
+		{
+			NotePunches(C, Counts->Thrown, Counts->Landed, Counts->Start);
+		};
+		return Step;
+	}
+
+	TArray<FCSPlaytestStep> BuildMoves()
+	{
+		TArray<FCSPlaytestStep> Steps;
+		Steps.Add(SetUpRun(1, 250.f));
+		Steps.Add(Move(ECSStrikeMove::Jab, 80.f));
+		Steps.Add(Move(ECSStrikeMove::Straight, 80.f));
+		Steps.Add(Move(ECSStrikeMove::HookLeft, 75.f));
+		Steps.Add(Move(ECSStrikeMove::HookRight, 75.f));
+		Steps.Add(Move(ECSStrikeMove::Kick, 100.f));
+		Steps.Add(Move(ECSStrikeMove::Kick, 150.f));
+		{
+			// The attack key as a player presses it: twice quickly is a one-two; moving sideways, a hook.
+			FCSPlaytestStep Step;
+			Step.Label = TEXT("the attack key: a one-two, then a hook moving right");
+			Step.Seconds = 3.f;
+			Step.Camera = ECSReviewCamera::Side;
+			TSharedRef<TArray<FString>> Thrown = MakeShared<TArray<FString>>();
+			Step.OnStart = [Thrown](const FCtx& C)
+			{
+				Thrown->Reset();
+				C.PlaceAtDummy(80.f, 0.f);
+			};
+			Step.OnTick = [Thrown](const FCtx& C, float Time, float DeltaTime)
+			{
+				ACSCharacter* Self = C.Player();
+				if (!Self)
+				{
+					return;
+				}
+				C.AimAtDummy();
+				const bool bHookTime = Time >= 1.9f && Time < 2.2f;
+				if (bHookTime)
+				{
+					C.Move(0.f, 1.f);
+				}
+				for (const float At : {0.3f, 0.95f, 2.0f})
+				{
+					if (Time >= At && Time - DeltaTime < At && Self->Attack())
+					{
+						Thrown->Add(FCSStrikeMoveData::Describe(Self->GetStrike()->GetMove()));
+					}
+				}
+			};
+			Step.OnEnd = [Thrown](const FCtx& C)
+			{
+				C.Note(TEXT("thrown"), FString::Join(*Thrown, TEXT(", ")));
+			};
+			Steps.Add(Step);
+		}
+		return Steps;
+	}
+
+	TArray<FCSPlaytestStep> BuildStamina()
+	{
+		TArray<FCSPlaytestStep> Steps;
+		Steps.Add(SetUpRun(1, 250.f));
+		{
+			// Straights as fast as they go: the first ones are full, the last ones tired.
+			FCSPlaytestStep Step;
+			Step.Label = TEXT("straights as fast as they go: stamina runs out");
+			Step.Seconds = 7.f;
+			Step.Camera = ECSReviewCamera::Side;
+			struct FTrack { TArray<float> Speeds; int32 Tired = 0; float Lowest = 1.f; int32 Last = 0; };
+			TSharedRef<FTrack> Track = MakeShared<FTrack>();
+			Step.OnStart = [Track](const FCtx& C)
+			{
+				*Track = FTrack();
+				C.PlaceAtDummy(80.f, 0.f);
+				if (ACSCharacter* Self = C.Player(); Self && Self->GetStamina())
+				{
+					Self->GetStamina()->Refill();
+					Track->Last = Self->GetStrike()->GetStrikeCount();
+				}
+			};
+			Step.OnTick = [Track](const FCtx& C, float Time, float)
+			{
+				ACSCharacter* Self = C.Player();
+				UCSStrikeComponent* Strike = Self ? Self->GetStrike() : nullptr;
+				if (!Strike)
+				{
+					return;
+				}
+				C.AimAtDummy();
+				if (Strike->GetPhase() == ECSStrikePhase::None)
+				{
+					if (Strike->GetStrikeCount() > Track->Last)
+					{
+						Track->Speeds.Add(Strike->GetPeakSpeed());
+						Track->Last = Strike->GetStrikeCount();
+					}
+					if (Self->StrikeWith(ECSStrikeMove::Straight))
+					{
+						Track->Tired += Strike->WasTired() ? 1 : 0;
+					}
+				}
+				Track->Lowest = FMath::Min(Track->Lowest, Self->GetStamina()->GetShare());
+			};
+			Step.OnEnd = [Track](const FCtx& C)
+			{
+				C.Note(TEXT("straights"), float(Track->Speeds.Num()));
+				C.Note(TEXT("thrown tired"), float(Track->Tired));
+				C.Note(TEXT("lowest stamina share"), Track->Lowest);
+				if (Track->Speeds.Num() >= 4)
+				{
+					C.Note(TEXT("first two fist speed"), (Track->Speeds[0] + Track->Speeds[1]) * 0.5f);
+					C.Note(TEXT("last two fist speed"), (Track->Speeds.Last() + Track->Speeds.Last(1)) * 0.5f);
+				}
+			};
+			Steps.Add(Step);
+		}
+		{
+			// Out of stamina the guard will not come up.
+			FCSPlaytestStep Step;
+			Step.Label = TEXT("out of stamina: the guard will not come up");
+			Step.Seconds = 1.5f;
+			Step.Camera = ECSReviewCamera::Side;
+			Step.OnStart = [](const FCtx& C)
+			{
+				if (ACSCharacter* Self = C.Player(); Self && Self->GetGuard() && Self->GetStamina())
+				{
+					Self->GetStamina()->SetRegenScale(0.f);
+					Self->GetStamina()->SetCurrent(0.f);
+					Self->GetGuard()->SetBlockHeld(true);
+				}
+			};
+			Step.OnEnd = [](const FCtx& C)
+			{
+				if (ACSCharacter* Self = C.Player(); Self && Self->GetGuard() && Self->GetStamina())
+				{
+					C.Note(TEXT("guard up"), Self->GetGuard()->IsGuardUp() ? TEXT("yes") : TEXT("no"));
+					Self->GetGuard()->SetBlockHeld(false);
+					Self->GetStamina()->SetRegenScale(1.f);
+				}
+			};
+			Steps.Add(Step);
+		}
+		{
+			FCSPlaytestStep Step;
+			Step.Label = TEXT("rest: stamina comes back");
+			Step.Seconds = 4.f;
+			Step.Camera = ECSReviewCamera::Player;
+			TSharedRef<float> Before = MakeShared<float>(0.f);
+			Step.OnStart = [Before](const FCtx& C)
+			{
+				if (const ACSCharacter* Self = C.Player(); Self && Self->GetStamina())
+				{
+					*Before = Self->GetStamina()->GetShare();
+				}
+			};
+			Step.OnEnd = [Before](const FCtx& C)
+			{
+				C.Note(TEXT("stamina share before"), *Before);
+				if (const ACSCharacter* Self = C.Player(); Self && Self->GetStamina())
+				{
+					C.Note(TEXT("stamina share after"), Self->GetStamina()->GetShare());
+				}
+			};
+			Steps.Add(Step);
+		}
+		return Steps;
+	}
+
 	TArray<FCSPlaytestStep> BuildFight()
 	{
 		TArray<FCSPlaytestStep> Steps;
@@ -594,6 +812,32 @@ namespace CSPlaytestScenarios
 		Steps.Add(Fight(TEXT("the player dodges back on the tell"), 8.f, EDefend::Dodge));
 		Steps.Add(Fight(TEXT("block, and punch back while it recovers"), 10.f, EDefend::Trade));
 		Steps.Add(Fight(TEXT("blocking, the player's camera"), 6.f, EDefend::Block, ECSReviewCamera::Player));
+		{
+			// Out of stamina the guard drops: the same block, with nothing left to hold it.
+			FCSPlaytestStep Step = Fight(TEXT("blocking with no stamina: the guard gives way"), 8.f, EDefend::Block);
+			const TFunction<void(const FCtx&)> Start = Step.OnStart;
+			Step.OnStart = [Start](const FCtx& C)
+			{
+				Start(C);
+				if (ACSCharacter* Self = C.Player(); Self && Self->GetStamina())
+				{
+					Self->GetStamina()->SetRegenScale(0.f);
+					Self->GetStamina()->SetCurrent(0.f);
+				}
+			};
+			const TFunction<void(const FCtx&)> End = Step.OnEnd;
+			Step.OnEnd = [End](const FCtx& C)
+			{
+				if (ACSCharacter* Self = C.Player(); Self && Self->GetStamina())
+				{
+					C.Note(TEXT("guard was up"), Self->GetGuard() && Self->GetGuard()->IsGuardUp() ? TEXT("yes") : TEXT("no"));
+					Self->GetStamina()->SetRegenScale(1.f);
+					Self->GetStamina()->Refill();
+				}
+				End(C);
+			};
+			Steps.Add(Step);
+		}
 		{
 			// It must not hit a player who is down.
 			FCSPlaytestStep Step;
@@ -773,7 +1017,7 @@ UCSPlaytestRunner::UCSPlaytestRunner()
 
 TArray<FString> UCSPlaytestRunner::ScenarioNames()
 {
-	return {TEXT("locomotion"), TEXT("stance"), TEXT("punch"), TEXT("knockdown"), TEXT("fight")};
+	return {TEXT("locomotion"), TEXT("stance"), TEXT("punch"), TEXT("knockdown"), TEXT("fight"), TEXT("moves"), TEXT("stamina")};
 }
 
 TArray<FCSPlaytestStep> UCSPlaytestRunner::BuildScenario(const FString& Name)
@@ -784,6 +1028,8 @@ TArray<FCSPlaytestStep> UCSPlaytestRunner::BuildScenario(const FString& Name)
 	if (Name == TEXT("punch")) { return BuildPunch(); }
 	if (Name == TEXT("knockdown")) { return BuildKnockdown(); }
 	if (Name == TEXT("fight")) { return BuildFight(); }
+	if (Name == TEXT("moves")) { return BuildMoves(); }
+	if (Name == TEXT("stamina")) { return BuildStamina(); }
 	return {};
 }
 

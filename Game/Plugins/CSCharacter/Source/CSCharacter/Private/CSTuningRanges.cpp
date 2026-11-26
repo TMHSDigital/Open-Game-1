@@ -115,6 +115,13 @@ namespace
 		{TEXT("DodgeSpeed"), TEXT("Defence"), TEXT("cm/s"), 0.f, 1500.f, 10.f},
 		{TEXT("DodgeSeconds"), TEXT("Defence"), TEXT("s"), 0.f, 1.f, 0.01f},
 		{TEXT("DodgeCooldownSeconds"), TEXT("Defence"), TEXT("s"), 0.f, 3.f, 0.05f},
+		{TEXT("StaminaMax"), TEXT("Stamina"), TEXT(""), 10.f, 300.f, 5.f},
+		{TEXT("StaminaRegen"), TEXT("Stamina"), TEXT("/s"), 0.f, 100.f, 1.f},
+		{TEXT("StaminaRegenDelay"), TEXT("Stamina"), TEXT("s"), 0.f, 3.f, 0.05f},
+		{TEXT("TiredStrikeScale"), TEXT("Stamina"), TEXT("x"), 0.2f, 1.f, 0.01f},
+		{TEXT("BlockStaminaCost"), TEXT("Stamina"), TEXT("per cm/s"), 0.f, 0.5f, 0.005f},
+		{TEXT("DodgeStaminaCost"), TEXT("Stamina"), TEXT(""), 0.f, 50.f, 1.f},
+		{TEXT("GuardReturnShare"), TEXT("Stamina"), TEXT("x"), 0.f, 1.f, 0.01f},
 		{TEXT("PunchMass"), TEXT("Punch"), TEXT("kg"), 1.f, 100.f, 0.5f},
 	};
 
