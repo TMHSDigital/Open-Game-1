@@ -450,7 +450,8 @@ void ACSCharacter::OnMove(const FInputActionValue& Value)
 
 bool ACSCharacter::Attack()
 {
-	if (!Strike || !Strike->StartPunch())
+	// Mid-dodge the body is carried by the dodge: a punch would aim at nothing and lose its step in.
+	if (!Strike || (Guard && Guard->IsDodging()) || !Strike->StartPunch())
 	{
 		return false;
 	}

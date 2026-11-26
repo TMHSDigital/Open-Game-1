@@ -26,7 +26,9 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FCSDodged, ACSCharacter* /* Who */);
  *
  * Dodge. A press starts a quick step: for DodgeSeconds the character moves at DodgeSpeed along the
  * way it was moving, or straight back when it was not, then DodgeCooldownSeconds must pass before
- * the next. Only on the ground, standing (body Normal or Hit), and not during a punch. It is a real
+ * the next. Only on the ground, standing (body Normal or Hit), and not during a punch; no punch
+ * starts during it. It ends early at an edge (no walkable floor ahead), so it never launches the
+ * character off a ledge. It is a real
  * step with no immunity: a punch misses because the body is no longer where it was going.
  *
  * Tuning (UCSMovementTuning, group Defence): BlockAbsorb, BlockAngle, BlockSpeedScale, DodgeSpeed,
@@ -79,7 +81,7 @@ public:
 	 * movement velocity to the dodge, and returns the speed cap the movement should use from Cap
 	 * (the dodge speed while dodging, Cap held down while the guard is up, Cap otherwise).
 	 */
-	float ApplyToMovement(UCharacterMovementComponent& Move, float Cap, float JogSpeed) const;
+	float ApplyToMovement(UCharacterMovementComponent& Move, float Cap, float JogSpeed);
 
 	/** Every dodge started, by anyone. */
 	static FCSDodged OnDodged;
@@ -111,6 +113,8 @@ private:
 	/** Standing on its own feet: physics body Normal or Hit, not ragdolled. */
 	bool IsStanding() const;
 	void DriveFists(float DeltaTime);
+	/** Walkable floor a stride ahead along the dodge. */
+	bool HasFloorAhead(const UCharacterMovementComponent& Move) const;
 
 	bool bBlockHeld = false;
 	double DodgeStart = -1000.0;

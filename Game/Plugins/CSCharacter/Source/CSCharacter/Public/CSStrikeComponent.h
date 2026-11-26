@@ -107,6 +107,9 @@ public:
 	/** The wind-up length in use: WindupSecondsOverride when set, else PunchWindupSeconds. */
 	float GetWindupSeconds() const;
 
+	/** Other can be this character's target: anyone for a player, only a player for a character the game drives. */
+	bool IsFoe(const ACSCharacter& Other) const;
+
 	/** The farthest the fist got from the middle of the chest along the aim in the strike under way or the last one, cm. */
 	float GetPeakReach() const { return PeakReach; }
 

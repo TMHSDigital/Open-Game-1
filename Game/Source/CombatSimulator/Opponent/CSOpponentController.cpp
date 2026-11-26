@@ -112,8 +112,9 @@ void ACSOpponentController::Tick(float DeltaSeconds)
 		? TargetBody->GetSocketLocation(TEXT("spine_05")) : Target->GetActorLocation(), EAIFocusPriority::Gameplay);
 
 	const UCSPhysicsBodyComponent* OwnBody = Self->GetPhysicsBody();
-	const bool bSelfDown = Self->IsRagdolled()
-		|| (OwnBody && (OwnBody->GetState() == ECSBodyState::Ragdoll || OwnBody->GetState() == ECSBodyState::Recovering));
+	// Staggered (Hit) counts too: it reels instead of walking on into the player mid-stagger. A
+	// punch already under way finishes by itself.
+	const bool bSelfDown = Self->IsRagdolled() || (OwnBody && OwnBody->GetState() != ECSBodyState::Normal);
 	if (bSelfDown)
 	{
 		if (OpponentState != ECSOpponentState::Hurt)

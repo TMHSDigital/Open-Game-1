@@ -50,6 +50,14 @@ bool UCSStrikeComponent::CanStrike() const
 	return State == ECSBodyState::Normal || State == ECSBodyState::Hit;
 }
 
+bool UCSStrikeComponent::IsFoe(const ACSCharacter& Other) const
+{
+	// The player's punches go for anyone. A character driven by the game (an opponent) fights the
+	// player: another dummy in the way is not a target and does not soak the punch.
+	const ACSCharacter* Character = GetCharacter();
+	return !Character || Character->IsPlayerControlled() || Other.IsPlayerControlled();
+}
+
 float UCSStrikeComponent::GetWindupSeconds() const
 {
 	return WindupSecondsOverride >= 0.f ? WindupSecondsOverride : GetTuning().PunchWindupSeconds;
@@ -140,7 +148,7 @@ ACSCharacter* UCSStrikeComponent::FindTarget() const
 	for (TActorIterator<ACSCharacter> It(GetWorld()); It; ++It)
 	{
 		ACSCharacter* Other = *It;
-		if (Other == Self || Other->IsActorBeingDestroyed() || Other->IsRagdolled())
+		if (Other == Self || Other->IsActorBeingDestroyed() || Other->IsRagdolled() || !IsFoe(*Other))
 		{
 			continue;
 		}
@@ -238,9 +246,7 @@ void UCSStrikeComponent::StepIn()
 	const FVector Live = VictimBody ? VictimBody->GetSocketLocation(ChestBone) : Victim->GetActorLocation();
 	const FVector Goal = LungeGoal + ((Live - LungeGoal) * FVector(1.f, 1.f, 0.f)).GetClampedToMaxSize(LungeLeash);
 	const FVector To = (Goal - GetChestLocation()) * FVector(1.f, 1.f, 0.f);
-	// Within reach, or already body to body: pushing on would only slide this body around the other.
-	const float Touching = Character->GetSimpleCollisionRadius() + Victim->GetSimpleCollisionRadius() + 2.f;
-	if (To.Size() <= T.PunchReach || FVector::Dist2D(Character->GetActorLocation(), Victim->GetActorLocation()) <= Touching)
+	if (To.Size() <= T.PunchReach)
 	{
 		bSteppingIn = false;
 		return;
@@ -477,9 +483,9 @@ void UCSStrikeComponent::Sweep()
 		const FVector Point = Hit.bStartPenetrating ? From : FVector(Hit.ImpactPoint);
 		if (ACSCharacter* Victim = Cast<ACSCharacter>(Other))
 		{
-			if (bLanded || bBlocked)
+			if (bLanded || bBlocked || !IsFoe(*Victim))
 			{
-				continue; // one strike, one character
+				continue; // one strike, one character; and not on the attacker's own side
 			}
 			UCSPhysicsBodyComponent* Physics = Victim->GetPhysicsBody();
 			const FName Bone = Component == Victim->GetMesh() ? Hit.BoneName : NAME_None;
@@ -494,10 +500,14 @@ void UCSStrikeComponent::Sweep()
 			}
 			else if (Result == ECSContactResult::Blocked)
 			{
-				// Taken on the guard: the punch stops there and has not landed.
+				// Taken on the guard: the punch has not landed, and the arm stops there instead of
+				// being driven on through the guard.
 				bBlocked = true;
 				HitActors.Add(Other);
 				OnStrikeLanded.Broadcast(Character, Victim, Result);
+				SetPhase(ECSStrikePhase::Recover);
+				ReleaseArm();
+				return;
 			}
 			else if (Result == ECSContactResult::Ignored)
 			{

@@ -115,13 +115,31 @@ bool UCSGuardComponent::Dodge(const FVector& Direction)
 	return true;
 }
 
-float UCSGuardComponent::ApplyToMovement(UCharacterMovementComponent& Move, float Cap, float JogSpeed) const
+bool UCSGuardComponent::HasFloorAhead(const UCharacterMovementComponent& Move) const
+{
+	// As the punch's step in: walkable floor a stride ahead along the dodge, within a step down.
+	const ACSCharacter* Character = GetCharacter();
+	const UWorld* World = GetWorld();
+	if (!Character || !World)
+	{
+		return false;
+	}
+	const FVector Ahead = Character->GetActorLocation() + DodgeDirection * (Character->GetSimpleCollisionRadius() + 30.f);
+	const float Below = Character->GetSimpleCollisionHalfHeight() + Move.MaxStepHeight + 10.f;
+	FHitResult Floor;
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(CSGuardDodge), false, Character);
+	return World->LineTraceSingleByChannel(Floor, Ahead, Ahead - FVector(0.f, 0.f, Below), ECC_Visibility, Params) && Move.IsWalkable(Floor);
+}
+
+float UCSGuardComponent::ApplyToMovement(UCharacterMovementComponent& Move, float Cap, float JogSpeed)
 {
 	const UCSMovementTuning& T = GetTuning();
 	if (IsDodging())
 	{
-		if (!Move.IsMovingOnGround() || !IsStanding())
+		if (!Move.IsMovingOnGround() || !IsStanding() || !HasFloorAhead(Move))
 		{
+			// Off the ground, down, or at an edge: the dodge ends here rather than carry on as a launch.
+			DodgeEnd = FMath::Min(DodgeEnd, GetWorld()->GetTimeSeconds());
 			return Cap;
 		}
 		// Set every frame: a single push would be braked away by ground friction within a step.
