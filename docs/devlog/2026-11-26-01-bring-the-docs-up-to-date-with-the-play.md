@@ -13,7 +13,9 @@ clip: null
 
 ## Narrative
 
-<!-- narrative -->
+A documentation session. The README still described a character that only walks on a plane, with build 0.1.2 and decision 0011 as the current goal. It now says what is in the build: simulation runs, the punch, the block and the dodge, and an opponent that fights back. It also lists the controls for keyboard and gamepad, points at decision 0019, build 0.1.10 and the latest devlog, shows a current capture with the dummy, and explains that changes are judged on scripted play-test recordings as well as tests. The workflows doc gained the fight keys, how the punch, stance, guard and opponent are tuned and seen, a packaged play-test step before each release, and the note that an open session's devlog stub blocks the release's clean-tree gate. The tools doc gained ffmpeg and the play-test script, the character plugin's README now covers the strike, the guard, the combat stance and the ball, and CLAUDE.md points at the play-test. No code changed, so the captures are the ones rendered at the end of the last session.
+
+Next: the opponent's whiffs from just out of reach, and the next decision, between more attacks and stamina, a first weapon, or real animation clips.
 
 ## Changes
 
