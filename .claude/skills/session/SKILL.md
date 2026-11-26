@@ -17,7 +17,7 @@ Rules:
 
 1. Ask for the goal in one line. Ask whether to record this session (yes or no).
 2. If yes: screencast `start_recording` with target `window:exe=UnrealEditor.exe` (or `full` if the editor is not the subject). Note the returned session id.
-3. Run `uv run --project tools python -m og session start "<goal>"`. Add `--commit` to also create an empty `chore: session <id> start` commit carrying a `Session-Start: <id>` trailer; this lets `end` recover the start point if the state file is lost (for example after a restart).
+3. Run `uv run --project tools python -m og session start "<goal>"`. Add `--commit` to also create an empty `chore: session <id> start` commit carrying a `Session-Start: <id>` trailer; this lets `end` recover the start point if the state file is lost (for example after a restart). The goal goes into a `Session-Goal:` trailer on the same commit. `start` writes nothing under `docs/`: the entry is written by `end`, so an open session leaves the tree clean and a release can run during it.
 4. It prints the id, then every open item from `docs/steam/SETUP-CHECKLIST.md` (if that file exists). Mention open items to the user.
 5. If recording, write the screencast session id into `_scratch/session.json` as `screencast_session`.
 
@@ -25,7 +25,7 @@ Rules:
 
 The owner's rule: the docs are brought up to date every session, not only when asked. Before ending:
 
-- `README.md` status table: the newest decision under "Latest block", the newest build from `docs/steam/BUILDS.md` under "Steam" ("Build X.Y.Z is live ..."), and this session's entry under "Latest devlog" (`docs/devlog/<id>-<slug>.md`, the file `start` created). Update "In the build" and the controls when the game changed.
+- `README.md` status table: the newest decision under "Latest block", the newest build from `docs/steam/BUILDS.md` under "Steam" ("Build X.Y.Z is live ..."), and this session's entry under "Latest devlog" (`docs/devlog/<id>-<slug>.md`, the path `start` printed; `end` writes the file). Update "In the build" and the controls when the game changed.
 - `docs/WORKFLOWS.md` for any routine, key or step that changed; `docs/TOOLS.md` for any tool or script; `docs/systems/README.md` for any system added or changed; the plugin README for plugin changes; a skill when its routine changed (the `playtest` scenarios, for example).
 - Commit the docs before `end`.
 

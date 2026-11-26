@@ -114,8 +114,13 @@ def _render_entry(repo: Path, d: dict) -> str:
 def start(repo: Path, goal: str, today: datetime.date | None = None, commit: bool = False,
           replace: bool = False) -> str:
     """Open a session. Refuses while another one is open, because the state file holds one
-    session: a second start would lose the first one's start commit and leave its stub entry
-    behind. With replace, the open session is dropped and its unfinished entry deleted."""
+    session: a second start would lose the first one's start commit. With replace, the open
+    session is dropped.
+
+    Nothing is written under docs/ until `end`: the session lives in _scratch/session.json (and,
+    with commit, in a start commit's trailers). An open session leaves the working tree clean, so
+    the release's clean-tree gate can run mid-session. The entry's path is already fixed, though
+    (docs/devlog/<id>-<slug>.md), so the README can point at it before it exists."""
     repo = Path(repo)
     sp = _state_path(repo)
     if sp.is_file():
@@ -123,6 +128,7 @@ def start(repo: Path, goal: str, today: datetime.date | None = None, commit: boo
         if not replace:
             raise SessionError(f"session {old.get('id')} is still open. Finish it with "
                                "`og session end`, or drop it with `og session start --replace`.")
+        # A stub entry left by an older version of start, if any.
         stub = repo / "docs" / "devlog" / f"{old.get('id')}-{old.get('slug')}.md"
         if stub.is_file() and "_Filled in by `og session end`._" in stub.read_text("utf-8"):
             stub.unlink()
@@ -131,21 +137,18 @@ def start(repo: Path, goal: str, today: datetime.date | None = None, commit: boo
     sid = _next_id(repo, day)
     slug = _slugify(goal)
     if commit:
+        # The goal rides along, so a lost state file loses nothing (_resolve_start reads it back).
+        goal_line = " ".join(goal.split())
         _git(repo, "commit", "--allow-empty", "-m",
-             f"chore: session {sid} start\n\nSession-Start: {sid}")
+             f"chore: session {sid} start\n\nSession-Start: {sid}\nSession-Goal: {goal_line}")
     head = _git(repo, "rev-parse", "HEAD", check=False)
-    entry = repo / "docs" / "devlog" / f"{sid}-{slug}.md"
-    entry.parent.mkdir(parents=True, exist_ok=True)
-    entry.write_text(_render_entry(repo, {
-        "id": sid, "goal": goal, "start_sha": head, "end_sha": None, "commits": [],
-        "decisions": [], "captures": [], "clip": None,
-        "empty_changes": "_Filled in by `og session end`._"}), "utf-8")
     state = {"id": sid, "slug": slug, "goal": goal, "start_sha": head,
              "started_at": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
              "screencast_session": None}
     sp.parent.mkdir(parents=True, exist_ok=True)
     sp.write_text(json.dumps(state, indent=2) + "\n", "utf-8")
     print(sid)
+    print(f"Devlog entry (written by `og session end`): docs/devlog/{sid}-{slug}.md")
     for item in _open_setup_items(repo):
         print(f"Open setup item: {item}")
     hooks = _git(repo, "config", "--get", "core.hooksPath", check=False)
@@ -171,7 +174,10 @@ def _resolve_start(repo: Path, today: datetime.date) -> tuple[dict, str | None]:
             continue  # that session already ended; do not reuse its start
         entry = _find_entry(repo, sid)
         goal = "(unknown goal)"
-        if entry:
+        trailer = re.search(r"^Session-Goal: (.+)$", body, re.M)
+        if trailer:
+            goal = trailer.group(1).strip()
+        elif entry:  # a stub from an older version of start
             g = re.search(r'^goal: "(.*)"$', entry.read_text("utf-8"), re.M)
             goal = g.group(1) if g else goal
         return {"id": sid, "slug": _slugify(goal), "goal": goal, "start_sha": sha}, None

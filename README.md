@@ -36,7 +36,7 @@ Every design decision, every work session and every Steam build is recorded in t
 | **Engine** | Unreal Engine 5.8, C++ project in [`Game/`](Game/): a start plane, a movement gym and a capture stage |
 | **Latest block** | [Decision 0019](docs/decisions/0019-next-block-an-opponent-that-fights-back-with-a-block-and-a-d.md): an opponent that fights back, with a block and a dodge |
 | **Steam** | Build 0.1.10 is live on the private development branch; the game is not publicly available yet ([setup checklist](docs/steam/SETUP-CHECKLIST.md), [build history](https://tmhsdigital.github.io/Open-Game-1/builds.html)) |
-| **Latest devlog** | [Make updating the docs part of every session](docs/devlog/2026-11-26-02-make-updating-the-docs-part-of-every-ses.md) |
+| **Latest devlog** | [Fix the devlog placeholder and close out](docs/devlog/2026-11-26-03-fix-the-devlog-placeholder-and-close-out.md) |
 
 ## In the build
 

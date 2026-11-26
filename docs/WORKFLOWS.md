@@ -8,7 +8,7 @@ Skill: `session`.
 
 1. Ask for the goal in one line, and whether to record. Recording is opt-in every time.
 2. If recording: screencast MCP `list_targets`, then `start_recording` (target `window:exe=UnrealEditor.exe` or `full`).
-3. `og session start "<goal>"` (script `tools/og/session.py`). Add `--commit` to leave a `Session-Start:` marker commit that survives a lost state file. It creates `docs/devlog/<id>-<slug>.md` from `docs/devlog/TEMPLATE.md`, saves state to `_scratch/session.json`, and lists open items from `docs/steam/SETUP-CHECKLIST.md`.
+3. `og session start "<goal>"` (script `tools/og/session.py`). Add `--commit` to leave a `Session-Start:` marker commit that survives a lost state file. It saves state to `_scratch/session.json`, prints the path the devlog entry will have (`docs/devlog/<id>-<slug>.md`; `end` writes it from `docs/devlog/TEMPLATE.md`), and lists open items from `docs/steam/SETUP-CHECKLIST.md`. Nothing is written under `docs/` until `end`, so a session can be open during a release.
 4. If recording: write the screencast session id into `_scratch/session.json`.
 5. Work. Decisions go through the `decide` skill, assets through `asset-import`, builds through `ue-build-test`.
 6. To end: if recording, screencast MCP `stop_recording`, `find_text` with `redact: true`, `redact_region`, `pipeline` (recipe `pr_demo`), `contact_sheet`.
@@ -111,7 +111,7 @@ Skill: `release` (reference: `docs/steam/BUILD-WORKFLOW.md`). Script: `tools/ste
 
 1. `pwsh tools/steam/release.ps1 status` to see open setup items and the ledger.
 2. `pwsh tools/steam/release.ps1 dry-run` runs gates 4 to 10 for real: UE 5.8.x, version not in the ledger, tests (`tools/ue/test.ps1`), the repo checks through `og check` (secrets scan of every tracked file plus the `-Notes` text, asset ledger, decisions), Steam env var names, fresh staging. It also packages a Shipping build (`tools/ue/package.ps1`) and renders the VDFs from `steam/templates/`. Gates 1 to 3 (on main, clean tree, HEAD pushed) only warn in a dry run.
-3. Fix whichever gate failed (exit code `10 + n` is gate n); the tree must be committed and pushed before a real run. An open session's devlog stub counts as an uncommitted file, so end the session first or release before starting one.
+3. Fix whichever gate failed (exit code `10 + n` is gate n); the tree must be committed and pushed before a real run.
 4. Play-test the packaged build the dry run made: `pwsh tools/ue/playtest.ps1 -Target Packaged` (skill `playtest`), with the desktop unlocked, and look at `summary.md` and the sheets. A recording of the lock screen has valid numbers but nothing to look at; say so rather than call it reviewed.
 5. Claude runs `pwsh tools/steam/release.ps1 dev` (`upload-only` for a first build). Since decision 0014 development uploads are Claude's job; the owner can still run the same command. Setting `default` live and `promoted` stay with the owner.
 6. On success the script commits a row to `docs/steam/BUILDS.md`, creates a `v<ver>` prerelease and a `steam-development` deployment with `gh`, and pushes. If steamcmd printed an error or no BuildID, nothing is recorded.

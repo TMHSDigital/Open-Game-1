@@ -59,13 +59,16 @@ def only_entry(repo: Path) -> Path:
     return entries[0]
 
 
-def test_start_creates_entry_and_state(repo, capsys):
+def test_start_writes_state_and_leaves_the_tree_clean(repo, capsys):
     sid = session.start(repo, "Build the capture stage", today=DAY)
     assert sid == "2026-11-22-01"
-    assert capsys.readouterr().out.splitlines()[0] == sid
-    entry = repo / "docs/devlog/2026-11-22-01-build-the-capture-stage.md"
-    assert entry.is_file()
-    assert session.NARRATIVE_MARKER in entry.read_text("utf-8")
+    out = capsys.readouterr().out.splitlines()
+    assert out[0] == sid
+    # The entry's path is announced but nothing is written under docs/ until end, so the release's
+    # clean-tree gate passes with a session open.
+    assert "docs/devlog/2026-11-22-01-build-the-capture-stage.md" in out[1]
+    assert not (repo / "docs/devlog").exists() or not list((repo / "docs/devlog").glob("*.md"))
+    assert git(repo, "status", "--porcelain") == ""
     state = json.loads((repo / "_scratch/session.json").read_text("utf-8"))
     assert state["id"] == sid and state["goal"] == "Build the capture stage"
     assert state["start_sha"] == git(repo, "rev-parse", "HEAD")
@@ -76,14 +79,17 @@ def test_start_refuses_while_a_session_is_open(repo, capsys):
     session.start(repo, "First", today=DAY)
     with pytest.raises(session.SessionError, match="2026-11-22-01 is still open"):
         session.start(repo, "Second", today=DAY)
-    assert len(list((repo / "docs/devlog").glob("2026-11-22-*.md"))) == 1
+    assert json.loads((repo / "_scratch/session.json").read_text("utf-8"))["goal"] == "First"
 
 
-def test_start_replace_drops_the_open_session_and_its_stub(repo, capsys):
+def test_start_replace_drops_the_open_session_and_an_old_stub(repo, capsys):
     session.start(repo, "First", today=DAY)
+    # A stub as an older version of start wrote it.
+    (repo / "docs/devlog").mkdir(parents=True, exist_ok=True)
+    (repo / "docs/devlog/2026-11-22-01-first.md").write_text("_Filled in by `og session end`._\n", "utf-8")
     sid = session.start(repo, "Second", today=DAY, replace=True)
-    entries = sorted(p.name for p in (repo / "docs/devlog").glob("2026-11-22-*.md"))
-    assert entries == [f"{sid}-second.md"]
+    assert not (repo / "docs/devlog/2026-11-22-01-first.md").exists()
+    assert sid == "2026-11-22-01"
     assert json.loads((repo / "_scratch/session.json").read_text("utf-8"))["goal"] == "Second"
 
 
@@ -267,12 +273,11 @@ def test_end_second_scan_block_leaves_no_side_effects(repo, monkeypatch):
     ocr(clip)
     index_before = (repo / "docs/captures/INDEX.md").read_text("utf-8")
     head = git(repo, "rev-parse", "HEAD")
-    entry_before = only_entry(repo).read_text("utf-8")
     assert session.end(repo, capture_dir=caps, clip=clip, today=DAY) != 0
     assert git(repo, "rev-parse", "HEAD") == head
     assert not (repo / "docs/devlog/media").exists()
     assert (repo / "docs/captures/INDEX.md").read_text("utf-8") == index_before
-    assert only_entry(repo).read_text("utf-8") == entry_before
+    assert not list((repo / "docs/devlog").glob("2026-11-22-*.md"))  # no entry written either
     assert not [c for c in calls if c[:2] in (["release", "upload"], ["release", "create"])]
 
 
@@ -557,3 +562,14 @@ def test_end_docs_ok_ends_anyway_and_says_so(repo, capsys):
     session.start(repo, "Docs check", today=DAY)
     assert session.end(repo, today=DAY, docs_ok=True) == 0
     assert "NOTE: --docs-ok" in capsys.readouterr().err
+
+
+
+def test_trailer_fallback_reads_the_goal(repo):
+    session.start(repo, "Goal from the trailer", today=DAY, commit=True)
+    (repo / "_scratch/session.json").unlink()
+    commit(repo, "feat: work")
+    assert session.end(repo, today=DAY) == 0
+    entry = only_entry(repo)
+    assert entry.name == "2026-11-22-01-goal-from-the-trailer.md"
+    assert front(entry)["goal"] == '"Goal from the trailer"'
