@@ -13,7 +13,9 @@ clip: null
 
 ## Narrative
 
-<!-- narrative -->
+`og session start` used to write a placeholder devlog entry into `docs/devlog/` as soon as a session opened. That untracked file failed the release's clean-tree gate, so a build could not go to Steam while a session was open. Start now writes nothing under `docs/`: it keeps the session in `_scratch/session.json`, prints the path the entry will have, and `og session end` writes the entry as it always did. The goal also goes into a `Session-Goal` trailer on the optional start commit, so a lost state file still recovers it. This session showed the fix working: with the session open, the tree was clean. Tests, the session skill, WORKFLOWS and memory were updated to match. All 217 tooling tests pass.
+
+This closes out the run of work since the play-test: the overhaul, the duel, and the docs routine. The next session starts fresh. On the table there: the opponent's whiffs from just out of reach, and the next block, between more attacks and stamina, a first weapon, or real animation clips.
 
 ## Changes
 
