@@ -2,31 +2,40 @@
 
 # Combat Simulator
 
-**A moddable, physics-driven combat simulator for Steam, built in public with Unreal Engine 5.8.**
+**A combat sandbox where the fight is physics. Built in public with Unreal Engine 5.8, for Steam.**
 
-Every design decision, every work session and every Steam build is recorded in this repository as it happens, and published to a devlog that anyone can follow. The game is an early prototype: a faceless, physically simulated character that moves, punches, blocks and dodges, against dummies that stand and take hits or fight back, in short simulation runs that are set up, played and measured.
+<img src="site/static/img/fight-kick-wide.webp" width="760" alt="A white faceless fighter lands a front kick on an orange dummy, which staggers; a yellow mark reads 393 stagger." />
 
-<br />
+<sub>A front kick in the current build, from a recorded play-test: 393 cm/s into the dummy's thigh, a stagger.</sub>
 
-[![Devlog](https://img.shields.io/badge/Devlog-follow_the_build-2D7FF9?style=for-the-badge)](https://tmhsdigital.github.io/Open-Game-1/)
-[![Open decisions](https://img.shields.io/badge/Open_decisions-weigh_in-6E56CF?style=for-the-badge)](https://github.com/TMHSDigital/Open-Game-1/issues?q=is%3Aissue+is%3Aopen+label%3Adecision)
+<br /><br />
 
-<br />
+[![Website](https://img.shields.io/badge/Website-tmhsdigital.github.io%2FOpen--Game--1-c26a2a?style=for-the-badge)](https://tmhsdigital.github.io/Open-Game-1/)
+[![Open decisions](https://img.shields.io/badge/Open_decisions-weigh_in-4f7fae?style=for-the-badge)](https://github.com/TMHSDigital/Open-Game-1/issues?q=is%3Aissue+is%3Aopen+label%3Adecision)
 
 [![checks](https://github.com/TMHSDigital/Open-Game-1/actions/workflows/checks.yml/badge.svg)](https://github.com/TMHSDigital/Open-Game-1/actions/workflows/checks.yml)
 [![pages](https://github.com/TMHSDigital/Open-Game-1/actions/workflows/pages.yml/badge.svg)](https://github.com/TMHSDigital/Open-Game-1/actions/workflows/pages.yml)
 [![Unreal Engine 5.8](https://img.shields.io/badge/Unreal_Engine-5.8-313131?logo=unrealengine&logoColor=white)](Game/)
 [![License: source-available](https://img.shields.io/badge/license-source--available-lightgrey)](#license)
 
-<br />
-
-<img src="docs/devlog/media/2026-11-25-04/plane-overview.webp" width="640" alt="A plain white faceless character on a flat grey grid plane, facing an orange-tinted copy of itself that stands on a marked square." />
-
-<sub>The start plane: the player and a target dummy. The same fixed cameras photograph the game every session, so the <a href="https://tmhsdigital.github.io/Open-Game-1/gallery.html">gallery</a> becomes a time-lapse of the game taking shape.</sub>
-
 [Status](#status) · [In the build](#in-the-build) · [Follow along](#follow-along) · [How it is built](#how-it-is-built) · [Open questions](#open-questions) · [Repository map](#repository-map) · [Setting up a clone](#setting-up-a-clone) · [License](#license)
 
 </div>
+
+A punch here is a fist steered at a body through the physics engine. The hit is the momentum it carries, and it staggers or knocks a body down by the same rules as a thrown ball or a fall. Two faceless figures on a grey grid plane fight it out: one is you, the other a dummy that stands still or fights back.
+
+It is an early prototype, made by one developer, and every design decision, work session and Steam build is recorded in this repository as it happens. There is no art yet, and the animation is stand-in clips with the rest done in code.
+
+<table>
+<tr>
+<td width="50%"><img src="site/static/img/fight-straight.webp" alt="A straight punch lands on the dummy's chest; the dummy flashes red and a yellow mark shows the hit." /></td>
+<td width="50%"><img src="site/static/img/fight-block.webp" alt="The dummy punches into the fighter's raised guard; a blue mark reads 51 blocked." /></td>
+</tr>
+<tr>
+<td><sub>A straight to the chest. The struck body flashes and the mark gives the size of the hit.</sub></td>
+<td><sub>The dummy's punch on a raised guard: 51 cm/s got through. Its stamina bar is over its head.</sub></td>
+</tr>
+</table>
 
 ## Status
 
@@ -36,15 +45,16 @@ Every design decision, every work session and every Steam build is recorded in t
 | **Engine** | Unreal Engine 5.8, C++ project in [`Game/`](Game/): a start plane, a movement gym and a capture stage |
 | **Latest block** | [Decision 0020](docs/decisions/0020-next-block-more-attacks-and-stamina.md): more attacks and stamina |
 | **Steam** | Build 0.1.11 is live on the private development branch; the game is not publicly available yet ([setup checklist](docs/steam/SETUP-CHECKLIST.md), [build history](https://tmhsdigital.github.io/Open-Game-1/builds.html)) |
-| **Latest devlog** | [Attacks and stamina](docs/devlog/2026-11-26-04-attacks-and-stamina-and-the-opponent-s-w.md) |
+| **Latest devlog** | [README and Pages site upgrade, with CI](docs/devlog/2026-11-26-05-readme-and-pages-site-upgrade-with-ci-fo.md) |
 
 ## In the build
 
-- **A character with weight.** Walk, jog, a sprint that builds up, crouch and jump, with first and third person on one key. The upper body is simulated: hits stagger it, big ones knock it down, and it gets back up.
-- **Simulation runs.** The pause screen's Run tab sets a run up: the map, how many dummies, where they stand, whether they stand still or fight back and how long their wind-up is, stamina on or off and how fast it recovers, ball launchers, a time limit and a knockdown goal. A run ends with its results: hits dealt and taken, strikes by move (landed of thrown), punches blocked, their punches, dodges, and how often you ran out of stamina.
-- **Strikes, a block and a dodge.** The attack key throws a jab, and pressed again straight after, a straight: a one-two. Pressed while moving sideways near an opponent it throws a hook from that side. The kick key throws a front kick: slow, far and heavy. Every strike goes for the nearest opponent in front of you and steps in when it is out of reach. Near an opponent you face it and back off slower. The block takes most of a hit from in front; the dodge is a quick step with no immunity.
-- **Stamina.** Strikes, dodges and hits taken on the guard cost stamina, shown as a bar under the middle of the screen (and over a fighting opponent's head). It comes back after a short pause. Out of it, strikes are slower and weaker and the guard drops until some is back.
-- **An opponent that fights back.** It closes in, draws back slowly (its tell) and throws a jab, a one-two, a hook or a kick in a fixed order, backs off and circles. It holds off when its stamina is low and waits while you are down.
+- You move with weight: walk, jog, a sprint that builds up, crouch and jump, in first or third person on one key. The upper body is simulated, so hits stagger it, big ones knock it down, and it gets back up on its own.
+- The attack key throws a jab, and pressed again straight after, a straight: a one-two. Pressed while moving sideways near an opponent it throws a hook from that side. The kick key throws a front kick, slow and heavy, with the leg simulated for its length. Every strike goes for the nearest opponent in front of you and steps in when it is out of reach.
+- Near an opponent you face it, and backing off is slower than going forward. Holding the block takes most of a hit from in front. The dodge is a quick step with no immunity: a punch misses because you are no longer where it was going.
+- Strikes, dodges and hits taken on the guard cost stamina, shown as a bar under the middle of the screen and over a fighting opponent's head. It comes back after a short pause. Out of it, strikes are slower and weaker and the guard drops until some is back.
+- A dummy set to fight back closes in, draws back slowly (its tell) and throws a jab, a one-two, a hook or a kick in a fixed order, then backs off and circles. It holds off when its own stamina is low and waits while you are down.
+- The pause screen's Run tab sets a run up: the map, how many dummies and where they stand, whether they fight back and how long their wind-up is, stamina on or off and how fast it recovers, ball launchers, a time limit and a knockdown goal. A run ends with its results: hits dealt and taken, strikes by move (landed of thrown), punches blocked, their punches, dodges, and how often you ran out of stamina.
 
 | Do | Keyboard and mouse | Gamepad |
 |---|---|---|
@@ -90,12 +100,12 @@ flowchart LR
     DEV -->|"promoted by hand"| DEF["Steam: default"]
 ```
 
-- **Decisions are written down before they are acted on.** Open questions live in [`docs/OPEN-DECISIONS.md`](docs/OPEN-DECISIONS.md) and as Issues. Settled ones become numbered records in [`docs/decisions/`](docs/decisions/), listing only the options that were actually weighed.
-- **Sessions leave a record.** A session ends with a devlog entry, fixed-camera stills of the current build and, when recorded, a short clip. It cannot end until the docs are up to date: the README's status names the newest decision, build and devlog entry, and a session that changed code changed the docs too. Anything captured from the desktop is checked for secrets before it can be published.
-- **The game is play-tested on a recording.** The game plays itself through scripted scenarios (moving, the combat stance, punches, knockdowns, a fight) with a camera that frames the whole body, and logs what happened. A script records it and cuts a clip, a contact sheet and a summary for each segment, so a change is judged by watching it, not only by tests.
-- **Releases are gated.** One local command checks the tree, runs the tests, scans for secrets, packages a Shipping build, uploads it to Steam's password-protected `development` branch and records it. Promotion to the public `default` branch is always done by hand in Steamworks.
-- **Nothing private gets in.** A secrets scanner runs before every commit (through the commit hook, see [Setting up a clone](#setting-up-a-clone)), in CI and before every release. Steam App and Depot IDs, keys, account names, unpublished release notes and Steamworks partner-page screenshots never enter the repository.
-- **Third-party assets are license-checked.** Each one is recorded in a ledger with its source and license; anything non-commercial, no-derivatives, share-alike or GPL-family is refused, and [`CREDITS.md`](CREDITS.md) is generated from the ledger.
+- Decisions are written down before they are acted on. Open questions live in [`docs/OPEN-DECISIONS.md`](docs/OPEN-DECISIONS.md) and as Issues. Settled ones become numbered records in [`docs/decisions/`](docs/decisions/), listing only the options that were actually weighed.
+- A work session ends with a devlog entry, fixed-camera stills of the current build and, when recorded, a short clip. It cannot end until the docs are up to date: the README's status names the newest decision, build and devlog entry, and a session that changed code changed the docs too. Anything captured from the desktop is checked for secrets before it can be published.
+- Changes to how the game plays are checked on a recording. The game plays itself through scripted scenarios (moving, the combat stance, punches, every strike, stamina, knockdowns, a fight) with a camera that frames the whole body, and logs what happened. A script records it and cuts a clip, a contact sheet and a summary for each segment, so a change is judged by watching it, not only by tests.
+- Releases are gated: one local command checks the tree, runs the tests, scans for secrets, packages a Shipping build, uploads it to Steam's password-protected `development` branch and records it. Promotion to the public `default` branch is always done by hand in Steamworks.
+- Nothing private gets in. A secrets scanner runs before every commit (through the commit hook, see [Setting up a clone](#setting-up-a-clone)), in CI and before every release. Steam App and Depot IDs, keys, account names, unpublished release notes and Steamworks partner-page screenshots never enter the repository.
+- Third-party assets are license-checked. Each one is recorded in a ledger with its source and license; anything non-commercial, no-derivatives, share-alike or GPL-family is refused, and [`CREDITS.md`](CREDITS.md) is generated from the ledger.
 
 The details, step by step: [`docs/WORKFLOWS.md`](docs/WORKFLOWS.md). The tools behind them: [`docs/TOOLS.md`](docs/TOOLS.md).
 
