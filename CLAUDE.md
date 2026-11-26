@@ -11,3 +11,5 @@
 9. No emojis, in docs, devlogs, commits or code.
 
 Tooling: `uv run --project tools python -m og <command>`. Enable the commit hook once with `git config core.hooksPath tools/hooks`.
+
+To see a change in the running game, play it with `pwsh tools/ue/playtest.ps1` (skill `playtest`): it records scripted scenarios and writes clips, contact sheets and a summary to `_scratch/playtest/`.
