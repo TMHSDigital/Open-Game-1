@@ -86,6 +86,14 @@ Licensing note: the owner's tool repos below are CC-BY-NC-ND-4.0 (the Blender-De
   - Reusable code here lives in self-contained plugins under `Game/Plugins/CS<Name>/` so it can be catalogued.
   - Text contributed there has no em dashes and no emojis.
 
+## ffmpeg
+
+- **What:** records the game window and cuts the scripted play-tests into clips and contact sheets (`tools/ue/playtest.ps1`). screencast-mcp needs it too.
+- **Install:** `winget install Gyan.FFmpeg` (ffmpeg and ffprobe on `PATH`; version 8 or newer).
+- **Env names:** none (`FFMPEG_PATH` is screencast-mcp's, not the script's).
+- **Used by:** play-test a build (skill `playtest`).
+- **Limits:** gdigrab records the screen area the window covers, so the desktop must be unlocked. The script keeps the game window on top while it records and cuts the recording at the game's last event, so nothing else on the screen is kept.
+
 ## gh (GitHub CLI)
 
 - **What:** the GitHub command line, used for Issues, Releases and Actions runs.
@@ -100,5 +108,5 @@ Not external, but the other half of every routine:
 
 - `uv run --project tools python -m og <secrets|assets|decisions|session|milestone|site>`: deterministic parts (scans, ledgers, devlog, site build). `og check` runs the repo checks (secrets scan, asset licenses, decisions consistency); the pre-commit hook, CI and release gates 7 and 8 all call it, so the list lives in one place (`tools/og/__main__.py`).
 - `tools/blender/run.ps1`: runs a Blender Python script headless (`pwsh -NoProfile -File tools/blender/run.ps1 -Script <script.py> [-Blend <file.blend>] [-- <script args>]`). Factory settings, so no user add-ons; an uncaught Python error gives a non-zero exit. Env name: `BLENDER_PATH` (default is the Blender 5.1 install). Used by the base character build and its tests.
-- `tools/ue/*.ps1`: build, test, package and capture for the Unreal project. Env name: `UE_ROOT` (see `.env.example`).
+- `tools/ue/*.ps1`: build, test, package, capture and play-test for the Unreal project (`playtest.ps1 [-Scenario locomotion,stance,punch,knockdown,fight] [-Target Packaged]` writes clips, sheets and `summary.md` to `_scratch/playtest/`). Env name: `UE_ROOT` (see `.env.example`). A new source file is sometimes missed by the build tool, which says "Target is up to date": touch the module's `.Build.cs` and build again.
 - `tools/steam/release.ps1`: the gated Steam release. Env names: `STEAM_APPID`, `STEAM_DEPOT_WIN`, `STEAM_BUILD_ACCOUNT`, `STEAMCMD_PATH`. Claude Code runs uploads to the `development` branch (decision 0014); recording a promotion to `default` is refused inside Claude Code and stays with the owner.

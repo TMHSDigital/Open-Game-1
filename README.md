@@ -2,9 +2,9 @@
 
 # Combat Simulator
 
-**A moddable physics sandbox for Steam, built in public with Unreal Engine 5.8.**
+**A moddable, physics-driven combat simulator for Steam, built in public with Unreal Engine 5.8.**
 
-Every design decision, every work session and every Steam build is recorded in this repository as it happens, and published to a devlog that anyone can follow. The game is at its very start: one faceless character that walks, runs, jumps and falls over on an empty plane.
+Every design decision, every work session and every Steam build is recorded in this repository as it happens, and published to a devlog that anyone can follow. The game is an early prototype: a faceless, physically simulated character that moves, punches, blocks and dodges, against dummies that stand and take hits or fight back, in short simulation runs that are set up, played and measured.
 
 <br />
 
@@ -20,11 +20,11 @@ Every design decision, every work session and every Steam build is recorded in t
 
 <br />
 
-<img src="docs/devlog/media/2026-11-22-03/tp-owner-shoulder.webp" width="640" alt="A plain white faceless character seen from behind, standing on a flat grey grid plane under a blue sky." />
+<img src="docs/devlog/media/2026-11-25-04/plane-overview.webp" width="640" alt="A plain white faceless character on a flat grey grid plane, facing an orange-tinted copy of itself that stands on a marked square." />
 
-<sub>Session 2: the base character on the start plane. The same fixed cameras photograph the game every session, so the <a href="https://tmhsdigital.github.io/Open-Game-1/gallery.html">gallery</a> becomes a time-lapse of the game taking shape.</sub>
+<sub>The start plane: the player and a target dummy. The same fixed cameras photograph the game every session, so the <a href="https://tmhsdigital.github.io/Open-Game-1/gallery.html">gallery</a> becomes a time-lapse of the game taking shape.</sub>
 
-[Status](#status) · [Follow along](#follow-along) · [How it is built](#how-it-is-built) · [Open questions](#open-questions) · [Repository map](#repository-map) · [Setting up a clone](#setting-up-a-clone) · [License](#license)
+[Status](#status) · [In the build](#in-the-build) · [Follow along](#follow-along) · [How it is built](#how-it-is-built) · [Open questions](#open-questions) · [Repository map](#repository-map) · [Setting up a clone](#setting-up-a-clone) · [License](#license)
 
 </div>
 
@@ -32,11 +32,30 @@ Every design decision, every work session and every Steam build is recorded in t
 
 | | |
 |---|---|
-| **Phase** | Pre-production. The framework is finished; the base character and its movement are built and being tuned. No gameplay yet. |
-| **Engine** | Unreal Engine 5.8, C++ project in [`Game/`](Game/): a blank plane with one character, a movement gym and a capture stage |
-| **Current goal** | [Decision 0011](docs/decisions/0011-start-with-a-blank-plane-and-one-base-character-movement-fee.md): a blank plane and one base character, movement feel first |
-| **Steam** | Build 0.1.2 is live on the private development branch; the game is not publicly available yet ([setup checklist](docs/steam/SETUP-CHECKLIST.md), [build history](https://tmhsdigital.github.io/Open-Game-1/builds.html)) |
-| **Latest devlog** | [Session 2: base character and movement feel](docs/devlog/2026-11-22-03-session-2-base-character-and-movement-fe.md) |
+| **Phase** | Early prototype. Movement, a physics body that staggers and falls, simulation runs, a punch, a block and a dodge, and an opponent that fights back. Stand-in animation clips, no art direction yet. |
+| **Engine** | Unreal Engine 5.8, C++ project in [`Game/`](Game/): a start plane, a movement gym and a capture stage |
+| **Latest block** | [Decision 0019](docs/decisions/0019-next-block-an-opponent-that-fights-back-with-a-block-and-a-d.md): an opponent that fights back, with a block and a dodge |
+| **Steam** | Build 0.1.10 is live on the private development branch; the game is not publicly available yet ([setup checklist](docs/steam/SETUP-CHECKLIST.md), [build history](https://tmhsdigital.github.io/Open-Game-1/builds.html)) |
+| **Latest devlog** | [An opponent that fights back](docs/devlog/2026-11-25-04-an-opponent-that-fights-back-a-patterned.md) |
+
+## In the build
+
+- **A character with weight.** Walk, jog, a sprint that builds up, crouch and jump, with first and third person on one key. The upper body is simulated: hits stagger it, big ones knock it down, and it gets back up.
+- **Simulation runs.** The pause screen's Run tab sets a run up: the map, how many dummies, where they stand, whether they stand still or fight back and how long their wind-up is, ball launchers, a time limit and a knockdown goal. A run ends with its results: hits dealt and taken, punches landed and blocked, their punches, dodges.
+- **A punch, a block and a dodge.** The punch goes for the nearest opponent in front of you and steps in when it is out of reach. Near an opponent you face it and back off slower. The block takes most of a hit from in front; the dodge is a quick step with no immunity.
+- **An opponent that fights back.** It closes in, draws its fist back slowly (its tell), punches, backs off and circles. It waits while you are down.
+
+| Do | Keyboard and mouse | Gamepad |
+|---|---|---|
+| Move, look | WASD, mouse | Left stick, right stick |
+| Punch | Left mouse | Right trigger |
+| Block (hold) | Right mouse | Left trigger |
+| Dodge | Q | X / left face button |
+| Jump, sprint, walk, crouch | Space, Left Shift, Left Alt, Left Ctrl | A, L3, LB, B |
+| First or third person | V | R3 |
+| Pause screen (runs, settings, tuning, keys) | Escape or Tab | Start |
+
+The dev keys (overlay, ragdoll, push, throw, reset, map switch) and the tuning tab are listed in [`docs/WORKFLOWS.md`](docs/WORKFLOWS.md#tune-character-movement).
 
 ## Follow along
 
@@ -70,6 +89,7 @@ flowchart LR
 
 - **Decisions are written down before they are acted on.** Open questions live in [`docs/OPEN-DECISIONS.md`](docs/OPEN-DECISIONS.md) and as Issues. Settled ones become numbered records in [`docs/decisions/`](docs/decisions/), listing only the options that were actually weighed.
 - **Sessions leave a record.** A session ends with a devlog entry, fixed-camera stills of the current build and, when recorded, a short clip. Anything captured from the desktop is checked for secrets before it can be published.
+- **The game is play-tested on a recording.** The game plays itself through scripted scenarios (moving, the combat stance, punches, knockdowns, a fight) with a camera that frames the whole body, and logs what happened. A script records it and cuts a clip, a contact sheet and a summary for each segment, so a change is judged by watching it, not only by tests.
 - **Releases are gated.** One local command checks the tree, runs the tests, scans for secrets, packages a Shipping build, uploads it to Steam's password-protected `development` branch and records it. Promotion to the public `default` branch is always done by hand in Steamworks.
 - **Nothing private gets in.** A secrets scanner runs before every commit (through the commit hook, see [Setting up a clone](#setting-up-a-clone)), in CI and before every release. Steam App and Depot IDs, keys, account names, unpublished release notes and Steamworks partner-page screenshots never enter the repository.
 - **Third-party assets are license-checked.** Each one is recorded in a ledger with its source and license; anything non-commercial, no-derivatives, share-alike or GPL-family is refused, and [`CREDITS.md`](CREDITS.md) is generated from the ledger.
@@ -82,7 +102,8 @@ The details, step by step: [`docs/WORKFLOWS.md`](docs/WORKFLOWS.md). The tools b
 |---|---|
 | [Unreal Engine 5.8](https://www.unrealengine.com/) and Unreal MCP | The game, automation tests, fixed-camera captures |
 | [Blender](https://www.blender.org/) with [Blender-Developer-Tools](https://github.com/TMHSDigital/Blender-Developer-Tools) | Models and the Blender to Unreal export pipeline |
-| [screencast-mcp](https://github.com/TMHSDigital/screencast-mcp) | Session recordings, contact sheets, redaction |
+| [screencast-mcp](https://github.com/TMHSDigital/screencast-mcp) | Session recordings, contact sheets, redaction, frame-by-frame review of play-tests |
+| [ffmpeg](https://ffmpeg.org/) | Recording and cutting the scripted play-tests (`tools/ue/playtest.ps1`) |
 | [steam-mcp](https://github.com/TMHSDigital/steam-mcp) and steamcmd | Steam branch and build checks, SteamPipe uploads |
 | [Free-Game-Dev-Assets](https://github.com/TMHSDigital/Free-Game-Dev-Assets) | Finding free, commercially usable assets |
 | `og` (in [`tools/og/`](tools/og/)) | Secrets scan, asset ledger, decisions, sessions, the devlog site |
@@ -103,14 +124,14 @@ The game's design is being worked out in the open. The current questions, each w
 ## Repository map
 
 ```
-Game/             Unreal Engine 5.8 project (C++ module CombatSimulator, CSCharacter plugin, dev-only CSCapture module)
+Game/             Unreal Engine 5.8 project (C++ module CombatSimulator with runs, the opponent, hit feedback and the play-test runner; CSCharacter plugin with the character, its physics body, punch and guard; dev-only CSCapture module)
 Art/              Blender sources (the base character is built by script)
 docs/decisions/   Numbered decision records
 docs/devlog/      Session entries and their images
 docs/captures/    Fixed-camera definitions and capture index
 docs/steam/       Setup checklist, build history, release workflow
 tools/og/         Python tooling: secrets, assets, decisions, sessions, site
-tools/ue/         Build, test, package and capture scripts
+tools/ue/         Build, test, package, capture and play-test scripts
 tools/steam/      Gated Steam release script and its tests
 steam/templates/  SteamPipe build configs (no IDs)
 site/             Devlog site templates
