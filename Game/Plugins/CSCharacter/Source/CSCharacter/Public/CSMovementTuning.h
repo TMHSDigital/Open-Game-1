@@ -504,8 +504,8 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Stamina", meta = (UIMin = "10", UIMax = "300"))
 	float StaminaMax = 100.f;
 
-	/** Recovered per second once StaminaRegenDelay has passed since the last spend. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Stamina", meta = (UIMin = "0", UIMax = "100"))
+	/** Recovered per second once StaminaRegenDelay has passed since the last spend; at least 1, or an exhausted guard never comes back. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Stamina", meta = (UIMin = "1", UIMax = "100"))
 	float StaminaRegen = 25.f;
 
 	/** Seconds after spending before stamina starts to come back. */

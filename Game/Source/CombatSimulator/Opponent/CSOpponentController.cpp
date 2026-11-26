@@ -206,7 +206,9 @@ void ACSOpponentController::Tick(float DeltaSeconds)
 		{
 			Cost += Strike ? Strike->GetMoveData(Move).StaminaCost : 0.f;
 		}
-		if (const UCSStaminaComponent* Stamina = Self->GetStamina(); Stamina && !Stamina->CanAfford(Cost))
+		// Never more than full: a sequence that costs more than the maximum would otherwise never start.
+		const UCSStaminaComponent* Stamina = Self->GetStamina();
+		if (Stamina && !Stamina->CanAfford(FMath::Min(Cost, Stamina->GetMax())))
 		{
 			Enter(ECSOpponentState::BackOff);
 			break;

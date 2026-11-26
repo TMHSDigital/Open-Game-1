@@ -116,7 +116,8 @@ namespace
 		{TEXT("DodgeSeconds"), TEXT("Defence"), TEXT("s"), 0.f, 1.f, 0.01f},
 		{TEXT("DodgeCooldownSeconds"), TEXT("Defence"), TEXT("s"), 0.f, 3.f, 0.05f},
 		{TEXT("StaminaMax"), TEXT("Stamina"), TEXT(""), 10.f, 300.f, 5.f},
-		{TEXT("StaminaRegen"), TEXT("Stamina"), TEXT("/s"), 0.f, 100.f, 1.f},
+		// At least 1 a second: at 0 an exhausted character would never get its guard back.
+		{TEXT("StaminaRegen"), TEXT("Stamina"), TEXT("/s"), 1.f, 100.f, 1.f},
 		{TEXT("StaminaRegenDelay"), TEXT("Stamina"), TEXT("s"), 0.f, 3.f, 0.05f},
 		{TEXT("TiredStrikeScale"), TEXT("Stamina"), TEXT("x"), 0.2f, 1.f, 0.01f},
 		{TEXT("BlockStaminaCost"), TEXT("Stamina"), TEXT("per cm/s"), 0.f, 0.5f, 0.005f},
