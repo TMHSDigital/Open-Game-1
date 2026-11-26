@@ -13,7 +13,9 @@ clip: null
 
 ## Narrative
 
-<!-- narrative -->
+The owner's rule, after the README went stale for several sessions: the docs are brought up to date every session, not only when asked. It is now part of the routine and checked by the tooling. The session skill and WORKFLOWS have an "update the docs" step before a session ends. `og session end` refuses to end a session, writing nothing, when the README's status does not link the newest decision, name the newest Steam build or link the session's own devlog entry, or when code or tools changed during the session and no doc did. Only the owner can waive it, with `--docs-ok`. Five tests cover it. This session was the first to end through the check.
+
+A release can only run with no session open, because the open session's devlog stub fails the release's clean-tree gate. So a new build is written into the README by the next session, and the check makes sure that happens.
 
 ## Changes
 
