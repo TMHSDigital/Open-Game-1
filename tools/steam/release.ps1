@@ -326,12 +326,28 @@ function New-Deployment([string]$Environment, [string]$Ref, [string]$Description
 # Gates 7 and 8 run `og check`, the one list of repo checks that the hook and CI also use.
 function Get-OgSecretsCommand { @('uv', 'run', '--project', $ToolsDir, 'python', '-m', 'og', 'check', '--only', 'secrets') }
 
-function Save-LedgerCommit([string]$Message) {
+# The README's status names the build live on the development branch ("Build X.Y.Z is live on the
+# private development branch"); the docs check fails when it lags the ledger. Kept in step here, in
+# the same commit as the ledger row. Returns the README's repo-relative path when it changed.
+function Update-ReadmeBuild([string]$Version) {
+    $readme = Join-Path $RepoDir 'README.md'
+    if (-not (Test-Path -LiteralPath $readme)) { return $null }
+    $text = [IO.File]::ReadAllText($readme)
+    $pattern = 'Build \d+\.\d+\.\d+ is live on the private development branch'
+    if ($text -notmatch $pattern) { return $null }
+    $new = [regex]::Replace($text, $pattern, "Build $Version is live on the private development branch")
+    if ($new -eq $text) { return $null }
+    [IO.File]::WriteAllText($readme, $new, [Text.UTF8Encoding]::new($false))
+    return 'README.md'
+}
+
+function Save-LedgerCommit([string]$Message, [string[]]$Also = @()) {
     if ($SkipGitGates) { Write-Host "Ledger updated (not committed: -SkipGitGates): $LedgerPath"; return }
     $rel = [IO.Path]::GetRelativePath($RepoDir, $LedgerPath)
     if ($rel.StartsWith('..')) { Write-Warning "Ledger $LedgerPath is outside the repo; not committed."; return }
-    Invoke-Git add '--' $rel | Out-Null
-    Invoke-Git commit -q -m $Message '--' $rel | Out-Null
+    $paths = @($rel) + @($Also | Where-Object { $_ })
+    Invoke-Git add '--' @paths | Out-Null
+    Invoke-Git commit -q -m $Message '--' @paths | Out-Null
     Invoke-Git push -q origin HEAD:main | Out-Null
     Write-Host "Committed and pushed the ledger: $Message"
 }
@@ -529,7 +545,8 @@ function Invoke-Upload {
                 development_live_utc = $(if ($setLive) { $now } else { '' }); notes = $Notes }))
     Write-Ledger $ledger
     Write-Host "Uploaded build $buildId ($version, $sha)$(if ($setLive) { ", live on $Branch" } else { ', not set live' }). Ledger: $LedgerPath"
-    try { Save-LedgerCommit "docs: record Steam build $version (BuildID $buildId)" }
+    $readmeChanged = if ($setLive) { Update-ReadmeBuild $version } else { $null }
+    try { Save-LedgerCommit "docs: record Steam build $version (BuildID $buildId)" @($readmeChanged) }
     catch {
         Stop-Release 1 "Upload done as BuildID $buildId; do not re-run. The ledger row is written to $LedgerPath but its commit or push failed: commit and push docs/steam/BUILDS.md by hand, then create the GitHub release if wanted. ($($_.Exception.Message.Trim()))"
     }

@@ -24,6 +24,22 @@ jobs:
       - name: Repo checks (secrets scan of all tracked files, asset licenses, decisions)
         run: uv run --locked --project tools python -m og check --tracked --lfs-pointers-ok
 
+  docs-and-site:
+    # The README and the site are the project's public face: the README's status must name the
+    # newest decision and Steam build, every relative link in the docs must resolve, and the site
+    # must build (the build fails on a broken link). On pull requests too, so a change that would
+    # break the deploy is caught before it reaches main.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+      - name: README status and doc links
+        run: uv run --locked --project tools python -m og docs check
+      - name: Site builds with no broken links
+        run: uv run --locked --project tools python -m og site build --out _site
+
   windows:
     # The release script and its tests are PowerShell and the project's only supported platform is
     # Windows, so they need a Windows runner. No Steam, GitHub or Unreal is touched: the tests use

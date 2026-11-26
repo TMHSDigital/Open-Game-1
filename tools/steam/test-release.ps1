@@ -321,8 +321,15 @@ try {
     Set-Content (Join-Path $fx.Repo '_release\x\post.bbcode') 'draft'
     Set-Content (Join-Path $fx.Repo '_scratch\note.txt') 'scratch'
     Set-Content (Join-Path $fx.Repo '.env') 'UNRELATED_SETTING=1'
+    # A README whose status names the development build, as the real one does.
+    Set-Content (Join-Path $fx.Repo 'README.md') "| **Steam** | Build 0.1.0 is live on the private development branch |"
+    Invoke-Git $fx.Repo add README.md | Out-Null
+    Invoke-Git $fx.Repo commit -q -m 'docs: readme' | Out-Null
+    Invoke-Git $fx.Repo push -q origin HEAD:main | Out-Null
     $r = Invoke-Release @('dev', '-NoGitHub')
     Check 'Review Focus 4: ignored-only dirty tree (_release/x, .env) passes the clean-tree gate' ($r.Code -eq 0) $r.Output
+    $remoteReadme = (Invoke-Git $fx.Remote show 'main:README.md') -join "`n"
+    Check 'dev names the new build in the README, in the ledger commit' ($remoteReadme -match 'Build 0\.1\.1 is live on the private development branch') $remoteReadme
     $steamLog = Get-Content -LiteralPath (Join-Path $fx.Work 'steamcmd.log') -Raw
     $leak = '1234560|1234561|fake_builder|55555555'  # og-secrets: allow (fake test IDs)
     Check 'steamcmd output on the console is masked (no IDs, account name or SteamID)' ($r.Output -notmatch $leak -and $r.Output -match '<STEAM_APPID>' -and $r.Output -match "Logging in user '<STEAM_BUILD_ACCOUNT>'") $r.Output

@@ -3,7 +3,7 @@ import argparse
 import subprocess
 import sys
 
-from og import assets, decisions, secrets, session, site
+from og import assets, decisions, docs, secrets, session, site
 
 # The repo checks, in order. `og check` is the one place this list lives: the pre-commit hook, CI
 # and the release gates all call it, so a check added here runs in all three.
@@ -64,6 +64,7 @@ def main(argv=None) -> int:
     decisions.add_parser(sub)
     session.add_parser(sub)
     site.add_parser(sub)
+    docs.add_parser(sub)
     _add_check_parser(sub)
     args = parser.parse_args(argv)
     try:

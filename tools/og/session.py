@@ -19,7 +19,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from og import gh, secrets
+from og import docs, gh, secrets
 from og.devlog import to_webp
 
 PKG_ROOT = Path(__file__).resolve().parents[2]
@@ -319,16 +319,8 @@ def stale_docs(repo: Path, state: dict) -> list[str]:
     if not readme.is_file():
         return []
     text = readme.read_text("utf-8")
-    problems: list[str] = []
-    decisions = sorted(p.name for p in (repo / "docs" / "decisions").glob("[0-9][0-9][0-9][0-9]-*.md"))
-    if decisions and decisions[-1] not in text:
-        problems.append(f"README.md does not link the newest decision ({decisions[-1]}).")
-    builds = repo / "docs" / "steam" / "BUILDS.md"
-    if builds.is_file():
-        rows = [line.split("|")[1].strip() for line in builds.read_text("utf-8").splitlines()
-                if re.match(r"^\|\s*\d+\.\d+\.\d+\s*\|", line)]
-        if rows and f"Build {rows[-1]} " not in text:
-            problems.append(f"README.md does not name the newest Steam build ({rows[-1]}).")
+    # The newest decision and build, and the docs' links: the same checks CI runs (og docs check).
+    problems: list[str] = docs.check(repo)
     entry = f"docs/devlog/{state['id']}-{state.get('slug', '')}.md"
     if state.get("slug") and entry not in text:
         problems.append(f"README.md's latest devlog is not this session's entry ({entry}).")

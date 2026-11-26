@@ -114,7 +114,7 @@ Skill: `release` (reference: `docs/steam/BUILD-WORKFLOW.md`). Script: `tools/ste
 3. Fix whichever gate failed (exit code `10 + n` is gate n); the tree must be committed and pushed before a real run.
 4. Play-test the packaged build the dry run made: `pwsh tools/ue/playtest.ps1 -Target Packaged` (skill `playtest`), with the desktop unlocked, and look at `summary.md` and the sheets. A recording of the lock screen has valid numbers but nothing to look at; say so rather than call it reviewed.
 5. Claude runs `pwsh tools/steam/release.ps1 dev` (`upload-only` for a first build). Since decision 0014 development uploads are Claude's job; the owner can still run the same command. Setting `default` live and `promoted` stay with the owner.
-6. On success the script commits a row to `docs/steam/BUILDS.md`, creates a `v<ver>` prerelease and a `steam-development` deployment with `gh`, and pushes. If steamcmd printed an error or no BuildID, nothing is recorded.
+6. On success the script commits a row to `docs/steam/BUILDS.md` (and, for `dev`, updates the README's "Build X.Y.Z is live on the private development branch" in the same commit), creates a `v<ver>` prerelease and a `steam-development` deployment with `gh`, and pushes. If steamcmd printed an error or no BuildID, nothing is recorded.
 
 ## Promote
 
