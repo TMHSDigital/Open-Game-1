@@ -229,15 +229,48 @@ function ConvertTo-VdfPath([string]$Path, [switch]$Folder) {
     $p
 }
 
-# Branch name -> BuildID from steamcmd app_info_print output.
-function Get-SteamBranchBuilds([string[]]$Lines) {
+# Branch name -> @{ BuildId; Password } from steamcmd app_info_print output. Each branch's block is
+# read to its matching brace, so a nested block inside it does not hide its buildid. A
+# password-protected branch can come without a buildid (Steam keeps it encrypted): BuildId is then
+# empty and Password true.
+function Get-SteamBranchInfo([string[]]$Lines) {
     $text = $Lines -join "`n"
-    $at = $text.IndexOf('"branches"')
     $result = @{}
+    $at = $text.IndexOf('"branches"')
     if ($at -lt 0) { return $result }
-    foreach ($m in [regex]::Matches($text.Substring($at), '"([^"]+)"\s*\{[^{}]*?"buildid"\s*"(\d+)"')) {
-        $result[$m.Groups[1].Value] = $m.Groups[2].Value
+    $open = $text.IndexOf('{', $at)
+    if ($open -lt 0) { return $result }
+    $depth = 0; $name = $null; $start = 0
+    for ($i = $open; $i -lt $text.Length; $i++) {
+        $c = $text[$i]
+        if ($c -eq '"') {
+            # A quoted string is skipped whole (a description may hold a brace); at the top it names a branch.
+            $end = $text.IndexOf('"', $i + 1)
+            if ($end -lt 0) { break }
+            if ($depth -eq 1) { $name = $text.Substring($i + 1, $end - $i - 1) }
+            $i = $end
+        }
+        elseif ($c -eq '{') { $depth++; if ($depth -eq 2) { $start = $i } }
+        elseif ($c -eq '}') {
+            if ($depth -eq 2 -and $name) {
+                $body = $text.Substring($start, $i - $start + 1)
+                # The branch's own keys only: drop nested blocks before looking.
+                while ($body -match '\{[^{}]*\{[^{}]*\}') { $body = $body -replace '(\{[^{}]*)\{[^{}]*\}', '$1' }
+                $build = if ($body -match '"buildid"\s*"(\d+)"') { $Matches[1] } else { '' }
+                $result[$name] = [pscustomobject]@{ BuildId = $build; Password = ($body -match '"pwdrequired"\s*"1"') }
+                $name = $null
+            }
+            $depth--
+            if ($depth -eq 0) { break }
+        }
     }
+    $result
+}
+
+# Branch name -> BuildID, for the branches whose build steamcmd shows.
+function Get-SteamBranchBuilds([string[]]$Lines) {
+    $result = @{}
+    foreach ($e in (Get-SteamBranchInfo $Lines).GetEnumerator()) { if ($e.Value.BuildId) { $result[$e.Key] = $e.Value.BuildId } }
     $result
 }
 
@@ -588,7 +621,7 @@ function Invoke-Status {
     Write-Host ''
     if (-not $reason) {
         $run = Invoke-SteamCmdQuiet @('+@NoPromptForPassword', '1', '+login', $env:STEAM_BUILD_ACCOUNT, '+app_info_update', '1', '+app_info_print', $env:STEAM_APPID, '+quit')
-        $steam = Get-SteamBranchBuilds $run.Lines
+        $steam = Get-SteamBranchInfo $run.Lines
         if ($run.Code -ne 0) { $reason = "steamcmd exited $($run.Code); is steamcmd logged in? Run steamcmd once in your terminal." }
         elseif (($run.Lines -join "`n") -notmatch '"branches"') { $reason = 'steamcmd printed no branches block for the app.' }
     }
@@ -601,7 +634,16 @@ function Invoke-Status {
         foreach ($b in $expected.Keys) {
             $steamName = if ($b -eq 'default') { 'public' } else { $b }
             $want = if ($expected[$b]) { $expected[$b].build_id } else { '' }
-            $have = if ($steam.ContainsKey($steamName)) { $steam[$steamName] } else { '' }
+            $info = if ($steam.ContainsKey($steamName)) { $steam[$steamName] } else { $null }
+            $have = if ($info) { $info.BuildId } else { '' }
+            # A password-protected branch's build is not shown to steamcmd (or the branch is left out
+            # entirely): that cannot be checked here, and is not a mismatch. The public branch always is.
+            $hidden = $steamName -ne 'public' -and ((-not $info) -or ($info.Password -and -not $info.BuildId))
+            if ($hidden) {
+                $why = if ($info) { 'password-protected: Steam does not show its build' } else { 'Steam does not report this branch' }
+                Write-Host ("  {0,-13} {1,-11} ?  ({2}; check it in the Steam client)" -f $b, $(if ($want) { $want } else { '-' }), $why)
+                continue
+            }
             $flag = if ($want -ne $have) { '  MISMATCH' } else { '' }
             Write-Host ("  {0,-13} {1,-11} {2}{3}" -f $b, $(if ($want) { $want } else { '-' }), $(if ($have) { $have } else { '-' }), $flag)
             if ($flag) { Write-Host "  MISMATCH on ${b}: the ledger says $(if ($want) { "BuildID $want" } else { 'nothing live' }), Steam says $(if ($have) { "BuildID $have" } else { 'nothing live' })." }

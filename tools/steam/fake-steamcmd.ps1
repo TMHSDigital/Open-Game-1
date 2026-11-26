@@ -6,7 +6,9 @@
 #   no-buildid   looks successful, exit 0, but prints no BuildID
 #   bad-branch   uploads (BuildID printed) but cannot set the build live: the branch does not exist
 # FAKE_STEAMCMD_BUILDID   BuildID to print (default 98765)
-# FAKE_STEAMCMD_BRANCHES  for +app_info_print: "public=100,development=200" (branch=buildid pairs)
+# FAKE_STEAMCMD_BRANCHES  for +app_info_print: "public=100,development=200" (branch=buildid pairs);
+#                         "development=pwd" a password-protected branch with no buildid shown,
+#                         "development=200+nested" a nested block ahead of the buildid
 # FAKE_STEAMCMD_INFO      for +app_info_print: 'fail' (error, exit 5) or 'nobranches' (no branches block)
 # FAKE_STEAMCMD_LOG       if set, each invocation's arguments are appended to this file
 
@@ -35,7 +37,24 @@ if ($args -contains '+app_info_print') {
         $name, $build = $pair -split '=', 2
         Write-Output "`t`t`t`"$name`""
         Write-Output "`t`t`t{"
-        Write-Output "`t`t`t`t`"buildid`"`t`t`"$build`""
+        if ($build -eq 'pwd') {
+            # Password-protected, build not shown: a nested block and a brace in a description, no buildid.
+            Write-Output "`t`t`t`t`"description`"`t`t`"testers {only}`""
+            Write-Output "`t`t`t`t`"pwdrequired`"`t`t`"1`""
+            Write-Output "`t`t`t`t`"extra`""
+            Write-Output "`t`t`t`t{"
+            Write-Output "`t`t`t`t`t`"buildid`"`t`t`"1`""
+            Write-Output "`t`t`t`t}"
+        }
+        elseif ($build.EndsWith('+nested')) {
+            # A nested block ahead of the buildid.
+            Write-Output "`t`t`t`t`"extra`""
+            Write-Output "`t`t`t`t{"
+            Write-Output "`t`t`t`t`t`"note`"`t`t`"x`""
+            Write-Output "`t`t`t`t}"
+            Write-Output "`t`t`t`t`"buildid`"`t`t`"$($build -replace '\+nested$', '')`""
+        }
+        else { Write-Output "`t`t`t`t`"buildid`"`t`t`"$build`"" }
         Write-Output "`t`t`t`t`"timeupdated`"`t`t`"1700000000`""
         Write-Output "`t`t`t}"
     }

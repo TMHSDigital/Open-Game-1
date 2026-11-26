@@ -558,6 +558,16 @@ try {
     $r = Invoke-Release @('status') @{ FAKE_STEAMCMD_BRANCHES = 'public=98765,development=98765' }
     Check 'status: no mismatch when they agree' ($r.Code -eq 0 -and $r.Output -notmatch 'MISMATCH') $r.Output
     Check 'status: lists open SETUP-CHECKLIST items only' ($r.Output -match 'Add the depot' -and $r.Output -match 'Build account' -and $r.Output -notmatch 'Create the app') $r.Output
+    $r = Invoke-Release @('status') @{ FAKE_STEAMCMD_BRANCHES = 'public=98765,development=11111' }
+    Check 'status: a development build that differs is still a mismatch' ($r.Code -eq 0 -and $r.Output -match 'MISMATCH on development') $r.Output
+    $r = Invoke-Release @('status') @{ FAKE_STEAMCMD_BRANCHES = 'public=98765,development=pwd' }
+    Check 'status: a password-protected branch with no build shown is not a mismatch' ($r.Code -eq 0 -and $r.Output -notmatch 'MISMATCH' -and $r.Output -match 'password-protected') $r.Output
+    $r = Invoke-Release @('status') @{ FAKE_STEAMCMD_BRANCHES = 'public=98765' }
+    Check 'status: a branch Steam leaves out is reported as such, not a mismatch' ($r.Code -eq 0 -and $r.Output -notmatch 'MISMATCH' -and $r.Output -match 'does not report this branch') $r.Output
+    $r = Invoke-Release @('status') @{ FAKE_STEAMCMD_BRANCHES = 'public=98765+nested,development=98765+nested' }
+    Check 'status: a nested block ahead of the buildid is read' ($r.Code -eq 0 -and $r.Output -notmatch 'MISMATCH' -and $r.Output -notmatch '\?  \(') $r.Output
+    $r = Invoke-Release @('status') @{ FAKE_STEAMCMD_BRANCHES = 'development=98765' }
+    Check 'status: the public branch missing is still a mismatch' ($r.Code -eq 0 -and $r.Output -match 'MISMATCH on default') $r.Output
     $statusLog = Join-Path $fx.Root 'status-args.log'
     $r = Invoke-Release @('status') @{ FAKE_STEAMCMD_BRANCHES = 'public=98765,development=98765'; FAKE_STEAMCMD_LOG = $statusLog }
     Check 'status: steamcmd never prompts for a password' ((Test-Path -LiteralPath $statusLog) -and (Get-Content -LiteralPath $statusLog -Raw) -match '\+@NoPromptForPassword 1') $r.Output
