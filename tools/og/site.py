@@ -1,4 +1,4 @@
-"""Static public site: devlog timeline, gallery, decisions and Steam builds.
+"""Static public site: a home page for the game, the devlog timeline, gallery, decisions and Steam builds.
 
 `og site build --out _site` reads docs/ and writes plain HTML (no JS framework, no external
 requests, relative links only). Templates live in the repo's site/templates, so the generator
@@ -65,11 +65,30 @@ def parse_front(text: str) -> tuple[dict, str]:
     return meta, text[m.end():]
 
 
+DESCRIPTION = ("Combat Simulator, a physics-driven combat simulator for Steam built in public with "
+               "Unreal Engine 5.8: every decision, work session and build is published here.")
+
+
+def readme_section(text: str, heading: str) -> str:
+    """The markdown under `## <heading>` in a README, up to the next `## ` heading; empty if absent."""
+    m = re.search(rf"^## {re.escape(heading)}\s*$(.*?)(?=^## |\Z)", text, re.M | re.S)
+    return m.group(1).strip() if m else ""
+
+
 class _Site:
     def __init__(self, repo: Path, out: Path, site_dir: Path):
         self.repo, self.out, self.site_dir = repo, out, site_dir
         self.docs = repo / "docs"
         self.skipped: list[str] = []  # devlog files left out because their front matter is bad
+        self.pages: list[str] = []  # every page written, for the sitemap
+        slug = gh.repo_slug(repo)
+        # The published address (a project site under /<repo>/), for absolute links: the feed,
+        # social previews and the sitemap. Empty without a GitHub origin (a test fixture).
+        self.base = ""
+        if slug:
+            owner, name = slug.split("/", 1)
+            self.base = f"https://{owner.lower()}.github.io/{name}/"
+        self.slug = slug
 
     def fix_links(self, body: str, src_dir: str) -> str:
         """Rewrite relative links to .md files in a rendered page one level below the site root.
@@ -97,14 +116,32 @@ class _Site:
     def template(self, name: str) -> str:
         return (self.site_dir / "templates" / f"{name}.html").read_text("utf-8")
 
-    def page(self, rel: str, title: str, template: str, values: dict[str, str]) -> None:
+    def page(self, rel: str, title: str, template: str, values: dict[str, str],
+             description: str = DESCRIPTION, nav: str = "") -> None:
         root = "../" * rel.count("/")
         content = _fill(self.template(template), {**values, "root": root})
-        text = _fill(self.template("base"), {"title": _esc(title), "root": root,
-                                              "content": content})
+        # Social previews need absolute addresses; without a published base they are left out.
+        social = ""
+        if self.base:
+            image = f"{self.base}static/img/fight-kick.webp"
+            social = (f'<meta property="og:type" content="website">\n'
+                      f'<meta property="og:site_name" content="Combat Simulator">\n'
+                      f'<meta property="og:title" content="{_esc(title)}">\n'
+                      f'<meta property="og:description" content="{_esc(description)}">\n'
+                      f'<meta property="og:url" content="{_esc(self.base + rel)}">\n'
+                      f'<meta property="og:image" content="{_esc(image)}">\n'
+                      f'<meta name="twitter:card" content="summary_large_image">')
+        repo_link = (f'<a href="https://github.com/{self.slug}">Source on GitHub</a>' if self.slug else "")
+        text = _fill(self.template("base"), {"title": _esc(title), "root": root, "content": content,
+                                              "description": _esc(description), "social": social,
+                                              "repo": repo_link})
+        # The current section is marked in the navigation, for the eye and for screen readers.
+        if nav:
+            text = text.replace(f'data-nav="{nav}"', f'data-nav="{nav}" aria-current="page"', 1)
         dest = self.out / rel
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(text, "utf-8", newline="\n")
+        self.pages.append(rel)
 
     def read(self, rel: str) -> str:
         p = self.docs / rel
@@ -137,27 +174,32 @@ class _Site:
         out.sort(key=lambda e: str(e["id"]), reverse=True)
         return out
 
-    def devlog(self) -> None:
+    @staticmethod
+    def timeline(entries: list[dict]) -> str:
+        """The devlog list: goal, date, decisions touched, cameras and clip, newest first."""
+        if not entries:
+            return '<p class="empty">No sessions yet.</p>'
+        items = []
+        for e in entries:
+            bits = [_esc(e["date"])]
+            if e.get("decisions"):
+                bits.append("decisions: " + _esc(", ".join(e["decisions"])))
+            if e.get("cameras"):
+                bits.append(f"{len(e['cameras'])} camera(s)")
+            if e.get("clip"):
+                bits.append(f'<a href="{_esc(e["clip"])}">clip</a>')
+            items.append(
+                f'<li><a href="devlog/{_esc(e["id"])}.html">{_esc(e.get("goal") or e["id"])}'
+                f'</a><br><span class="meta">{" | ".join(bits)}</span></li>')
+        return '<ul class="timeline">\n' + "\n".join(items) + "\n</ul>"
+
+    def devlog(self) -> list[dict]:
         entries = self.entries()
         self.feed(entries)
-        if entries:
-            items = []
-            for e in entries:
-                bits = [_esc(e["date"])]
-                if e.get("decisions"):
-                    bits.append("decisions: " + _esc(", ".join(e["decisions"])))
-                if e.get("cameras"):
-                    bits.append(f"{len(e['cameras'])} camera(s)")
-                if e.get("clip"):
-                    bits.append(f'<a href="{_esc(e["clip"])}">clip</a>')
-                items.append(
-                    f'<li><a href="devlog/{_esc(e["id"])}.html">{_esc(e.get("goal") or e["id"])}'
-                    f'</a><br><span class="meta">{" | ".join(bits)}</span></li>')
-            listing = '<ul class="timeline">\n' + "\n".join(items) + "\n</ul>"
-        else:
-            listing = '<p class="empty">No sessions yet.</p>'
-        self.page("index.html", "Devlog", "index",
-                  {"entries": listing, "milestones": self.milestones()})
+        self.page("devlog.html", "Devlog", "devlog",
+                  {"entries": self.timeline(entries), "milestones": self.milestones()},
+                  "Every work session on Combat Simulator, newest first: the goal, what changed, the "
+                  "decisions it touched and the captures of the build.", nav="devlog")
         for e in entries:
             meta = [_esc(e["date"])]
             for k in ("start_sha", "end_sha"):
@@ -168,18 +210,16 @@ class _Site:
             body = self.fix_links(_render_md(e["body"]), "docs/devlog").replace(
                 'src="media/', 'src="../media/')
             self.page(f"devlog/{e['id']}.html", str(e.get("goal") or e["id"]), "entry",
-                      {"meta": " | ".join(meta), "body": body})
+                      {"meta": " | ".join(meta), "body": body},
+                      f"Combat Simulator devlog, session {e['id']}: {e.get('goal') or ''}", nav="devlog")
+        return entries
 
     def feed(self, entries: list[dict]) -> None:
         """feed.xml: an Atom feed of the devlog, newest first, so the build can be followed
         without a GitHub account. Feed links must be absolute, so the Pages address is derived
         from the origin; with no GitHub origin an empty feed is written (the link in every
         page still resolves)."""
-        slug = gh.repo_slug(self.repo)
-        base = ""
-        if slug:
-            owner, name = slug.split("/", 1)
-            base = f"https://{owner.lower()}.github.io/{name}/"
+        base = self.base
         newest = sorted(entries, key=lambda e: (str(e["date"]), str(e["id"])), reverse=True)[:30]
         items = []
         for e in newest if base else []:
@@ -212,7 +252,7 @@ class _Site:
         for p in pages:
             body = self.fix_links(_render_md(p.read_text("utf-8")), "docs/milestones").replace(
                 'src="../../docs/devlog/media/', 'src="../media/')
-            self.page(f"milestones/{p.stem}.html", p.stem, "entry", {"meta": "", "body": body})
+            self.page(f"milestones/{p.stem}.html", p.stem, "entry", {"meta": "", "body": body}, nav="devlog")
             items.append(f'<li><a href="milestones/{_esc(p.stem)}.html">{_esc(p.stem)}</a></li>')
         return '<ul class="timeline">\n' + "\n".join(items) + "\n</ul>"
 
@@ -241,7 +281,9 @@ class _Site:
                     f' aria-label="Shot date for {_esc(cam)}">\n'
                     f'<p class="when">{_esc(last["date"])}</p>\n</section>')
             body = "\n".join(rows)
-        self.page("gallery.html", "Gallery", "gallery", {"cameras": body})
+        self.page("gallery.html", "Gallery", "gallery", {"cameras": body},
+                  "The same fixed cameras photograph Combat Simulator every session: step through each "
+                  "camera's shots to watch the game take shape.", nav="gallery")
 
     # ---- decisions ----
 
@@ -264,7 +306,8 @@ class _Site:
                 stem = a.filename[:-3]
                 self.page(f"decisions/{stem}.html", f"{a.number:04d}: {a.title}", "entry",
                           {"meta": _esc(a.status),
-                           "body": self.fix_links(_render_md(text), "docs/decisions")})
+                           "body": self.fix_links(_render_md(text), "docs/decisions")},
+                          f"Combat Simulator decision {a.number:04d}: {a.title}", nav="decisions")
                 items.append(f'<li><a href="decisions/{_esc(stem)}.html">'
                              f'{a.number:04d}: {_esc(a.title)}</a><br>'
                              f'<span class="meta">{_esc(a.status)}</span></li>')
@@ -272,7 +315,9 @@ class _Site:
         else:
             res_html = '<p class="empty">No resolved decisions yet.</p>'
         self.page("decisions.html", "Decisions", "decisions",
-                  {"open": open_html, "resolved": res_html})
+                  {"open": open_html, "resolved": res_html},
+                  "What Combat Simulator has settled and why, what was rejected, and the questions "
+                  "still open for comment.", nav="decisions")
 
     # ---- builds ----
 
@@ -321,14 +366,87 @@ class _Site:
             body = f"<table>\n<tr>{th}</tr>\n{trs}</table>"
         else:
             body = '<p class="empty">No builds yet.</p>'
-        self.page("builds.html", "Steam builds", "builds", {"builds": body})
+        self.page("builds.html", "Steam builds", "builds", {"builds": body},
+                  "Every Combat Simulator build uploaded to Steam, and when it went live on each branch.",
+                  nav="builds")
+
+    # ---- home ----
+
+    def latest_shots(self) -> dict[str, dict]:
+        """The newest capture of each camera: {camera: {"date", "src"}}."""
+        latest: dict[str, dict] = {}
+        for line in self.read("captures/INDEX.md").splitlines():
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if len(cells) == 4 and _DATE.fullmatch(cells[0]):
+                src = re.sub(r"^docs/devlog/", "", cells[2])
+                if cells[1] not in latest or cells[0] >= latest[cells[1]]["date"]:
+                    latest[cells[1]] = {"date": cells[0], "src": src}
+        return latest
+
+    def home(self, entries: list[dict]) -> None:
+        """index.html: what the game is and what is in it now, from the README and docs/, so the
+        page says nothing the repository does not."""
+        readme_path = self.repo / "README.md"
+        readme = readme_path.read_text("utf-8") if readme_path.is_file() else ""
+        in_build = readme_section(readme, "In the build")
+        in_build_html = (self.fix_links(_render_md(in_build), "") if in_build
+                         else '<p class="empty">Nothing described yet.</p>')
+
+        # Status: the newest decision, build and session, and the questions open.
+        status = []
+        adrs = decisions.list_adrs(self.docs / "decisions") if (self.docs / "decisions").is_dir() else []
+        if adrs:
+            a = adrs[-1]
+            status.append(("Decision", f'<a href="decisions/{_esc(a.filename[:-3])}.html">'
+                                              f'{a.number:04d}: {_esc(a.title)}</a>'))
+        builds = [line.split("|") for line in self.read("steam/BUILDS.md").splitlines()
+                  if re.match(r"^\|\s*\d+\.\d+\.\d+\s*\|", line)]
+        if builds:
+            version = builds[-1][1].strip()
+            status.append(("Steam", f'Build <a href="builds.html">{_esc(version)}</a> on the private '
+                                    "development branch; not public yet"))
+        if entries:
+            e = entries[0]
+            status.append(("Last session", f'<a href="devlog/{_esc(e["id"])}.html">'
+                                             f'{_esc(e.get("goal") or e["id"])}</a> ({_esc(e["date"])})'))
+        opens = decisions.parse_open(self.read("OPEN-DECISIONS.md"))
+        status.append(("Open", f'<a href="decisions.html">{len(opens)} questions open for comment</a>'))
+        status_html = "".join(f"<dt>{k}</dt><dd>{v}</dd>" for k, v in status)
+
+        # The newest captures of a few fixed cameras: the game as it is today.
+        shots = self.latest_shots()
+        picks = [c for c in ("plane-overview", "tp-owner-shoulder", "gym-overview", "char-front") if c in shots]
+        captures = "".join(
+            f'<figure><img src="{_esc(shots[c]["src"])}" alt="{_esc(c)}, {_esc(shots[c]["date"])}" '
+            f'loading="lazy"><figcaption>{_esc(c)} <span class="meta">{_esc(shots[c]["date"])}</span>'
+            f"</figcaption></figure>" for c in picks)
+        captures_html = (f'<div class="shots">{captures}</div>' if captures
+                         else '<p class="empty">No captures yet.</p>')
+
+        self.page("index.html", "Home", "home",
+                  {"in_build": in_build_html, "status": status_html, "recent": self.timeline(entries[:6]),
+                   "captures": captures_html, "sessions": str(len(entries)), "decisions": str(len(adrs)),
+                   "builds": str(len(builds))}, nav="home")
+
+    def extras(self) -> None:
+        """The not-found page, robots.txt and the sitemap."""
+        self.page("404.html", "Not found", "notfound", {}, "This page does not exist on the Combat Simulator site.")
+        robots = "User-agent: *\nAllow: /\n"
+        if self.base:
+            robots += f"Sitemap: {self.base}sitemap.xml\n"
+            urls = "".join(f"<url><loc>{_esc(self.base + rel)}</loc></url>"
+                           for rel in sorted(self.pages) if rel != "404.html")
+            (self.out / "sitemap.xml").write_text(
+                '<?xml version="1.0" encoding="utf-8"?>\n'
+                f'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{urls}</urlset>\n',
+                "utf-8", newline="\n")
+        (self.out / "robots.txt").write_text(robots, "utf-8", newline="\n")
 
     # ---- assets ----
 
     def assets(self) -> None:
-        static = self.out / "static"
-        static.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(self.site_dir / "static" / "site.css", static / "site.css")
+        # Everything in site/static (the stylesheet, the favicon, the stills of the game).
+        shutil.copytree(self.site_dir / "static", self.out / "static")
         media = self.docs / "devlog" / "media"
         if media.is_dir():
             for p in media.rglob("*.webp"):
@@ -354,10 +472,12 @@ def build(repo: Path, out: Path, site_dir: Path | None = None) -> list[str]:
     s.out.mkdir(parents=True)
     (s.out / SITE_MARKER).write_text("written by og site build\n", "utf-8")
     s.assets()
-    s.devlog()
+    entries = s.devlog()
     s.gallery()
     s.decisions()
     s.builds()
+    s.home(entries)
+    s.extras()
     broken = broken_links(s.out)
     if broken:
         raise SystemExit("og site build: broken relative link(s), nothing should be deployed:\n"

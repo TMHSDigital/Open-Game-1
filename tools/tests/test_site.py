@@ -86,13 +86,15 @@ def links_of(page: Path):
 def test_builds_all_pages_from_fixture_repo(repo, tmp_path):
     out = tmp_path / "_site"
     site.build(repo, out)
-    for rel in ["index.html", "gallery.html", "decisions.html", "builds.html",
+    for rel in ["index.html", "devlog.html", "gallery.html", "decisions.html", "builds.html", "404.html",
                 "devlog/2026-11-20-a.html", "devlog/2026-11-21-c.html",
                 "devlog/2026-11-22-b.html", "static/site.css"]:
         assert (out / rel).is_file(), rel
     index = (out / "index.html").read_text("utf-8")
     assert index.index("2026-11-22-b") < index.index("2026-11-21-c") < index.index("2026-11-20-a")
     assert "third &lt;goal&gt;" in index and "<goal>" not in index
+    devlog = (out / "devlog.html").read_text("utf-8")
+    assert devlog.index("2026-11-22-b") < devlog.index("2026-11-21-c") < devlog.index("2026-11-20-a")
     assert "Did <em>things</em>" in (out / "devlog/2026-11-22-b.html").read_text("utf-8")
     assert "OD-001" in (out / "decisions.html").read_text("utf-8")
     assert "Use files" in (out / "decisions.html").read_text("utf-8")
@@ -235,3 +237,23 @@ def test_feed_is_valid_and_empty_without_a_github_origin(repo, tmp_path):
     site.build(repo, out)
     feed = ET.parse(out / "feed.xml").getroot()
     assert feed.findall("{http://www.w3.org/2005/Atom}entry") == []
+
+
+def test_home_page_reads_status_and_the_build_from_the_repo(repo, tmp_path):
+    readme = "# X\n\n## In the build\n\n- **Moves.** A punch and a kick.\n\n## Next\n\nnot this\n"
+    (repo / "README.md").write_text(readme, "utf-8")
+    out = tmp_path / "_site"
+    site.build(repo, out)
+    home = (out / "index.html").read_text("utf-8")
+    assert "A punch and a kick." in home and "not this" not in home
+    # The current section is marked in the navigation.
+    assert 'data-nav="home" aria-current="page"' in home
+    assert 'data-nav="devlog" aria-current="page"' in (out / "devlog.html").read_text("utf-8")
+    assert (out / "robots.txt").is_file()
+    assert (out / "404.html").is_file()
+
+
+def test_readme_section_stops_at_the_next_heading():
+    text = "# T\n\n## In the build\n\nA\n\n### Sub\n\nB\n\n## Other\n\nC\n"
+    assert site.readme_section(text, "In the build") == "A\n\n### Sub\n\nB"
+    assert site.readme_section(text, "Missing") == ""

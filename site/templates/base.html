@@ -4,25 +4,31 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{title}} - Combat Simulator</title>
+<meta name="description" content="{{description}}">
+{{social}}
+<link rel="icon" href="{{root}}static/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="{{root}}static/site.css">
 <link rel="alternate" type="application/atom+xml" title="Combat Simulator devlog" href="{{root}}feed.xml">
 </head>
 <body>
-<header>
-<a class="brand" href="{{root}}index.html">Combat Simulator</a>
-<nav>
-<a href="{{root}}index.html">Devlog</a>
-<a href="{{root}}gallery.html">Gallery</a>
-<a href="{{root}}decisions.html">Decisions</a>
-<a href="{{root}}builds.html">Builds</a>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+<a class="brand" href="{{root}}index.html"><span class="mark" aria-hidden="true"></span>Combat Simulator</a>
+<nav aria-label="Site">
+<a data-nav="home" href="{{root}}index.html">Home</a>
+<a data-nav="devlog" href="{{root}}devlog.html">Devlog</a>
+<a data-nav="gallery" href="{{root}}gallery.html">Gallery</a>
+<a data-nav="decisions" href="{{root}}decisions.html">Decisions</a>
+<a data-nav="builds" href="{{root}}builds.html">Builds</a>
 <a href="{{root}}feed.xml">Feed</a>
 </nav>
 </header>
-<main>
+<main id="main">
 {{content}}
 </main>
 <footer>
-<p>Source-available, all rights reserved. Built from the repository docs; no tracking, no external requests.</p>
+<p>Combat Simulator is built in public by one developer with Unreal Engine 5.8. Source-available, all rights reserved. {{repo}}</p>
+<p>Built from the repository's docs on every push. No tracking, no external requests.</p>
 </footer>
 </body>
 </html>

@@ -1,15 +1,119 @@
-:root { color-scheme: light dark; }
-body { font: 16px/1.55 system-ui, sans-serif; margin: 0; }
-header { display: flex; gap: 2rem; align-items: baseline; padding: .75rem 1.5rem; border-bottom: 1px solid #8884; flex-wrap: wrap; }
-header .brand { font-weight: 700; text-decoration: none; }
-nav a { margin-right: 1rem; }
-main { max-width: 60rem; margin: 0 auto; padding: 1rem 1.5rem; }
-footer { max-width: 60rem; margin: 2rem auto; padding: 0 1.5rem; color: #888; font-size: .85rem; }
-img { max-width: 100%; height: auto; }
-table { border-collapse: collapse; display: block; overflow-x: auto; }
-th, td { border: 1px solid #8884; padding: .3rem .6rem; text-align: left; vertical-align: top; }
-.meta, .empty { color: #888; }
-.timeline { list-style: none; padding: 0; }
-.timeline li { padding: .5rem 0; border-bottom: 1px solid #8883; }
-.cam { margin: 1.5rem 0; }
-.cam input[type=range] { width: 100%; }
+/* Combat Simulator site. The palette is taken from the game itself: the sky over the start plane,
+   the grey grid floor and its lines, the orange of the target dummy and the white fighter. */
+:root {
+  /* Dark by default: the deep greys of the game's own shadows, the dummy's orange as the one accent,
+     the sky's blue for links. */
+  color-scheme: dark;
+  --sky: #8fb6dc;
+  --sky-soft: #1d2631;
+  --floor: #171b1f;
+  --line: #2c333a;
+  --dummy: #e8904c;
+  --ink: #e6e9ec;
+  --muted: #98a2ab;
+  --paper: #101316;
+  --card: #171b1f;
+  --mono: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --radius: 3px;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; overflow-x: clip; font: 17px/1.6 var(--sans); color: var(--ink); background: var(--paper); }
+a { color: var(--sky); text-underline-offset: 2px; }
+a:hover { color: var(--dummy); }
+a:focus-visible, .button:focus-visible { outline: 3px solid var(--dummy); outline-offset: 2px; }
+img { max-width: 100%; height: auto; display: block; }
+h1, h2, h3 { line-height: 1.15; letter-spacing: -0.01em; }
+h1 { font-size: clamp(1.9rem, 4.5vw, 2.9rem); font-weight: 800; margin: .2em 0 .4em; }
+h2 { font-size: 1.35rem; font-weight: 750; margin: 2.2rem 0 .8rem; padding-top: .6rem; border-top: 3px solid var(--ink); display: inline-block; }
+code, .meta { font-family: var(--mono); }
+.skip { position: absolute; left: -999px; }
+.skip:focus { left: 1rem; top: 1rem; background: var(--card); padding: .5rem; z-index: 2; }
+
+/* The header sits on the floor's grid, like everything in the game. */
+header.top {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 2rem;
+  padding: .8rem clamp(1rem, 4vw, 2.5rem);
+  background-color: var(--floor);
+  background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: 48px 48px;
+  border-bottom: 1px solid var(--line);
+}
+.brand { display: flex; align-items: center; gap: .55rem; font-weight: 800; font-size: 1.1rem; color: var(--ink); text-decoration: none; }
+.brand .mark { width: 12px; height: 12px; background: var(--dummy); border-radius: 50%; }
+nav { display: flex; flex-wrap: wrap; gap: .2rem 1.1rem; }
+nav a { color: var(--ink); text-decoration: none; font-weight: 600; padding: .15rem 0; border-bottom: 2px solid transparent; }
+nav a:hover { color: var(--ink); border-bottom-color: var(--line); }
+nav a[aria-current="page"] { border-bottom-color: var(--dummy); }
+
+main { max-width: 72rem; margin: 0 auto; padding: 1.2rem clamp(1rem, 4vw, 2.5rem) 2rem; }
+footer { max-width: 72rem; margin: 2rem auto 0; padding: 1.2rem clamp(1rem, 4vw, 2.5rem) 2.5rem; color: var(--muted); font-size: .88rem; border-top: 1px solid var(--line); }
+footer p { margin: .3rem 0; }
+.intro { color: var(--muted); max-width: 46rem; }
+.meta, .empty { color: var(--muted); font-size: .86rem; }
+
+/* Home: the kick runs edge to edge under the title, darkened only where the text sits. */
+.hero { position: relative; width: 100vw; margin: -1.2rem 0 0 calc(50% - 50vw); min-height: clamp(26rem, 62vh, 40rem); display: flex; align-items: flex-end; overflow: hidden; border-bottom: 1px solid var(--line); }
+.hero-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 45%; }
+.hero::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(16,19,22,.95) 0%, rgba(16,19,22,.85) 30%, rgba(16,19,22,.2) 55%, rgba(16,19,22,0) 75%), linear-gradient(0deg, rgba(16,19,22,.7) 0%, rgba(16,19,22,0) 30%); }
+.hero-text { position: relative; z-index: 1; width: 100%; max-width: 72rem; margin: 0 auto; padding: 2rem clamp(1rem, 4vw, 2.5rem) 3.4rem; }
+.hero-text > * { max-width: 29rem; }
+.hero h1 { font-size: clamp(2.4rem, 6vw, 4.2rem); margin: 0 0 .5rem; letter-spacing: -0.02em; }
+.hero h1::after { content: ""; display: block; width: 3.2rem; height: 4px; background: var(--dummy); margin-top: .7rem; }
+.lede { font-size: 1.12rem; margin: .4rem 0; }
+.lede-2 { color: var(--muted); margin: .6rem 0 0; }
+.hero-cap { position: absolute; z-index: 1; right: clamp(1rem, 4vw, 2.5rem); bottom: .8rem; margin: 0; font-size: .8rem; color: #c9d0d6; font-family: var(--mono); max-width: 26rem; text-align: right; text-shadow: 0 1px 2px #000; }
+.actions { display: flex; flex-wrap: wrap; gap: .7rem; margin-top: 1.4rem; }
+.button { display: inline-block; padding: .6rem 1.1rem; border-radius: var(--radius); background: var(--dummy); color: #15110d; text-decoration: none; font-weight: 700; }
+.button:hover { background: var(--ink); color: var(--paper); }
+.button.quiet { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 2px var(--line); }
+.button.quiet:hover { box-shadow: inset 0 0 0 2px var(--dummy); color: var(--dummy); }
+figure { margin: 0; }
+figcaption { font-size: .86rem; color: var(--muted); margin-top: .45rem; }
+.moves img, .shots img { border-radius: var(--radius); border: 1px solid var(--line); background: var(--sky-soft); }
+
+.status dl { display: grid; grid-template-columns: max-content 1fr; gap: .45rem 1.4rem; margin: 0; max-width: 52rem; }
+.status dt { font-family: var(--mono); font-size: .8rem; color: var(--muted); padding-top: .2rem; }
+.status dd { margin: 0; }
+.more { margin-top: .8rem; }
+.flow { padding-left: 1.3rem; margin: 0; }
+.flow li { padding: .35rem 0 .55rem .3rem; }
+.flow li::marker { font-family: var(--mono); color: var(--dummy); font-weight: 700; }
+
+.moves { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; margin-top: 2rem; }
+.in-build ul { padding-left: 1.2rem; max-width: 52rem; }
+.in-build li { margin: .45rem 0; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 2.5rem; }
+.shots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
+
+/* Tables (the controls, decisions, builds) */
+table { border-collapse: collapse; display: block; overflow-x: auto; max-width: 100%; font-size: .93rem; }
+th, td { border-bottom: 1px solid var(--line); padding: .45rem .8rem .45rem 0; text-align: left; vertical-align: top; }
+th { font-size: .78rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+
+/* Lists of sessions, decisions, milestones */
+.timeline { list-style: none; padding: 0; margin: 0; }
+.timeline li { padding: .6rem 0 .6rem .9rem; border-left: 3px solid var(--line); margin-left: .2rem; }
+.timeline li:hover { border-left-color: var(--dummy); }
+.timeline a { font-weight: 600; }
+
+/* Entries */
+.entry { max-width: 50rem; }
+.entry img { margin: .6rem 0; border-radius: var(--radius); }
+.entry h1 { font-size: 2rem; }
+.back { margin-top: 2rem; }
+
+/* Gallery */
+.cam { margin: 1.5rem 0 2.2rem; max-width: 60rem; }
+.cam img { border-radius: var(--radius); border: 1px solid var(--line); }
+.cam input[type=range] { width: 100%; accent-color: var(--dummy); }
+.cam .when { font-family: var(--mono); color: var(--muted); font-size: .86rem; }
+
+@media (max-width: 52rem) {
+  .two, .moves { grid-template-columns: 1fr; }
+  .hero { min-height: 30rem; }
+  .hero-cap { left: clamp(1rem, 4vw, 2.5rem); text-align: left; }
+  .shots { grid-template-columns: 1fr 1fr; }
+    h2 { font-size: 1.2rem; }
+}
