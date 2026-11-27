@@ -447,6 +447,16 @@ bool FCSOverhaulPlaytestPunchScenarioTest::RunTest(const FString& Parameters)
 				// must land.
 				const bool bCombo = Object->GetStringField(TEXT("label")).Contains(TEXT("in a row"));
 				Missed += bCombo ? FMath::Max(0, (Thrown + 1) / 2 - Landed) : Thrown - Landed;
+				if (Landed < Thrown)
+				{
+					// Everything the segment noted, so a miss in a full run can be explained afterwards.
+					FString Facts;
+					for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : (*Data)->Values)
+					{
+						Facts += FString::Printf(TEXT("%s=%s; "), *Pair.Key, *Pair.Value->AsString());
+					}
+					AddInfo(Object->GetStringField(TEXT("label")) + TEXT(" missed: ") + Facts);
+				}
 				TestTrue(Object->GetStringField(TEXT("label")) + TEXT(": a punch was thrown"), Thrown > 0);
 			}
 		}

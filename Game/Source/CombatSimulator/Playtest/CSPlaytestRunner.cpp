@@ -364,6 +364,12 @@ namespace CSPlaytestScenarios
 		{
 			const UCSStrikeComponent* Strike = Self->GetStrike();
 			C.Note(TEXT("target found"), Strike && Strike->GetTarget() ? TEXT("yes") : TEXT("no"));
+			if (Strike)
+			{
+				// What a miss needs to be explained (Issue #71): how far the last strike's fist got.
+				C.Note(TEXT("fist reached cm"), Strike->GetPeakReach());
+				C.Note(TEXT("fist peak cm/s"), Strike->GetPeakSpeed());
+			}
 		}
 	}
 
@@ -379,6 +385,12 @@ namespace CSPlaytestScenarios
 		TSharedRef<FCounts> Counts = MakeShared<FCounts>();
 		Step.OnStart = [Distance, Side, BodyYaw, bFirstPerson, Counts](const FCtx& C)
 		{
+			if (const ACSTargetDummy* Target = C.Dummy())
+			{
+				// A dummy still moving from the last segment's hit is a different target.
+				C.Note(TEXT("dummy at start"), StaticEnum<ECSBodyState>()->GetNameStringByValue(int64(Target->GetPhysicsBody()->GetState())));
+				C.Note(TEXT("dummy speed at start cm/s"), float(Target->GetMesh()->GetPhysicsLinearVelocity(TEXT("spine_03")).Size()));
+			}
 			C.PlaceAtDummy(Distance, Side, BodyYaw);
 			if (ACSCharacter* Self = C.Player())
 			{
