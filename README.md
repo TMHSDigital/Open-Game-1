@@ -45,7 +45,7 @@ It is an early prototype, made by one developer, and every design decision, work
 | **Engine** | Unreal Engine 5.8, C++ project in [`Game/`](Game/): a start plane, a movement gym and a capture stage |
 | **Latest block** | [Decision 0020](docs/decisions/0020-next-block-more-attacks-and-stamina.md): more attacks and stamina |
 | **Steam** | Build 0.1.11 is live on the private development branch; the game is not publicly available yet ([setup checklist](docs/steam/SETUP-CHECKLIST.md), [build history](https://tmhsdigital.github.io/Open-Game-1/builds.html)) |
-| **Latest devlog** | [README and Pages site upgrade, with CI](docs/devlog/2026-11-26-05-readme-and-pages-site-upgrade-with-ci-fo.md) |
+| **Latest devlog** | [Fixing the open audit issues](docs/devlog/2026-11-26-06-fix-the-open-audit-issues-starting-with.md) |
 
 ## In the build
 
