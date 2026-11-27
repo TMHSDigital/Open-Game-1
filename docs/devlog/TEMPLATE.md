@@ -1,7 +1,7 @@
 ---
 id: {{id}}
 date: {{date}}
-goal: "{{goal}}"
+goal: {{goal_front}}
 start_sha: {{start_sha}}
 end_sha: {{end_sha}}
 decisions: {{decisions}}

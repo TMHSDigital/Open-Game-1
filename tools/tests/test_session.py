@@ -476,12 +476,44 @@ def test_milestone_commits_only_its_page(repo):
 
 
 def test_merge_index_matches_exact_image_path():
-    from og.session import _merge_index
+    from og.devlog import IndexRow, format_index_row, merge_index
     head = "| date | camera | image path | sha |\n|---|---|---|---|\n"
     existing = head + "| 2026-11-22 | cam | docs/devlog/media/a/cam.webp.old | x |\n"
-    row = "| 2026-11-22 | cam | docs/devlog/media/a/cam.webp | x |"
-    assert row in _merge_index(existing, [row])
-    assert _merge_index(existing + row + "\n", [row]).count(row) == 1
+    row = IndexRow("2026-11-22", "cam", "docs/devlog/media/a/cam.webp", "x")
+    line = format_index_row(row)
+    assert line in merge_index(existing, [row])
+    assert merge_index(existing + line + "\n", [row]).count(line) == 1
+
+
+def test_index_rows_round_trip_through_every_reader():
+    """Issue #35: the row og session writes is the row the milestone and the site read back."""
+    from og.devlog import IndexRow, format_index_row, merge_index, parse_index
+    rows = [IndexRow("2026-11-22", "front", "docs/devlog/media/s/front.webp", "a" * 40),
+            IndexRow("2026-11-23", "front", "docs/devlog/media/t/front.webp", "b" * 40)]
+    text = merge_index("| date | camera | image path | full 40-char SHA |\n|---|---|---|---|\n", rows)
+    assert parse_index(text) == rows
+    assert [format_index_row(r) for r in rows] == text.splitlines()[2:]
+    assert session._latest_shots(text) == {"front": "docs/devlog/media/t/front.webp"}
+
+
+def test_front_matter_round_trips_a_goal_with_quotes_commas_and_a_colon():
+    """Issue #35: front_value writes what parse_front reads back, unchanged."""
+    from og.devlog import front_value, parse_front
+    goal = 'Fix "the kick": stamina, guard \\ and the HUD'
+    text = f"---\ngoal: {front_value(goal)}\ndecisions: {front_value(['OD-003', 'ADR-0002'])}\nclip: {front_value(None)}\n---\n\nbody\n"
+    meta, body = parse_front(text)
+    assert meta == {"goal": goal, "decisions": ["OD-003", "ADR-0002"], "clip": None}
+    assert body == "\nbody\n"
+
+
+def test_entry_goal_survives_quotes(repo):
+    goal = 'Make "the kick" land: test, and fix'
+    session.start(repo, goal, today=DAY)
+    commit(repo, "feat: work")
+    assert session.end(repo, today=DAY) == 0
+    from og.devlog import parse_front
+    meta, _ = parse_front(only_entry(repo).read_text("utf-8"))
+    assert meta["goal"] == goal
 
 
 def test_commits_lists_the_range_in_order_with_full_messages(repo):

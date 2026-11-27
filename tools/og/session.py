@@ -20,7 +20,8 @@ import sys
 from pathlib import Path
 
 from og import docs, gh, secrets
-from og.devlog import to_webp
+from og.devlog import (IndexRow, front_value, merge_index, parse_front, parse_index,
+                       to_webp)
 
 PKG_ROOT = Path(__file__).resolve().parents[2]
 NARRATIVE_MARKER = "<!-- narrative -->"
@@ -98,10 +99,12 @@ def _render_entry(repo: Path, d: dict) -> str:
     caps = "\n".join(f"![{c}]({p})" for c, p in d["captures"]) or "_No captures._"
     clip = d["clip"]
     return _render(_template(repo, "docs/devlog/TEMPLATE.md"), {
-        "id": d["id"], "date": d["id"][:10], "goal": d["goal"].replace('"', "'"),
+        "id": d["id"], "date": d["id"][:10], "goal": d["goal"],
+        # Front matter values go through devlog.front_value, which parse_front reads back.
+        "goal_front": front_value(d["goal"]),
         "start_sha": d["start_sha"] or "null", "end_sha": d["end_sha"] or "null",
-        "decisions": "[" + ", ".join(decisions) + "]",
-        "cameras": "[" + ", ".join(c for c, _ in d["captures"] if c != "contact-sheet") + "]",
+        "decisions": front_value(decisions),
+        "cameras": front_value([c for c, _ in d["captures"] if c != "contact-sheet"]),
         "clip": clip or "null",
         "warning": f"> WARNING: {d['warning']}\n\n" if d.get("warning") else "",
         "changes": changes,
@@ -178,8 +181,7 @@ def _resolve_start(repo: Path, today: datetime.date) -> tuple[dict, str | None]:
         if trailer:
             goal = trailer.group(1).strip()
         elif entry:  # a stub from an older version of start
-            g = re.search(r'^goal: "(.*)"$', entry.read_text("utf-8"), re.M)
-            goal = g.group(1) if g else goal
+            goal = parse_front(entry.read_text("utf-8"))[0].get("goal") or goal
         return {"id": sid, "slug": _slugify(goal), "goal": goal, "start_sha": sha}, None
     sid = _next_id(repo, today)
     parent = _git(repo, "rev-parse", "--verify", "-q", "HEAD~1", check=False)
@@ -247,10 +249,8 @@ def _upload_clip(repo: Path, sid: str, clip: Path) -> None:
 
 
 def _ocr_sidecars(media: Path) -> list[Path]:
-    """Existing OCR text files for a media file: <name>.ocr.txt or <stem>.ocr.txt."""
-    media = Path(media)
-    cands = (media.with_name(media.name + ".ocr.txt"), media.with_suffix(".ocr.txt"))
-    return [c for c in dict.fromkeys(cands) if c.is_file()]
+    """Existing OCR text files for a media file (secrets.ocr_sidecars names them)."""
+    return [c for c in secrets.ocr_sidecars(Path(media)) if c.is_file()]
 
 
 def _clip_text_findings(clip: Path) -> list:
@@ -277,16 +277,6 @@ def _usable_ocr(media: Path) -> bool:
 
 def _missing_ocr(clip: Path | None, contact_sheet: Path | None) -> list[Path]:
     return [Path(m) for m in (contact_sheet, clip) if m and not _usable_ocr(Path(m))]
-
-
-def _merge_index(existing: str, rows: list[str]) -> str:
-    """Append rows whose image path is not already listed (idempotent on rerun)."""
-    if existing and not existing.endswith("\n"):
-        existing += "\n"
-    listed = {line.split("|")[3].strip() for line in existing.splitlines()
-              if line.startswith("|") and line.count("|") >= 5}
-    new = [r for r in rows if r.split("|")[3].strip() not in listed]
-    return existing + "".join(r + "\n" for r in new)
 
 
 # Where the docs live, and what counts as a change that should be documented (the owner's rule:
@@ -415,21 +405,20 @@ def _end_staged(repo, stage, state, warning, sources, cdir, capture, clip, commi
                   file=sys.stderr)
     media_rel = Path("docs") / "devlog" / "media" / sid
     captures: list[tuple[str, str]] = []
-    rows: list[str] = []
+    rows: list[IndexRow] = []
     outputs: list[tuple[Path, Path]] = []  # (staged file, final path)
     for name, src in sources:
         staged = to_webp(src, stage / "media" / f"{name}.webp")
         outputs.append((staged, repo / media_rel / staged.name))
         captures.append((name, f"media/{sid}/{staged.name}"))
         if name != "contact-sheet":
-            rows.append(f"| {sid[:10]} | {name} | {(media_rel / staged.name).as_posix()} "
-                        f"| {cap_sha} |")
+            rows.append(IndexRow(sid[:10], name, (media_rel / staged.name).as_posix(), cap_sha))
     if rows:
         idx = repo / INDEX
         staged_idx = stage / "INDEX.md"
         staged_idx.parent.mkdir(parents=True, exist_ok=True)
         staged_idx.write_text(
-            _merge_index(idx.read_text("utf-8") if idx.is_file() else "", rows), "utf-8")
+            merge_index(idx.read_text("utf-8") if idx.is_file() else "", rows), "utf-8")
         outputs.append((staged_idx, idx))
 
     commits = _commits(repo, start_sha)
@@ -493,12 +482,7 @@ def _end_staged(repo, stage, state, warning, sources, cdir, capture, clip, commi
 
 def _latest_shots(index_text: str) -> dict[str, str]:
     """camera -> image path of its last INDEX row."""
-    shots: dict[str, str] = {}
-    for line in index_text.splitlines():
-        cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        if len(cells) == 4 and re.fullmatch(r"\d{4}-\d{2}-\d{2}", cells[0]):
-            shots[cells[1]] = cells[2]
-    return shots
+    return {row.camera: row.path for row in parse_index(index_text)}
 
 
 def _previous_tag(repo: Path, n: int) -> str | None:

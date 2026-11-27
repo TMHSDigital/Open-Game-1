@@ -196,11 +196,18 @@ def _image_metadata_findings(data: bytes, path: str) -> list[Finding]:
     return scan_text("\n".join(pieces), path) if pieces else []
 
 
+def ocr_sidecars(media: Path) -> list[Path]:
+    """The OCR text files a media file may have next to it: <stem>.ocr.txt and <name>.ocr.txt
+    (x.ocr.txt and x.png.ocr.txt). Not checked for existence."""
+    media = Path(media)
+    return list(dict.fromkeys((media.with_suffix(".ocr.txt"), media.with_name(media.name + ".ocr.txt"))))
+
+
 def scan_image(path: Path) -> list[Finding]:
-    """Check image metadata and a sidecar OCR text file (x.ocr.txt or x.png.ocr.txt)."""
+    """Check image metadata and its sidecar OCR text files (ocr_sidecars)."""
     path = Path(path)
     findings = _image_metadata_findings(path.read_bytes(), str(path))
-    for sidecar in (path.with_suffix(".ocr.txt"), path.with_name(path.name + ".ocr.txt")):
+    for sidecar in ocr_sidecars(path):
         if sidecar.is_file():
             findings += scan_text(sidecar.read_text("utf-8", "replace"), str(path))
     return findings
@@ -322,7 +329,7 @@ def _index_blobs(names: list[str], root: Path) -> dict[str, bytes | None]:
 
 
 def _sidecar_names(name: str) -> list[str]:
-    return [Path(name).with_suffix(".ocr.txt").as_posix(), name + ".ocr.txt"]
+    return [p.as_posix() for p in ocr_sidecars(Path(name))]
 
 
 def _scan_index_entries(names: list[str], root: Path,

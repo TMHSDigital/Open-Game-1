@@ -17,10 +17,10 @@ from pathlib import Path
 from markdown_it import MarkdownIt
 
 from og import decisions, gh
+from og.devlog import parse_front, parse_index
 
 SITE_DIR = Path(__file__).resolve().parents[2] / "site"
 _SLOT = re.compile(r"\{\{(\w+)\}\}")
-_FRONT = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n?", re.S)
 _DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 _SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 _HTTP = re.compile(r"https?://", re.I)
@@ -39,30 +39,6 @@ def _esc(s) -> str:
 
 def _fill(template: str, values: dict[str, str]) -> str:
     return _SLOT.sub(lambda m: values.get(m.group(1), m.group(0)), template)
-
-
-def _value(raw: str):
-    raw = raw.strip()
-    if raw in ("", "null", "~"):
-        return None
-    if raw.startswith("[") and raw.endswith("]"):
-        return [_value(p) for p in raw[1:-1].split(",") if p.strip()]
-    if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in "\"'":
-        return raw[1:-1]
-    return raw
-
-
-def parse_front(text: str) -> tuple[dict, str]:
-    """Split a devlog entry into (front matter dict, markdown body)."""
-    m = _FRONT.match(text)
-    if not m:
-        return {}, text
-    meta = {}
-    for line in m.group(1).splitlines():
-        key, sep, val = line.partition(":")
-        if sep and key.strip():
-            meta[key.strip()] = _value(val)
-    return meta, text[m.end():]
 
 
 DESCRIPTION = ("Combat Simulator, a physics-driven combat simulator for Steam built in public with "
@@ -260,11 +236,9 @@ class _Site:
 
     def gallery(self) -> None:
         shots: dict[str, list[dict]] = {}
-        for line in self.read("captures/INDEX.md").splitlines():
-            cells = [c.strip() for c in line.strip().strip("|").split("|")]
-            if len(cells) == 4 and _DATE.fullmatch(cells[0]):
-                src = re.sub(r"^docs/devlog/", "", cells[2])
-                shots.setdefault(cells[1], []).append({"date": cells[0], "src": src})
+        for row in parse_index(self.read("captures/INDEX.md")):
+            src = re.sub(r"^docs/devlog/", "", row.path)
+            shots.setdefault(row.camera, []).append({"date": row.date, "src": src})
         if not shots:
             body = '<p class="empty">No captures yet.</p>'
         else:
@@ -375,12 +349,10 @@ class _Site:
     def latest_shots(self) -> dict[str, dict]:
         """The newest capture of each camera: {camera: {"date", "src"}}."""
         latest: dict[str, dict] = {}
-        for line in self.read("captures/INDEX.md").splitlines():
-            cells = [c.strip() for c in line.strip().strip("|").split("|")]
-            if len(cells) == 4 and _DATE.fullmatch(cells[0]):
-                src = re.sub(r"^docs/devlog/", "", cells[2])
-                if cells[1] not in latest or cells[0] >= latest[cells[1]]["date"]:
-                    latest[cells[1]] = {"date": cells[0], "src": src}
+        for row in parse_index(self.read("captures/INDEX.md")):
+            src = re.sub(r"^docs/devlog/", "", row.path)
+            if row.camera not in latest or row.date >= latest[row.camera]["date"]:
+                latest[row.camera] = {"date": row.date, "src": src}
         return latest
 
     def home(self, entries: list[dict]) -> None:
