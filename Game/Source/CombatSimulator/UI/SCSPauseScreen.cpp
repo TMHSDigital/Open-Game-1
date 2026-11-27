@@ -745,6 +745,27 @@ TSharedRef<SWidget> SCSPauseScreen::BuildRunTab()
 		]
 	];
 
+	// Earlier runs on this machine: the best with the setup being edited, then the latest.
+	List->AddSlot().Padding(0.f, 0.f, 0.f, 12.f)
+	[
+		SNew(STextBlock)
+		.Font(Font(10))
+		.ColorAndOpacity(FaintColor)
+		.Text_Lambda([WeakStore, CurrentMap]
+		{
+			if (!WeakStore.IsValid())
+			{
+				return FText::GetEmpty();
+			}
+			FCSRunSetup Next = WeakStore->GetDraft();
+			if (Next.Map.IsEmpty())
+			{
+				Next.Map = CurrentMap;
+			}
+			return FText::FromString(FString::Join(WeakStore->DescribeHistory(Next.Describe()), TEXT("\n")));
+		})
+		.Visibility_Lambda([WeakStore] { return WeakStore.IsValid() && !WeakStore->GetHistory().Runs.IsEmpty() ? EVisibility::Visible : EVisibility::Collapsed; })
+	];
 	List->AddSlot().Padding(0.f, 0.f, 0.f, 4.f)
 	[
 		Label(TEXT("Setup of the next run"), 12, TextColor, true)

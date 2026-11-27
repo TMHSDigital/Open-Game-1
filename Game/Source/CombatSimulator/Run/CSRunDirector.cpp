@@ -8,6 +8,7 @@
 #include "CSGuardComponent.h"
 #include "CSStaminaComponent.h"
 #include "CSHitBall.h"
+#include "CSRunHistory.h"
 #include "CSRunStore.h"
 #include "CSStrikeComponent.h"
 #include "Engine/Canvas.h"
@@ -160,6 +161,16 @@ void UCSRunDirector::EndRun(ECSRunEnd Reason)
 	EndReason = Reason;
 	UE_LOG(LogCombatSimulator, Log, TEXT("UCSRunDirector: run over (%s) after %s: %d dealt, %d taken"),
 		*FCSRunStats::DescribeEnd(Reason), *FCSRunStats::FormatTime(Stats.Seconds), Stats.Dealt.Hits, Stats.Taken.Hits);
+	if (UCSRunStore* Store = bHasSetup ? UCSRunStore::Get(this) : nullptr)
+	{
+		// The map named, so a run started "here" counts as the same setup as one picked by map.
+		FCSRunSetup Recorded = Setup;
+		if (Recorded.Map.IsEmpty() && GetWorld())
+		{
+			Recorded.Map = FPackageName::GetShortName(UWorld::RemovePIEPrefix(GetWorld()->GetPackage()->GetName()));
+		}
+		Store->RecordRun(FCSRunRecord::Make(Recorded, Stats, Reason, FDateTime::Now()));
+	}
 	SetState(ECSRunState::Ended);
 	if (ResultsDelaySeconds <= 0.f)
 	{

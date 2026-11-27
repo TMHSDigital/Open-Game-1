@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "CSRunHistory.h"
 #include "CSRunSetup.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "CSRunStore.generated.h"
@@ -13,6 +14,8 @@
  * The draft is kept on this machine in <ProjectSavedDir>/Runs/RunSetup.json, read when the game
  * starts and written whenever it changes, so the next session opens on the last setup. A file that
  * cannot be read is left alone and the defaults are used; LastLoadNote says why.
+ *
+ * It also keeps the history of finished runs (FCSRunHistory, <ProjectSavedDir>/Runs/History.jsonl).
  */
 UCLASS()
 class COMBATSIMULATOR_API UCSRunStore : public UGameInstanceSubsystem
@@ -53,10 +56,19 @@ public:
 	/** What reading the file said: empty when it was read cleanly or there was none. */
 	const FString& GetLastLoadNote() const { return LastLoadNote; }
 
+	/** A run has finished: kept in the history (written to its file unless bUseFile is false). */
+	void RecordRun(const FCSRunRecord& Record);
+
+	const FCSRunHistory& GetHistory() const { return History; }
+
+	/** The Run tab's lines about earlier runs: the best with this setup, then the most recent. Empty with no history. */
+	TArray<FString> DescribeHistory(const FString& Setup, int32 Recent = 5) const;
+
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 
 private:
 	FCSRunSetup Draft;
 	TOptional<FCSRunSetup> Pending;
 	FString LastLoadNote;
+	FCSRunHistory History;
 };

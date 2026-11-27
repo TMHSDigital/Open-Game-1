@@ -25,6 +25,15 @@ FString UCSRunStore::GetFilePath()
 void UCSRunStore::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
+	if (bUseFile)
+	{
+		// A broken history costs only the history: the game starts either way.
+		const FString HistoryNote = History.Load(FCSRunHistory::GetFilePath());
+		if (!HistoryNote.IsEmpty())
+		{
+			UE_LOG(LogCombatSimulator, Warning, TEXT("UCSRunStore: %s: %s"), *FCSRunHistory::GetFilePath(), *HistoryNote);
+		}
+	}
 	const FString Path = GetFilePath();
 	if (!bUseFile || !IFileManager::Get().FileExists(*Path))
 	{
@@ -50,6 +59,33 @@ void UCSRunStore::Initialize(FSubsystemCollectionBase& Collection)
 	{
 		UE_LOG(LogCombatSimulator, Warning, TEXT("UCSRunStore: %s: %s"), *Path, *LastLoadNote);
 	}
+}
+
+void UCSRunStore::RecordRun(const FCSRunRecord& Record)
+{
+	if (!History.Add(Record, bUseFile ? FCSRunHistory::GetFilePath() : FString()))
+	{
+		UE_LOG(LogCombatSimulator, Warning, TEXT("UCSRunStore: the run history could not be written to %s"), *FCSRunHistory::GetFilePath());
+	}
+}
+
+TArray<FString> UCSRunStore::DescribeHistory(const FString& Setup, int32 Recent) const
+{
+	TArray<FString> Lines;
+	if (const FCSRunRecord* Best = History.Best(Setup))
+	{
+		Lines.Add(TEXT("Best with this setup: ") + Best->Describe());
+	}
+	const TArray<FCSRunRecord> Latest = History.Recent(Recent);
+	if (!Latest.IsEmpty())
+	{
+		Lines.Add(TEXT("Recent runs:"));
+		for (const FCSRunRecord& Run : Latest)
+		{
+			Lines.Add(TEXT("  ") + Run.Describe() + (Run.Setup == Setup ? FString() : TEXT("  [") + Run.Setup + TEXT("]")));
+		}
+	}
+	return Lines;
 }
 
 void UCSRunStore::SetDraft(const FCSRunSetup& Setup)
