@@ -23,6 +23,10 @@ The playable character for Combat Simulator, as a self-contained Unreal Engine 5
 - Input actions and a mapping context (see `Game/Content/Python/create_input_assets.py` in this repository for the set the game uses).
 - The `Ragdoll` collision profile named in `UCSPhysicsBodyComponent::RagdollCollisionProfile`.
 
+## Tuning changes
+
+`ACSCharacter::ApplyTuning` (and `TryApplyTuning`, and a reload) replaces the active tuning copy, then broadcasts `OnTuningApplied`. A component that keeps state worked out from the tuning rewrites it there, in the same frame: `UCSPhysicsBodyComponent` rewrites its motors (Normal) or its ragdoll damping and friction (Ragdoll). Do not compare tuning pointers each tick.
+
 ## Adding an input action
 
 1. A `TSoftObjectPtr<UInputAction>` config property on `ACSCharacter`, a handler, and a row in the binding table in `SetupPlayerInputComponent` (one row per trigger event).

@@ -835,7 +835,8 @@ bool FCSBodyRagdollSlideIsBoundedTest::RunTest(const FString& Parameters)
 	TestNearlyEqual(TEXT("The body's own damping is back after the recovery"), Spine->LinearDamping, BaseLinear, 0.001f);
 	TestTrue(TEXT("The body's own material is back after the recovery"), Spine->GetSimplePhysicalMaterial() == BaseMaterial);
 
-	// A reload while ragdolled on the ground changes the damping and the friction at once.
+	// A reload while ragdolled on the ground changes the damping and the friction at once: in the
+	// same frame, through ACSCharacter::OnTuningApplied (issue #34), not on the next tick.
 	Sim.PhysicsBody->EnterRagdoll();
 	Sim.RunUntil(3.f, [&]() { return Sim.PhysicsBody->IsRagdollOnGround(); });
 	TestTrue(TEXT("Lying on the ground"), Sim.PhysicsBody->IsRagdollOnGround());
@@ -843,7 +844,6 @@ bool FCSBodyRagdollSlideIsBoundedTest::RunTest(const FString& Parameters)
 	T.RagdollFriction = 1.7f;
 	FString Message;
 	TestTrue(TEXT("Reload with new ragdoll damping and friction"), UCSDevTools::ReloadTuning(*Sim.Character, Message));
-	Sim.Step();
 	TestNearlyEqual(TEXT("A reload while ragdolled applies the new damping"), Spine->LinearDamping, 4.f, 0.001f);
 	TestTrue(TEXT("A reload while ragdolled applies the new friction"), FMath::IsNearlyEqual(Spine->GetSimplePhysicalMaterial()->Friction, 1.7f));
 	return true;

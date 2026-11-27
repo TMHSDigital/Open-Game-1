@@ -98,6 +98,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "CS|Movement")
 	void ApplyTuning();
 
+	/** ApplyTuning with Source in place of Tuning (null: the class defaults). Tuning is not changed. */
+	void ApplyTuningFrom(const UCSMovementTuning* Source);
+
 	/**
 	 * Applies Tuning with Overrides on top, if the result is valid: the overrides must name rows of
 	 * the range table with values in range, and the result must pass UCSMovementTuning::IsValid.
@@ -110,7 +113,11 @@ public:
 	/** The values the build was packaged with: Tuning, or the class defaults when it is unset. */
 	const UCSMovementTuning& GetPackagedTuning() const;
 
-	/** The active tuning was replaced (ApplyTuning, TryApplyTuning, a reload). */
+	/**
+	 * The active tuning was replaced (ApplyTuning, TryApplyTuning, a reload). Anything that keeps
+	 * state worked out from the tuning (the physics body's motors and ragdoll physics) rewrites it
+	 * here, in the same frame.
+	 */
 	FCSTuningApplied OnTuningApplied;
 
 	/** The changes on top of the packaged tuning that are in use (empty: none). */
@@ -423,8 +430,8 @@ private:
 	/** Changes written on top of the copy (see TryApplyTuning). */
 	FCSTuningOverrides TuningOverrides;
 
-	/** A fresh copy of Tuning (or the class defaults), without overrides. */
-	UCSMovementTuning* MakeTuningCopy();
+	/** A fresh copy of Source (null: the class defaults), without overrides. */
+	UCSMovementTuning* MakeTuningCopy(const UCSMovementTuning* Source);
 	/** Makes Values the active tuning and pushes it into the movement component. */
 	void CommitTuning(UCSMovementTuning* Values);
 

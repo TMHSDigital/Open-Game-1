@@ -131,6 +131,7 @@ void UCSPhysicsBodyComponent::BeginPlay()
 	if (Character)
 	{
 		Character->LandedDelegate.AddUniqueDynamic(this, &UCSPhysicsBodyComponent::HandleLanded);
+		Character->OnTuningApplied.AddUObject(this, &UCSPhysicsBodyComponent::HandleTuningApplied);
 		if (UCSDevTools* DevTools = Character->GetDevTools())
 		{
 			DevTools->OnRagdollRequested.AddUObject(this, &UCSPhysicsBodyComponent::HandleRagdollRequested);
@@ -198,6 +199,7 @@ void UCSPhysicsBodyComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	if (ACSCharacter* Character = GetCharacter())
 	{
 		Character->LandedDelegate.RemoveDynamic(this, &UCSPhysicsBodyComponent::HandleLanded);
+		Character->OnTuningApplied.RemoveAll(this);
 		if (UCSDevTools* DevTools = Character->GetDevTools())
 		{
 			DevTools->OnRagdollRequested.RemoveAll(this);
@@ -275,7 +277,6 @@ FPhysicalAnimationData UCSPhysicsBodyComponent::NormalDataFor(FName Bone) const
 void UCSPhysicsBodyComponent::ApplyMotors()
 {
 	const UCSMovementTuning& T = GetTuning();
-	MotorTuning = &T;
 	if (!PhysicalAnimation || !Body)
 	{
 		return;
@@ -480,10 +481,27 @@ void UCSPhysicsBodyComponent::EnterRagdoll()
 	}
 }
 
+void UCSPhysicsBodyComponent::HandleTuningApplied()
+{
+	// The character replaced its tuning (a reload, a tuning change): write the new values now. A hit
+	// and a recovery rewrite the motors every frame anyway.
+	if (!HasPhysicsBody())
+	{
+		return;
+	}
+	if (State == ECSBodyState::Normal)
+	{
+		ApplyMotors();
+	}
+	else if (State == ECSBodyState::Ragdoll)
+	{
+		ApplyRagdollPhysics();
+	}
+}
+
 void UCSPhysicsBodyComponent::ApplyRagdollPhysics()
 {
 	const UCSMovementTuning& T = GetTuning();
-	RagdollTuning = &T;
 	// A physics material's values are copied into the physics engine when it is first used, so a new
 	// friction gets a new material.
 	if (!RagdollMaterial || RagdollMaterial->Friction != T.RagdollFriction)
@@ -518,7 +536,6 @@ void UCSPhysicsBodyComponent::ApplyRagdollDamping()
 
 void UCSPhysicsBodyComponent::RestoreBodyPhysics()
 {
-	RagdollTuning = nullptr;
 	for (int32 i = 0; i < Body->Bodies.Num() && i < BaseDamping.Num(); ++i)
 	{
 		if (FBodyInstance* B = Body->Bodies[i]; B && B->IsValidBodyInstance())
@@ -582,11 +599,7 @@ void UCSPhysicsBodyComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	switch (State)
 	{
 	case ECSBodyState::Normal:
-		// A tuning reload makes a new tuning object: rewrite the motors from it.
-		if (MotorTuning.Get() != &GetTuning())
-		{
-			ApplyMotors();
-		}
+		// A tuning reload rewrites the motors at once (HandleTuningApplied).
 		break;
 	case ECSBodyState::Hit:
 		TickHit(DeltaTime);
@@ -665,11 +678,6 @@ void UCSPhysicsBodyComponent::FollowPelvis()
 void UCSPhysicsBodyComponent::TickRagdoll(float DeltaTime)
 {
 	const UCSMovementTuning& T = GetTuning();
-	if (RagdollTuning.Get() != &T)
-	{
-		// A reload while ragdolled: new damping and friction at once.
-		ApplyRagdollPhysics();
-	}
 	FollowPelvis();
 	const float Speed = Body->GetPhysicsLinearVelocity(PelvisBone).Size();
 	SettledSeconds = Speed < T.RagdollSettleSpeed ? SettledSeconds + DeltaTime : 0.f;

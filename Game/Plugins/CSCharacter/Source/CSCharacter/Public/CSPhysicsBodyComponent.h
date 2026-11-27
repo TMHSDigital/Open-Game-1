@@ -308,6 +308,8 @@ private:
 	 * False (and still Ragdoll) when there is nowhere clear to put the capsule at all.
 	 */
 	bool BeginRecovery();
+	/** The character's tuning was replaced: the motors (Normal) or the ragdoll physics (Ragdoll) are rewritten now. */
+	void HandleTuningApplied();
 	/** Ragdoll damping and friction from the tuning onto every body. */
 	void ApplyRagdollPhysics();
 	/** Ragdoll damping for the current ground contact (linear damping only on the ground). */
@@ -366,8 +368,6 @@ private:
 	float SettledSeconds = 0.f;
 	/** Seconds since each body in a hit chain was hit. */
 	TMap<FName, float> HitAges;
-	/** The tuning object the motors were last written from (a reload makes a new one). */
-	TWeakObjectPtr<const UCSMovementTuning> MotorTuning;
 	/** Body world transforms at the start of Recovering, in Body->Bodies order. */
 	TArray<FTransform> Snapshot;
 	/** The mesh's place on the capsule before the ragdoll, restored by the recovery. */
@@ -389,8 +389,6 @@ private:
 	TObjectPtr<UPhysicalMaterial> RagdollMaterial;
 	/** In Ragdoll: the pelvis is close above the ground (ground damping on). */
 	bool bRagdollOnGround = false;
-	/** The tuning object the ragdoll damping was last written from. */
-	TWeakObjectPtr<const UCSMovementTuning> RagdollTuning;
 	bool bWarnedNoBody = false;
 
 	FCSContactRecord LastContact;

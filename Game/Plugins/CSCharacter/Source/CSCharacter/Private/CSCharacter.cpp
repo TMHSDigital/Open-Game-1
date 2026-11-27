@@ -165,16 +165,21 @@ const UCSMovementTuning& ACSCharacter::GetPackagedTuning() const
 	return Tuning ? *Tuning.Get() : *GetDefault<UCSMovementTuning>();
 }
 
-UCSMovementTuning* ACSCharacter::MakeTuningCopy()
+UCSMovementTuning* ACSCharacter::MakeTuningCopy(const UCSMovementTuning* Source)
 {
 	// Run on a copy, so later edits to the asset (a bad value typed mid-play) change nothing until
 	// they are applied or reloaded. With no asset the copy holds the class defaults.
-	return NewObject<UCSMovementTuning>(this, NAME_None, RF_Transient, Tuning.Get());
+	return NewObject<UCSMovementTuning>(this, NAME_None, RF_Transient, const_cast<UCSMovementTuning*>(Source));
 }
 
 void ACSCharacter::ApplyTuning()
 {
-	UCSMovementTuning* Values = MakeTuningCopy();
+	ApplyTuningFrom(Tuning.Get());
+}
+
+void ACSCharacter::ApplyTuningFrom(const UCSMovementTuning* Source)
+{
+	UCSMovementTuning* Values = MakeTuningCopy(Source);
 	// Overrides are a dev tool: a tuning with bDevTools off runs exactly as packaged.
 	if (Values->bDevTools && TuningOverrides.Values.Num() > 0)
 	{
@@ -190,7 +195,7 @@ void ACSCharacter::ApplyTuning()
 
 bool ACSCharacter::TryApplyTuning(const FCSTuningOverrides& Overrides, FString& OutReason)
 {
-	UCSMovementTuning* Values = MakeTuningCopy();
+	UCSMovementTuning* Values = MakeTuningCopy(Tuning.Get());
 	if (!Overrides.ApplyTo(*Values, OutReason) || !Values->IsValid(OutReason))
 	{
 		return false;
@@ -302,10 +307,7 @@ void ACSCharacter::BeginPlay()
 		// No last good values yet: start on the class defaults; a fixed asset can be reloaded.
 		UE_LOG(LogCSCharacter, Error, TEXT("%s: tuning %s is invalid (%s); using the class defaults until it is fixed and reloaded."),
 			*GetName(), *Tuning->GetPathName(), *Reason);
-		TObjectPtr<UCSMovementTuning> Bad = Tuning;
-		Tuning = nullptr;
-		ApplyTuning();
-		Tuning = Bad;
+		ApplyTuningFrom(nullptr);
 		return;
 	}
 	ApplyTuning();
