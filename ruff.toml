@@ -1,0 +1,14 @@
+# Python lint for the whole repository: tools/, the editor scripts (Game/Content/Python), the
+# Blender scripts (Art/, tools/blender) and the skill helpers. Run:
+#   uv run --project tools ruff check .
+# CI runs the same command. A small set that finds defects, not style: pyflakes (unused and
+# undefined names), the pycodestyle errors, bugbear (likely bugs) and unused noqa comments.
+line-length = 110
+target-version = "py311"
+extend-exclude = ["Game/Plugins/**/ThirdParty", "_scratch", "_site*"]
+
+[lint]
+select = ["E4", "E7", "E9", "F", "B", "RUF100"]
+# zip() without strict= (the Blender scripts zip fixed-size tuples) and the name `l` (style).
+ignore = ["B905", "E741"]
+

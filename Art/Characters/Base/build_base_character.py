@@ -290,12 +290,13 @@ def build_graph(j):
         g.node(n, p, r)
     g.chain(*[n for n, _, _ in torso])
     for side, sx in (("l", 1.0), ("r", -1.0)):
+        # P and N run within this iteration only, so the loop variables they read are current.
         def P(v):
-            return Vector((v.x * sx, v.y, v.z))
+            return Vector((v.x * sx, v.y, v.z))  # noqa: B023
 
         def N(name, p, r, k=1.0):
             r = (r * k, r * k) if isinstance(r, (int, float)) else (r[0] * k, r[1] * k)
-            return g.node(f"{name}_{side}", P(p), r)
+            return g.node(f"{name}_{side}", P(p), r)  # noqa: B023
 
         # Arm
         s, e = j["upperarm_l"]

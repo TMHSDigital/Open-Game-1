@@ -19,6 +19,8 @@ jobs:
           lfs: false
           fetch-depth: 0
       - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+      - name: Python lint (ruff.toml)
+        run: uv run --locked --project tools ruff check .
       - name: Tests
         run: uv run --locked --project tools pytest tools/tests -q
       - name: Repo checks (secrets scan of all tracked files, asset licenses, decisions)
@@ -50,6 +52,13 @@ jobs:
         with:
           lfs: false
       - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+      - name: PowerShell lint (tools/PSScriptAnalyzerSettings.psd1)
+        shell: pwsh
+        run: |
+          if (-not (Get-Module -ListAvailable PSScriptAnalyzer)) { Install-Module PSScriptAnalyzer -Scope CurrentUser -Force }
+          $found = @(Invoke-ScriptAnalyzer -Path tools -Recurse -Settings tools/PSScriptAnalyzerSettings.psd1)
+          $found | Format-Table ScriptName, Line, RuleName, Message -AutoSize -Wrap
+          if ($found.Count -gt 0) { throw "PSScriptAnalyzer: $($found.Count) finding(s)" }
       - name: Release script tests
         run: pwsh -NoProfile -File tools/steam/test-release.ps1
       - name: Python tests on Windows

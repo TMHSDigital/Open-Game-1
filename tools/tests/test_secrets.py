@@ -179,7 +179,7 @@ def test_staged_scans_index_not_working_tree(tmp_path):
 
 def test_staged_scans_image_metadata(tmp_path):
     git(tmp_path, "init", "-q")
-    img = png(tmp_path / "s.png", Comment="STEAM_APPID=" + "1234567")  # og-secrets: allow
+    png(tmp_path / "s.png", Comment="STEAM_APPID=" + "1234567")  # og-secrets: allow
     git(tmp_path, "add", "s.png")
     assert og("secrets", "--staged", cwd=tmp_path).returncode == 1
 

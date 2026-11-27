@@ -229,7 +229,7 @@ def main():
 
     context = load_or_create(CONTEXT_NAME, unreal.InputMappingContext, unreal.InputMappingContext_Factory())
     context.unmap_all()
-    for action_name, key_name, modifiers in KEYS:
+    for action_name, key_name, _modifiers in KEYS:
         context.map_key(actions[action_name], make_key(key_name))
 
     # map_key returns a copy in Python, so the modifiers are set on the whole list and written back.

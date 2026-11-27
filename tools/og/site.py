@@ -18,7 +18,7 @@ from markdown_it import MarkdownIt
 
 from og import decisions, gh
 from og.repo import repo_root as _repo_root
-from og.text import SLOT as _SLOT, fill as _fill
+from og.text import fill as _fill
 from og.devlog import parse_front, parse_index
 
 SITE_DIR = Path(__file__).resolve().parents[2] / "site"

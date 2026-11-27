@@ -1,7 +1,6 @@
 """Issue #52: the session and decisions CLI layers, odd goals, and the gh and decisions error paths."""
 import json
 import subprocess
-from pathlib import Path
 
 import pytest
 
@@ -100,45 +99,45 @@ def test_gh_failure_raises_with_stderr(monkeypatch):
 
 # ---- decisions: consistency branches ----------------------------------------------------------
 
-def _adr(repo, n, status="Accepted", supersedes="none"):
-    (repo / "docs" / "decisions" / f"{n:04d}-x-{n}.md").write_text(
+def _adr(root, n, status="Accepted", supersedes="none"):
+    (root / "docs" / "decisions" / f"{n:04d}-x-{n}.md").write_text(
         f"# {n:04d}: X {n}\n\nStatus: {status}\nDate: 2026-11-22\nIssue: none\n"
         f"Supersedes: {supersedes}\n\n## Context\n\nx\n", encoding="utf-8")
 
 
 def test_consistency_names_a_bad_status(tmp_path):
-    repo = make_repo(tmp_path, [od(1, issue=11)])
-    _adr(repo, 1, status="Maybe")
-    assert any("0001-x-1.md: bad Status 'Maybe'" in p for p in decisions.consistency(repo, None))
+    root = make_repo(tmp_path, [od(1, issue=11)])
+    _adr(root, 1, status="Maybe")
+    assert any("0001-x-1.md: bad Status 'Maybe'" in p for p in decisions.consistency(root, None))
 
 
 def test_consistency_names_a_missing_superseded_adr(tmp_path):
-    repo = make_repo(tmp_path, [od(1, issue=11)])
-    _adr(repo, 1, supersedes="0009")
+    root = make_repo(tmp_path, [od(1, issue=11)])
+    _adr(root, 1, supersedes="0009")
     assert any("supersedes 0009, which does not exist" in p
-               for p in decisions.consistency(repo, None))
+               for p in decisions.consistency(root, None))
 
 
 def test_consistency_names_a_duplicate_id(tmp_path):
-    repo = make_repo(tmp_path, [od(1, issue=11), od(1, issue=12)])
-    assert any("OD-001: appears more than once" in p for p in decisions.consistency(repo, None))
+    root = make_repo(tmp_path, [od(1, issue=11), od(1, issue=12)])
+    assert any("OD-001: appears more than once" in p for p in decisions.consistency(root, None))
 
 
 def test_consistency_names_an_open_row_without_an_issue(tmp_path):
-    repo = make_repo(tmp_path, [od(2)])
-    assert any("OD-002: open row has no GitHub Issue" in p for p in decisions.consistency(repo, []))
+    root = make_repo(tmp_path, [od(2)])
+    assert any("OD-002: open row has no GitHub Issue" in p for p in decisions.consistency(root, []))
 
 
 def test_consistency_names_a_resolved_row_whose_issue_is_open(tmp_path, monkeypatch):
-    repo = make_repo(tmp_path, [od(1, issue=11)], slug="owner/repo")
+    root = make_repo(tmp_path, [od(1, issue=11)], slug="owner/repo")
     monkeypatch.setattr(gh, "_gh", Stub())  # close_decision closes the Issue through it
-    close_decision_offline(repo, "OD-001")
-    problems = decisions.consistency(repo, [{"number": 11, "state": "OPEN", "title": "q"}])
+    close_decision_offline(root, "OD-001")
+    problems = decisions.consistency(root, [{"number": 11, "state": "OPEN", "title": "q"}])
     assert any("OD-001: resolved but Issue #11 is still open" in p for p in problems)
 
 
-def close_decision_offline(repo, od_id):
-    return decisions.close_decision(repo, od_id, "A title", "We chose a.")
+def close_decision_offline(root, od_id):
+    return decisions.close_decision(root, od_id, "A title", "We chose a.")
 
 
 def test_a_pipe_inside_a_cell_survives_a_rewrite(tmp_path):
@@ -150,23 +149,23 @@ def test_a_pipe_inside_a_cell_survives_a_rewrite(tmp_path):
 # ---- decisions: a close whose Issue cannot be closed ------------------------------------------
 
 def test_close_with_a_failing_issue_close_leaves_a_consistent_record(tmp_path, monkeypatch):
-    repo = make_repo(tmp_path, [od(1, issue=11)], slug="owner/repo")
+    root = make_repo(tmp_path, [od(1, issue=11)], slug="owner/repo")
 
     def fail(args):
         raise gh.GhError("gh issue close failed (1): network")
 
     monkeypatch.setattr(gh, "_gh", fail)
     with pytest.raises(gh.GhError):
-        close_decision_offline(repo, "OD-001")
-    assert list((repo / "docs" / "decisions").glob("0001-*.md"))
-    assert decisions.parse_resolved((repo / decisions.OPEN_DOC).read_text("utf-8"))[0].id == "OD-001"
-    assert decisions.consistency(repo, None) == []
+        close_decision_offline(root, "OD-001")
+    assert list((root / "docs" / "decisions").glob("0001-*.md"))
+    assert decisions.parse_resolved((root / decisions.OPEN_DOC).read_text("utf-8"))[0].id == "OD-001"
+    assert decisions.consistency(root, None) == []
     with pytest.raises(KeyError):
-        close_decision_offline(repo, "OD-001")
+        close_decision_offline(root, "OD-001")
 
 
 def test_cli_close_of_an_unknown_decision_exits_2(tmp_path, monkeypatch, capsys):
-    repo = make_repo(tmp_path, [od(1, issue=11)])
-    monkeypatch.setattr(decisions, "_repo_root", lambda: repo)
+    root = make_repo(tmp_path, [od(1, issue=11)])
+    monkeypatch.setattr(decisions, "_repo_root", lambda: root)
     assert cli.main(["decisions", "close", "OD-999", "--title", "t", "--decision", "d"]) == 2
     assert "OD-999 is not an open decision" in capsys.readouterr().err

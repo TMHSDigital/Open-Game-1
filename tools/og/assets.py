@@ -159,7 +159,7 @@ def _load_catalog(repo: Path, source: str | None) -> dict:
         local = repo.parent / CATALOG_LOCAL
         source = str(local) if local.exists() else CATALOG_URL
     if re.match(r"https?://", source):
-        with urllib.request.urlopen(source, timeout=30) as resp:  # noqa: S310
+        with urllib.request.urlopen(source, timeout=30) as resp:
             return json.loads(resp.read().decode("utf-8"))
     return json.loads(Path(source).read_text(encoding="utf-8"))
 

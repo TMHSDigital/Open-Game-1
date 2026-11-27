@@ -228,7 +228,7 @@ function Invoke-StartCheck([string]$Content, [string]$Project, [string]$ResultFi
     $gameArgs = @("-CSSmokeTest=`"$ResultFile`"", '-windowed', '-ResX=960', '-ResY=540', '-nosound', '-unattended')
     $proc = Start-Process -FilePath $exe -ArgumentList $gameArgs -PassThru
     if (-not $proc.WaitForExit($TimeoutSeconds * 1000)) {
-        try { $proc.Kill($true) } catch { }
+        try { $proc.Kill($true) } catch { Write-Verbose "could not stop the game: $_" }
         return "the packaged game did not finish its start check in $TimeoutSeconds s."
     }
     $code = $proc.ExitCode
