@@ -29,6 +29,7 @@ the game's character (only once the fit in NOTES.md is done and the game's tests
 """
 
 import importlib.util
+import math
 import json
 import sys
 from pathlib import Path
@@ -68,7 +69,7 @@ def generate_human():
         macros["height"] = height_macro
         # feet_on_ground=False: MPFB fits its rig in MakeHuman's own frame (hips near z = 0) and would
         # not follow a mesh moved up; mesh and joints are moved up together after baking (main).
-        human = HumanService.create_human(mask_helpers=True, detailed_helpers=False, feet_on_ground=False,
+        human = HumanService.create_human(mask_helpers=True, detailed_helpers=True, feet_on_ground=False,
                                           extra_vertex_groups=True, macro_detail_dict=macros)
         ev = human.evaluated_get(bpy.context.evaluated_depsgraph_get())
         zs = [(ev.matrix_world @ v.co).z for v in ev.data.vertices]
@@ -115,6 +116,13 @@ def rig_joints(rig):
     return joints
 
 
+def _palm_normal(wrist, index, pinky, axis):
+    """The palm plane's normal, made perpendicular to the forearm axis."""
+    n = (index - wrist).cross(pinky - wrist)
+    n = n - axis * n.dot(axis)
+    return n.normalized()
+
+
 def match_rest_pose(rig):
     """Poses MPFB's arms into the first scripted body's rest pose: each upper arm and forearm
     pointing as there (arm 55 degrees below horizontal, elbow bent 12 degrees; MPFB's own has the
@@ -125,6 +133,8 @@ def match_rest_pose(rig):
     bpy.ops.object.mode_set(mode="POSE")
     try:
         for side in ("l", "r"):
+            # The legs keep MPFB's own pose: posing them to the scripted body's made the knees
+            # overshoot more in the ragdoll test (2026-11-27).
             for bone, frm, to in ((f"upperarm_{side}", f"upperarm_{side}", f"lowerarm_{side}"),
                                   (f"lowerarm_{side}", f"lowerarm_{side}", f"hand_{side}")):
                 bpy.context.view_layer.update()
@@ -134,6 +144,22 @@ def match_rest_pose(rig):
                 turn = have.rotation_difference(want).to_matrix().to_4x4()
                 pivot = Matrix.Translation(pb.head)
                 pb.matrix = pivot @ turn @ pivot.inverted() @ pb.matrix
+            # The turns above leave the forearm's twist arbitrary: twist it about its own axis until
+            # the palm faces as on the scripted body, or a clip's finger curl bends the fingers
+            # sideways into a hook instead of into the palm.
+            bpy.context.view_layer.update()
+            pb = rig.pose.bones[f"lowerarm_{side}"]
+            axis = (pb.tail - pb.head).normalized()
+            bones = rig.pose.bones
+            new_n = _palm_normal(bones[f"hand_{side}"].head, bones[f"index_01_{side}"].head, bones[f"pinky_01_{side}"].head, axis)
+            old_n = _palm_normal(ref[f"hand_{side}"][0], ref[f"index_01_{side}"][0], ref[f"pinky_01_{side}"][0], axis)
+            angle = new_n.angle(old_n)
+            if new_n.cross(old_n).dot(axis) < 0.0:
+                angle = -angle
+            twist = Matrix.Rotation(angle, 4, axis)
+            pivot = Matrix.Translation(pb.head)
+            pb.matrix = pivot @ twist @ pivot.inverted() @ pb.matrix
+            print("rest pose: %s forearm twisted %.1f deg to match the palm" % (side, math.degrees(angle)))
     finally:
         bpy.ops.object.mode_set(mode="OBJECT")
     bpy.context.view_layer.update()
@@ -146,7 +172,13 @@ def feet_to_ground(human, joints):
     for v in human.data.vertices:
         v.co.z += lift
     up = Vector((0.0, 0.0, lift))
-    moved = {n: (h + up, t + up) for n, (h, t) in joints.items()}
+    # Posing the legs to the reference (match_rest_pose) changes the height a little: scale the
+    # mesh and the joints together back to HEIGHT (a uniform change below one percent).
+    k = HEIGHT / max(v.co.z for v in human.data.vertices)
+    for v in human.data.vertices:
+        v.co *= k
+    moved = {n: ((h + up) * k, (t + up) * k) for n, (h, t) in joints.items()}
+    print("feet to ground: scaled by %.4f to %.2f m" % (k, HEIGHT))
     pelvis_z = moved["pelvis"][0].z
     print("feet to ground: lifted %.3f m, pelvis at %.3f m" % (lift, pelvis_z))
     if not 0.45 * HEIGHT < pelvis_z < 0.65 * HEIGHT:
@@ -220,8 +252,8 @@ def reference_axes(ref):
 
 
 def match_rolls(arm, axes):
-    """Gives every bone the reference body's orientation: its own head and length, the reference's
-    direction (Y) and roll (Z). The retargeted clips and the physics treat a bone's whole frame as
+    """Gives every bone the reference body's roll (Z), and the end bones (hands, fingers, feet, head)
+    its direction and length too. The retargeted clips and the physics treat a bone's whole frame as
     the reference, and MPFB's hands, fingers, feet and head point 13 to 31 degrees off the scripted
     body's; the long bones barely change, the arms being posed to the reference (match_rest_pose)."""
     bpy.context.view_layer.objects.active = arm
@@ -233,8 +265,10 @@ def match_rolls(arm, axes):
                 # End bones (hands, fingers, feet, head) take the reference length too: the retarget's
                 # IK chains scale by bone length.
                 end = eb.name.startswith(("hand_", "thumb_", "index_", "middle_", "ring_", "pinky_", "foot_", "ball_", "head"))
-                length = ref_length if end else (eb.tail - eb.head).length
-                eb.tail = eb.head + y * length
+                if end:
+                    eb.tail = eb.head + y * ref_length
+                # Long bones keep their own direction, along the limb to the next joint: the ragdoll's
+                # capsules and hinges are built along it. Only their roll follows the reference.
                 eb.align_roll(z)
     finally:
         bpy.ops.object.mode_set(mode="OBJECT")

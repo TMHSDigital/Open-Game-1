@@ -35,12 +35,12 @@ EXPECTED_BONES = 89
 EXPECTED_HEIGHT_CM = 180.0
 
 # First-person camera socket: between the eyes, in mesh space (cm; the mesh faces +Y, feet at the
-# origin). Build_base_character.py makes a featureless egg head whose widest ring (head_mid) is at
-# 167 cm with its front surface about 12 cm ahead of the head axis; real eyes sit about 12 cm below
-# the crown (180 cm) and 2 to 3 cm behind the face surface. The socket's X axis looks forward (+Y).
+# origin). The MakeHuman head built by build_human.py (decision 0022) has the bridge of the nose at
+# about 169 cm, 15.3 cm ahead of the head axis (measured from the built mesh); the eyes sit about
+# 2.5 cm behind that surface. The socket's X axis looks forward (+Y).
 EYE_SOCKET = "eyes"
 EYE_BONE = "head"
-EYES_CM = (0.0, 9.5, 168.0)
+EYES_CM = (0.0, 13.0, 169.0)
 
 # (bone, swing deg, twist deg, hinge, flex deg, extend deg). Ball joints swing up to `swing` in any
 # direction from the rest (A-pose) direction, unless CONES below moves and shapes the cone; hinges
@@ -62,8 +62,8 @@ RAGDOLL = [
     ("hand_r", 50, 10, False, 0, 0),
     ("thigh_l", 75, 30, False, 0, 0),  # cone from CONES
     ("thigh_r", 75, 30, False, 0, 0),
-    ("calf_l", 3, 5, True, 140, 2),  # knee
-    ("calf_r", 3, 5, True, 140, 2),
+    ("calf_l", 3, 5, True, 140, 0),  # knee (no hyperextension: the ragdoll solver overshoots a few degrees)
+    ("calf_r", 3, 5, True, 140, 0),
     ("foot_l", 30, 10, False, 0, 0),
     ("foot_r", 30, 10, False, 0, 0),
 ]

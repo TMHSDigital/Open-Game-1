@@ -63,7 +63,7 @@ UCSMovementTuning::UCSMovementTuning()
 {
 	// Starting values (no spec numbers). World-space motors: Normal holds the pose closely, Hit lets
 	// the limb go loose enough to swing visibly before the ramp back.
-	NormalProfile = MakeDrive(false, 1000.f, 100.f, 1000.f, 100.f);
+	NormalProfile = MakeDrive(false, 1600.f, 160.f, 1600.f, 160.f);
 	HitProfile = MakeDrive(false, 60.f, 10.f, 60.f, 10.f);
 }
 

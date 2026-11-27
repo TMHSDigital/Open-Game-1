@@ -229,7 +229,19 @@ FCSRagdollBuildResult UCSRagdollBuilder::BuildRagdollPhysicsAsset(USkeletalMesh*
 			{
 				return Fail(FString::Printf(TEXT("Hinge '%s' is straight in the rest pose; its bend direction is unknown."), *J.Bone.ToString()));
 			}
-			FrameZ = Axis.GetSafeNormal();
+			// The anatomical hinge axis runs side to side: perpendicular to the limb and to the body's
+			// forward (+Y in mesh space). A realistic leg stands slightly knock-kneed, so its rest bend
+			// leans sideways and would tilt the axis about 18 degrees; the rest bend only picks the sign.
+			FVector Lateral = FVector::CrossProduct(BoneDir, FVector::YAxisVector);
+			if (Lateral.Size() > 0.2f)
+			{
+				Lateral.Normalize();
+				FrameZ = FVector::DotProduct(Lateral, Axis) >= 0.f ? Lateral : -Lateral;
+			}
+			else
+			{
+				FrameZ = Axis.GetSafeNormal();
+			}
 			// Allowed bend from straight: [-HingeExtendDeg, HingeFlexDeg]. Relative to the rest pose
 			// that is [-(Extend + Rest), Flex - Rest], centred by turning the parent frame.
 			Swing1 = 0.5f * (J.HingeFlexDeg + J.HingeExtendDeg);

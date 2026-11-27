@@ -174,9 +174,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "CS|Strike", meta = (ClampMin = "0", Units = "cm"))
 	float MaxTargetHeightDifference = 60.f;
 
-	/** The highest bone an aim point may reach. */
+	/**
+	 * The highest bone an aim point may reach: the upper chest. On the realistic body (decision 0022)
+	 * spine_05 sits at the shoulder line where the neck starts, so a level punch went for the neck.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "CS|Strike")
-	FName AimTopBone = TEXT("spine_05");
+	FName AimTopBone = TEXT("spine_04");
 
 	/** The aim of the strike under way (fixed at its start, turned toward the target). */
 	FVector GetStrikeAim() const { return StrikeAim; }

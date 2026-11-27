@@ -92,7 +92,7 @@ script. Build choices:
 
 ## Realistic base character (decision 0022, 2026-11-27)
 
-`build_human.py` builds the realistic base character. **It is not the game's character yet**: the committed `SK_BaseCharacter.blend` and `.fbx` still come from `build_base_character.py` until the fit below is finished, and then switch over in one tested commit. Build it to a scratch folder with:
+`build_human.py` builds the realistic base character, and since session 2026-11-27-02 it is the game's character: the committed `SK_BaseCharacter.blend` and `.fbx` come from it (`--install`). Build it with:
 
     pwsh tools/blender/run.ps1 -UserAddons -Script Art/Characters/Base/build_human.py [-- --out-dir D] [--check-only]
 
@@ -118,43 +118,36 @@ script. Build choices:
 - The ledger row is `makehuman-core-assets` (CC0-1.0). The MPFB FAQ: "There are in practice no
   restrictions on neither output nor bundled graphical assets".
 
-What a trial import into the game showed on 2026-11-27, and must be fixed before the switch:
+What it took to make the generated body work in the game (2026-11-27):
 
-- Bone frames: `build_human.py` rolls every bone so its local Z axis matches the first scripted
-  body (the reference rolls alone turned the frames on MPFB's joints). That fixed most of the
-  ragdoll hinges; `calf_r` still bends backward in CombatSimulator.CS.Body.HingesBendTheRightWay.
-- Strikes: the jab never extends (the left arm stays down) and the hand twists against the
-  forearm into a ribbon. The twist bones carry no weight yet, and the strike's fist and hand
-  targets are worth checking in the new frames.
-- Reach: the realistic arm (upper arm plus forearm 48.1 cm, against 56.4 on the scripted body)
-  lands about 49 cm from the chest. With the 35 cm capsule two fighters cannot stand close enough;
-  a 28 cm capsule (the body is about 26 cm wide without the arms) and a step-in scaled by arm
-  length got the straight and both hooks landing. PunchReach itself must stay 68: it is also the
-  drive distance, and lowering it made the fist go less far.
-- Motors: the chest strayed 6.5 cm (limit 5) stopping from a jog; NormalProfile at 1.6 times its
-  strength brought it back within the limit.
-- The `eyes` socket for this head: (0, 13, 169) cm (bridge of the nose 15.3 cm ahead of the head
-  axis at 169 cm).
-- Fixed on 2026-11-27 (second session), in `build_human.py` and the import:
-  - MPFB rests with the elbows bent 43 degrees and the arms 48 degrees below horizontal; the game
-    was built around 55 and 12. The arms are now posed to the scripted body's rest pose before
-    the mesh is baked.
-  - Every bone takes the scripted body's direction and roll (end bones its length too); MPFB's
-    hands, fingers, feet and head pointed 13 to 31 degrees off.
-  - Twist bones take a share of their limb's weight, as in `build_base_character.py`.
-  - `import_base_character.py` now updates the Skeleton's reference pose on reimport (an
-    Interchange pipeline with `update_skeleton_reference_pose`). Without it the Skeleton kept the
-    first body's pose (forearm 31.1 cm against the new mesh's 24.2) and every retargeted clip
-    played in the old frames.
-- Still open: in every clip the hands curl into hooks (also with the physics layer hidden), while
-  the hand deforms cleanly in Blender, so the fault is in the retarget, most likely the finger and
-  hand chains on the new proportions. Strikes and the knee hinge were not re-tested after the
-  fixes above.
-- The asset ledger row (`makehuman-core-assets`, CC0-1.0) is added in the commit that makes the
-  generated files the game's character.
+- **MPFB's joint helpers.** `create_human` must keep `detailed_helpers=True`: the rig is fitted to
+  the body through its "joint" helper groups. Without them the rig stayed at the default figure's
+  joints, up to 10 cm outside the mesh, with 24 cm upper arms; every clip bent the hands into hooks
+  and punches fell short.
+- **Rest pose.** MPFB rests with the elbows bent 43 degrees and the arms at 48; the game's joint
+  limits, motors and retargets were built around 55 and 12. The arms are posed to that rest pose
+  before baking (posing the legs too made the knees overshoot more, so they keep MPFB's).
+- **Bone frames.** Every bone takes the scripted body's roll; end bones (hands, fingers, feet,
+  head) take its direction and length too. Twist bones get a share of their limb's weight.
+- **Skeleton reference pose.** `import_base_character.py` updates the Skeleton's reference pose
+  on reimport (Interchange `update_skeleton_reference_pose`); without it the Skeleton kept the
+  first body's pose and every retargeted clip played in the old frames.
+- **Ragdoll hinges.** A realistic leg stands slightly knock-kneed, so its rest bend leans sideways.
+  `UCSRagdollBuilder` now takes a hinge's axis side to side (perpendicular to the limb and to
+  forward), the rest bend giving only its sign; the knees allow no hyperextension.
+- **Tuning.** `NormalProfile` at 1600/160/1600/160 (the chest strayed 9 cm stopping from a jog) with
+  `NormalLimbStrengthScale` 0.22, so the arms keep their old strength and still reach. The jab's
+  reach scale is 0.85: the realistic arm lands about 8 cm short of the scripted one's.
+- **First-person socket.** `eyes` at (0, 13, 169) cm.
+- **Aim.** `UCSStrikeComponent::AimTopBone` is `spine_04` (135.5 cm). On this spine `spine_05` sits at the shoulder
+  line where the neck starts (145 cm), so a level punch went for the neck and glanced off or caught the
+  head; with the upper chest as the top every punch case lands on `spine_03`.
+- Checked: 133 of 133 automation tests. The point-blank punch ("pressed against it") does not land
+  yet; the test reports it as a warning (Issue #76).
+- Ledger row `makehuman-core-assets` (CC0-1.0).
 
-`build_base_character.py` stays as the game's character until then, and afterwards for its helpers
-(armature, centimetre scene, export) and the reference frames.
+`build_base_character.py` is no longer the game's character. It stays for its helpers (armature,
+centimetre scene, export) and as the source of the reference frames above.
 
 ## Skeletal round-trip (verified 2026-11-22, Blender 5.1.1, UE 5.8.3)
 

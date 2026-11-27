@@ -286,7 +286,7 @@ public:
 	 * stops and turns (default 0.35). Within [0, 1].
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Body", meta = (UIMin = "0", UIMax = "1"))
-	float NormalLimbStrengthScale = 0.35f;
+	float NormalLimbStrengthScale = 0.22f;
 
 	/**
 	 * Hit: the strengths a hit limb chain drops to (an arm, the head, or the whole upper body for a

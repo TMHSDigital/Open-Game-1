@@ -49,6 +49,7 @@ It is an early prototype, made by one developer, and every design decision, work
 
 ## In the build
 
+- Every fighter is a realistic, athletic 180 cm human, generated with MakeHuman and fitted to the game's skeleton (decision 0022). It has no skin, eyes or hair yet, and its movement still comes from the stand-in clips until motion capture replaces them (decision 0023).
 - You move with weight: walk, jog, a sprint that builds up, crouch and jump, in first or third person on one key. The upper body is simulated, so hits stagger it, big ones knock it down, and it gets back up on its own.
 - The attack key throws a jab, and pressed again straight after, a straight: a one-two. Pressed while moving sideways near an opponent it throws a hook from that side. The kick key throws a front kick, slow and heavy, with the leg simulated for its length. Every strike goes for the nearest opponent in front of you and steps in when it is out of reach.
 - Near an opponent you face it, and backing off is slower than going forward. Holding the block takes most of a hit from in front. The dodge is a quick step with no immunity: a punch misses because you are no longer where it was going.

@@ -33,7 +33,7 @@ namespace CSCameraAssetTests
 	const TCHAR* Regenerate = TEXT(" (missing or stale: run Game/Content/Python/import_base_character.py, see its docstring)");
 	// Between the eyes, in mesh space (the mesh faces +Y, feet at the origin): the value
 	// import_base_character.py places the socket at.
-	const FVector ExpectedEyes(0.f, 9.5f, 168.f);
+	const FVector ExpectedEyes(0.f, 13.f, 169.f);
 
 	// Owner-hidden in first person.
 	const TCHAR* HeadBones[] = {TEXT("neck_01"), TEXT("neck_02"), TEXT("head")};
@@ -128,7 +128,7 @@ bool FCSCameraEyeSocketOnHeadTest::RunTest(const FString& Parameters)
 	const FTransform HeadCS = FAnimationRuntime::GetComponentSpaceTransformRefPose(Ref, Head);
 	const FTransform EyesCS = Socket->GetSocketLocalTransform() * HeadCS;
 	AddInfo(FString::Printf(TEXT("Eyes in mesh space (rest pose): %s; head bone at %s"), *EyesCS.GetLocation().ToString(), *HeadCS.GetLocation().ToString()));
-	TestTrue(FString(TEXT("Eyes between the eyes, 168 cm up, 9.5 cm forward")) + Regenerate, EyesCS.GetLocation().Equals(ExpectedEyes, 0.5f));
+	TestTrue(FString(TEXT("Eyes between the eyes, 169 cm up, 13 cm forward")) + Regenerate, EyesCS.GetLocation().Equals(ExpectedEyes, 0.5f));
 	TestTrue(TEXT("Eyes are in front of the head bone"), EyesCS.GetLocation().Y > HeadCS.GetLocation().Y);
 	TestTrue(TEXT("The socket's X axis looks forward (+Y in mesh space)"), EyesCS.GetUnitAxis(EAxis::X).Equals(FVector(0.f, 1.f, 0.f), 0.01f));
 	return true;
