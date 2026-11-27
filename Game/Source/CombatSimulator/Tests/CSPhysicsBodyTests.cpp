@@ -35,6 +35,8 @@
 #include "PhysicsEngine/PhysicsConstraintTemplate.h"
 #include "PhysicalMaterials/PhysicalMaterial.h"
 #include "Tests/AutomationCommon.h"
+#include "Tests/CSInputRig.h"
+#include "Tests/CSTestWorld.h"
 #include "UObject/StrongObjectPtr.h"
 #include "UObject/UnrealType.h"
 
@@ -45,40 +47,22 @@ namespace CSPhysicsBodyTests
 
 	// A test world with a 200 m floor box (top at z = 0, optionally tilted, rising toward +X), extra
 	// blocks, and one ACSCharacter (mesh, physics asset and animation from config) on it, ticked at 60 Hz.
-	struct FBodySim
+	struct FBodySim : FCSTestWorld
 	{
-		FTestWorldWrapper World;
-		ACSCharacter* Character = nullptr;
 		UCSPhysicsBodyComponent* PhysicsBody = nullptr;
-		APlayerController* Controller = nullptr;
 		TStrongObjectPtr<UCSMovementTuning> Tuning;
-		float Dt = 1.f / 60.f;
-		float Time = 0.f;
 
 		bool Init(FAutomationTestBase& Test, float FloorPitchDeg = 0.f, const FVector& Spawn = FVector(0.f, 0.f, 120.f), bool bSettle = true)
 		{
-			if (!World.CreateTestWorld(EWorldType::Game) || !World.BeginPlayInTestWorld())
-			{
-				World.ForwardErrorMessages(&Test);
-				return false;
-			}
-			AddBox(FVector(0.f, 0.f, -50.f), FVector(10000.f, 10000.f, 50.f), FRotator(FloorPitchDeg, 0.f, 0.f));
-
 			Tuning.Reset(NewObject<UCSMovementTuning>(GetTransientPackage()));
-			FActorSpawnParameters Params;
-			Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-			Params.bDeferConstruction = true;
-			const FTransform SpawnTransform(Spawn);
-			Character = World.GetTestWorld()->SpawnActor<ACSCharacter>(ACSCharacter::StaticClass(), SpawnTransform, Params);
-			if (!Character)
+			FCSTestWorldOptions Options;
+			Options.FloorPitchDeg = FloorPitchDeg;
+			Options.Spawn = Spawn;
+			Options.bSettle = false;
+			if (!FCSTestWorld::Init(Test, Tuning.Get(), Options))
 			{
-				Test.AddError(TEXT("Could not spawn the character"));
 				return false;
 			}
-			Character->Tuning = Tuning.Get();
-			Character->FinishSpawning(SpawnTransform);
-			Character->GetCharacterMovement()->bRunPhysicsWithNoController = true;
-			Character->GetCharacterMovement()->SetDefaultMovementMode();
 			PhysicsBody = Character->GetPhysicsBody();
 			if (!Test.TestNotNull(TEXT("ACSCharacter has a physics body component"), PhysicsBody))
 			{
@@ -97,66 +81,6 @@ namespace CSPhysicsBodyTests
 				}
 			}
 			return true;
-		}
-
-		~FBodySim()
-		{
-			if (World.GetTestWorld())
-			{
-				World.DestroyTestWorld(false);
-			}
-		}
-
-		UBoxComponent* AddBox(const FVector& Centre, const FVector& Extent, const FRotator& Rotation = FRotator::ZeroRotator)
-		{
-			UWorld* W = World.GetTestWorld();
-			AActor* Actor = W->SpawnActor<AActor>(AActor::StaticClass(), FTransform::Identity);
-			UBoxComponent* Box = NewObject<UBoxComponent>(Actor);
-			Box->SetBoxExtent(Extent);
-			Box->SetCollisionProfileName(UCollisionProfile::BlockAll_ProfileName);
-			Actor->SetRootComponent(Box);
-			Box->RegisterComponent();
-			Box->SetWorldLocationAndRotation(Centre, Rotation);
-			return Box;
-		}
-
-		void Possess()
-		{
-			Controller = World.GetTestWorld()->SpawnActor<APlayerController>();
-			Controller->Possess(Character);
-		}
-
-		void Step(const FVector& Input = FVector::ZeroVector)
-		{
-			if (!Input.IsNearlyZero())
-			{
-				Character->AddMovementInput(Input, 1.f);
-			}
-			World.TickTestWorld(Dt);
-			Time += Dt;
-		}
-
-		void Run(float Seconds, const FVector& Input = FVector::ZeroVector)
-		{
-			for (int32 i = 0; i < FMath::CeilToInt(Seconds / Dt); ++i)
-			{
-				Step(Input);
-			}
-		}
-
-		// Steps until Done returns true or Seconds pass. Returns whether Done became true.
-		template <typename F>
-		bool RunUntil(float Seconds, F&& Done)
-		{
-			for (int32 i = 0; i < FMath::CeilToInt(Seconds / Dt); ++i)
-			{
-				Step();
-				if (Done())
-				{
-					return true;
-				}
-			}
-			return false;
 		}
 
 		// A 50 cm thick ramp rising toward +X at PitchDeg, its top surface starting at Foot and Length
@@ -258,63 +182,8 @@ namespace CSPhysicsBodyTests
 		return FMath::RadiansToDegrees(FMath::Atan2(FVector::DotProduct(Child, Side), FVector::DotProduct(Child, Parent)));
 	}
 
-	// The character's input actions, filled with transient actions, and the component they are bound on
-	// (as in the plugin's dev tools tests).
-	struct FInputRig
-	{
-		TMap<FName, TStrongObjectPtr<UInputAction>> Actions;
-		TStrongObjectPtr<UEnhancedInputComponent> Input;
-
-		void Bind(ACSCharacter& Character)
-		{
-			// Every input action slot of the character, named without "Action" ("Move", "DebugReset"),
-			// so a new action is picked up without a change here.
-			for (FSoftObjectProperty* Slot : ACSCharacter::InputActionProperties())
-			{
-				FString Name = Slot->GetName();
-				Name.RemoveFromEnd(TEXT("Action"));
-				const bool bAxis = Name == TEXT("Move") || Name == TEXT("Look") || Name == TEXT("LookStick");
-				UInputAction* Action = NewObject<UInputAction>(GetTransientPackage(), MakeUniqueObjectName(GetTransientPackage(), UInputAction::StaticClass(), FName(*Name)));
-				Action->ValueType = bAxis ? EInputActionValueType::Axis2D : EInputActionValueType::Boolean;
-				Slot->SetObjectPropertyValue_InContainer(&Character, Action);
-				Actions.Add(FName(*Name), TStrongObjectPtr<UInputAction>(Action));
-			}
-			Input.Reset(NewObject<UEnhancedInputComponent>(&Character));
-			Character.SetupPlayerInputComponent(Input.Get());
-		}
-
-		// An action instance carrying a value, as the Enhanced Input subsystem builds one for a key
-		// press (the value and trigger event are protected members of FInputActionInstance).
-		struct FValuedInstance : FInputActionInstance
-		{
-			FValuedInstance(const UInputAction* InAction, ETriggerEvent Event, const FInputActionValue& InValue)
-				: FInputActionInstance(InAction)
-			{
-				TriggerEvent = Event;
-				Value = InValue;
-			}
-		};
-
-		// Executes every binding of the action for this trigger event with Value (zero by default).
-		// Returns how many ran.
-		int32 Fire(FName Name, ETriggerEvent Event, const FInputActionValue& Value = FInputActionValue())
-		{
-			const TStrongObjectPtr<UInputAction>* Found = Actions.Find(Name);
-			const UInputAction* Action = Found ? Found->Get() : nullptr;
-			int32 Ran = 0;
-			for (const TUniquePtr<FEnhancedInputActionEventBinding>& Binding : Input->GetActionEventBindings())
-			{
-				if (Binding->GetAction() == Action && Binding->GetTriggerEvent() == Event)
-				{
-					Binding->Execute(FValuedInstance(Action, Event, Value));
-					++Ran;
-				}
-			}
-			return Ran;
-		}
-
-		int32 Press(FName Name) { return Fire(Name, ETriggerEvent::Started); }
-	};
+	// The character's real bindings, driven by key presses (Public/Tests/CSInputRig.h).
+	using FInputRig = FCSInputRig;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSBodyNormalFollowsPoseTest, "CombatSimulator.CS.Body.NormalFollowsPose", CSPhysicsBodyTests::TestFlags)

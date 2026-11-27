@@ -17,6 +17,7 @@
 #include "CSMovementTuning.h"
 #include "EnhancedInputComponent.h"
 #include "InputAction.h"
+#include "Tests/CSInputRig.h"
 #include "UObject/StrongObjectPtr.h"
 #include "UObject/UnrealType.h"
 
@@ -27,52 +28,8 @@ namespace CSDevToolsTests
 	using CSTestSupport::FMoveSim;
 	using CSTestSupport::NewTuning;
 
-	// The character's input actions, filled with transient actions, and the component they are bound on.
-	struct FInputRig
-	{
-		// Strong pointers: nothing else references these, and the test world ticks can collect garbage.
-		TMap<FName, TStrongObjectPtr<UInputAction>> Actions;
-		TStrongObjectPtr<UEnhancedInputComponent> Input;
-
-		void Bind(ACSCharacter& Character)
-		{
-			// Every input action slot of the character, named without "Action" ("Move", "DebugReset"),
-			// so a new action is picked up without a change here.
-			for (FSoftObjectProperty* Slot : ACSCharacter::InputActionProperties())
-			{
-				FString Name = Slot->GetName();
-				Name.RemoveFromEnd(TEXT("Action"));
-				const bool bAxis = Name == TEXT("Move") || Name == TEXT("Look") || Name == TEXT("LookStick");
-				UInputAction* Action = NewObject<UInputAction>(GetTransientPackage(), MakeUniqueObjectName(GetTransientPackage(), UInputAction::StaticClass(), FName(*Name)));
-				Action->ValueType = bAxis ? EInputActionValueType::Axis2D : EInputActionValueType::Boolean;
-				Slot->SetObjectPropertyValue_InContainer(&Character, Action);
-				Actions.Add(FName(*Name), TStrongObjectPtr<UInputAction>(Action));
-			}
-			Input.Reset(NewObject<UEnhancedInputComponent>(&Character));
-			Character.SetupPlayerInputComponent(Input.Get());
-		}
-
-		// Executes every binding of the action for this trigger event. Returns how many ran.
-		int32 Fire(FName Name, ETriggerEvent Event)
-		{
-			const TStrongObjectPtr<UInputAction>* Found = Actions.Find(Name);
-			const UInputAction* Action = Found ? Found->Get() : nullptr;
-			int32 Ran = 0;
-			for (const TUniquePtr<FEnhancedInputActionEventBinding>& Binding : Input->GetActionEventBindings())
-			{
-				if (Binding->GetAction() == Action && Binding->GetTriggerEvent() == Event)
-				{
-					Binding->Execute(FInputActionInstance(Action));
-					++Ran;
-				}
-			}
-			return Ran;
-		}
-
-		// A key press (Started) and release (Completed). Return how many bindings ran.
-		int32 Press(FName Name) { return Fire(Name, ETriggerEvent::Started); }
-		int32 Release(FName Name) { return Fire(Name, ETriggerEvent::Completed); }
-	};
+	// The character's real bindings, driven by key presses (Public/Tests/CSInputRig.h).
+	using FInputRig = FCSInputRig;
 
 	// Counts the dev tool requests that reach the extension points (the physics body binds the real ragdoll and push here).
 	struct FDevToolsProbe

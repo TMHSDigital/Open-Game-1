@@ -21,6 +21,7 @@
 #include "Misc/PackageName.h"
 #include "Tests/AutomationCommon.h"
 #include "Tests/AutomationEditorCommon.h"
+#include "Tests/CSTestWorld.h"
 
 namespace CSPlayRig
 {
@@ -81,40 +82,15 @@ namespace CSPlayRig
 	}
 }
 
-/** A test world holding one ACSCharacter with the given tuning and no controller. Not ticked. */
-struct FCSBareCharacterWorld
+/** A test world holding one ACSCharacter with the given tuning, no floor and no controller. Not ticked. */
+struct FCSBareCharacterWorld : FCSTestWorld
 {
-	FTestWorldWrapper World;
-	ACSCharacter* Character = nullptr;
-
 	bool Init(FAutomationTestBase& Test, UCSMovementTuning* Tuning)
 	{
-		if (!World.CreateTestWorld(EWorldType::Game) || !World.BeginPlayInTestWorld())
-		{
-			World.ForwardErrorMessages(&Test);
-			return false;
-		}
-		FActorSpawnParameters Params;
-		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-		Params.bDeferConstruction = true;
-		const FTransform Spawn(FVector(0.f, 0.f, 120.f));
-		Character = World.GetTestWorld()->SpawnActor<ACSCharacter>(ACSCharacter::StaticClass(), Spawn, Params);
-		if (!Character)
-		{
-			Test.AddError(TEXT("Could not spawn ACSCharacter"));
-			return false;
-		}
-		Character->Tuning = Tuning;
-		Character->FinishSpawning(Spawn);
-		return true;
-	}
-
-	~FCSBareCharacterWorld()
-	{
-		if (World.GetTestWorld())
-		{
-			World.DestroyTestWorld(false);
-		}
+		FCSTestWorldOptions Options;
+		Options.bFloor = false;
+		Options.bSettle = false;
+		return FCSTestWorld::Init(Test, Tuning, Options);
 	}
 };
 

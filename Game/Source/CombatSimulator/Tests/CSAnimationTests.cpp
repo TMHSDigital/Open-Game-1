@@ -24,6 +24,7 @@
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Tests/AutomationCommon.h"
+#include "Tests/CSTestWorld.h"
 #include "UObject/StrongObjectPtr.h"
 
 namespace CSAnimationTests
@@ -39,80 +40,16 @@ namespace CSAnimationTests
 	const TCHAR* Regenerate = TEXT(" (missing or stale: run Game/Content/Python/setup_animation.py, see its docstring)");
 
 	// A test world with a 200 m floor and one ACSCharacter on it, ticked at a fixed step.
-	struct FAnimSim
+	struct FAnimSim : FCSTestWorld
 	{
-		FTestWorldWrapper World;
-		ACSCharacter* Character = nullptr;
-		float Dt = 1.f / 60.f;
+		bool Init(FAutomationTestBase& Test) { return FCSTestWorld::Init(Test, nullptr); }
 
-		bool Init(FAutomationTestBase& Test)
-		{
-			if (!World.CreateTestWorld(EWorldType::Game) || !World.BeginPlayInTestWorld())
-			{
-				World.ForwardErrorMessages(&Test);
-				return false;
-			}
-			UWorld* W = World.GetTestWorld();
-			AActor* Floor = W->SpawnActor<AActor>(AActor::StaticClass(), FTransform::Identity);
-			UBoxComponent* Box = NewObject<UBoxComponent>(Floor, TEXT("FloorBox"));
-			Box->SetBoxExtent(FVector(10000.f, 10000.f, 50.f));
-			Box->SetCollisionProfileName(UCollisionProfile::BlockAll_ProfileName);
-			Floor->SetRootComponent(Box);
-			Box->RegisterComponent();
-			Box->SetWorldLocation(FVector(0.f, 0.f, -50.f));
-
-			FActorSpawnParameters Params;
-			Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-			Character = W->SpawnActor<ACSCharacter>(ACSCharacter::StaticClass(), FTransform(FVector(0.f, 0.f, 120.f)), Params);
-			if (!Character)
-			{
-				Test.AddError(TEXT("Could not spawn ACSCharacter"));
-				return false;
-			}
-			Character->GetCharacterMovement()->bRunPhysicsWithNoController = true;
-			Character->GetCharacterMovement()->SetDefaultMovementMode();
-			Run(FVector::ZeroVector, 0.5f);
-			return true;
-		}
-
-		~FAnimSim()
-		{
-			if (World.GetTestWorld())
-			{
-				World.DestroyTestWorld(false);
-			}
-		}
-
-		void Run(const FVector& Input, float Seconds)
-		{
-			const int32 Steps = FMath::CeilToInt(Seconds / Dt);
-			for (int32 i = 0; i < Steps; ++i)
-			{
-				if (!Input.IsNearlyZero())
-				{
-					Character->AddMovementInput(Input, 1.f);
-				}
-				World.TickTestWorld(Dt);
-			}
-		}
+		void Run(const FVector& Input, float Seconds) { FCSTestWorld::Run(Seconds, Input); }
 
 		// Ticks until the animation reaches State or Seconds run out; returns whether it did.
 		bool RunUntil(const FVector& Input, ECSLocomotionState State, float Seconds)
 		{
-			const int32 Steps = FMath::CeilToInt(Seconds / Dt);
-			for (int32 i = 0; i < Steps; ++i)
-			{
-				if (!Input.IsNearlyZero())
-				{
-					Character->AddMovementInput(Input, 1.f);
-				}
-				World.TickTestWorld(Dt);
-				if (Anim() && Anim()->GetLocomotionState() == State)
-				{
-					return true;
-				}
-			}
-			return false;
+			return FCSTestWorld::RunUntil(Seconds, [this, State] { return Anim() && Anim()->GetLocomotionState() == State; }, Input);
 		}
 
 		UCSAnimInstance* Anim() const { return Cast<UCSAnimInstance>(Character->GetMesh()->GetAnimInstance()); }

@@ -23,6 +23,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
 #include "Tests/AutomationCommon.h"
+#include "Tests/CSTestWorld.h"
 
 namespace CSCameraAssetTests
 {
@@ -77,70 +78,28 @@ namespace CSCameraAssetTests
 
 	// A test world with a 200 m floor, one ACSCharacter (mesh and animation from config) possessed by a
 	// player controller, and a stand-in for another player's view.
-	struct FCameraSim
+	struct FCameraSim : FCSTestWorld
 	{
-		FTestWorldWrapper World;
-		ACSCharacter* Character = nullptr;
-		APlayerController* Controller = nullptr;
 		AActor* OtherPlayer = nullptr;
-		float Dt = 1.f / 60.f;
 
 		bool Init(FAutomationTestBase& Test, bool bPossess = true)
 		{
-			if (!World.CreateTestWorld(EWorldType::Game) || !World.BeginPlayInTestWorld())
+			if (!FCSTestWorld::Init(Test, nullptr))
 			{
-				World.ForwardErrorMessages(&Test);
 				return false;
 			}
-			UWorld* W = World.GetTestWorld();
-			AActor* Floor = W->SpawnActor<AActor>(AActor::StaticClass(), FTransform::Identity);
-			UBoxComponent* Box = NewObject<UBoxComponent>(Floor, TEXT("FloorBox"));
-			Box->SetBoxExtent(FVector(10000.f, 10000.f, 50.f));
-			Box->SetCollisionProfileName(UCollisionProfile::BlockAll_ProfileName);
-			Floor->SetRootComponent(Box);
-			Box->RegisterComponent();
-			Box->SetWorldLocation(FVector(0.f, 0.f, -50.f));
-
-			FActorSpawnParameters Params;
-			Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-			Character = W->SpawnActor<ACSCharacter>(ACSCharacter::StaticClass(), FTransform(FVector(0.f, 0.f, 120.f)), Params);
-			OtherPlayer = W->SpawnActor<AActor>(AActor::StaticClass(), FTransform(FVector(500.f, 0.f, 100.f)), Params);
-			if (!Character || !OtherPlayer)
+			OtherPlayer = World.GetTestWorld()->SpawnActor<AActor>(AActor::StaticClass(), FTransform(FVector(500.f, 0.f, 100.f)));
+			if (!OtherPlayer)
 			{
-				Test.AddError(TEXT("Could not spawn the character"));
+				Test.AddError(TEXT("Could not spawn the other player's stand-in"));
 				return false;
 			}
-			Character->GetCharacterMovement()->bRunPhysicsWithNoController = true;
-			Character->GetCharacterMovement()->SetDefaultMovementMode();
-			Run(0.5f);
-			if (!bPossess)
-			{
-				return true;
-			}
-			Controller = W->SpawnActor<APlayerController>();
-			if (!Controller)
+			if (bPossess && !Possess())
 			{
 				Test.AddError(TEXT("Could not spawn a player controller"));
 				return false;
 			}
-			Controller->Possess(Character);
 			return true;
-		}
-
-		~FCameraSim()
-		{
-			if (World.GetTestWorld())
-			{
-				World.DestroyTestWorld(false);
-			}
-		}
-
-		void Run(float Seconds)
-		{
-			for (int32 i = 0; i < FMath::CeilToInt(Seconds / Dt); ++i)
-			{
-				World.TickTestWorld(Dt);
-			}
 		}
 	};
 }

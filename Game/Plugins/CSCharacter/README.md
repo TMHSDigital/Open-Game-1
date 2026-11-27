@@ -42,3 +42,9 @@ Spawn `ACSCharacter` like any actor, at any point in a frame. When it is spawned
 ## Tests
 
 The automation tests live under `Source/CSCharacter/Private/Tests/` (movement, dev tools, camera) and, for the parts that need the game's assets, under `Game/Source/CombatSimulator/Tests/` (the body, the punch, the overhaul of the play-test findings, the block, the dodge and the opponent). Run them with `pwsh tools/ue/test.ps1 -Build` from the repository root.
+
+Both sets build their character on the same harness, in `Source/CSCharacter/Public/Tests/` (test-only, compiled out without `WITH_DEV_AUTOMATION_TESTS`):
+- `CSTestWorld.h` (`FCSTestWorld`): a test world with a floor and one deferred-spawned `ACSCharacter`, ticked at a fixed step.
+- `CSInputRig.h` (`FCSInputRig`): the character's real input bindings, fired as key presses.
+
+The per-file sims (`FMoveSim`, `FBodySim`, `FAnimSim`, `FCameraSim`, `FCSBareCharacterWorld`) only wrap it. A change to how a test character is spawned goes in `FCSTestWorld`.
