@@ -11,6 +11,7 @@
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
 #include "CSCameraRig.h"
+#include "CSDevTools.h"
 #include "CSCharacter.h"
 #include "CSGuardComponent.h"
 #include "CSStaminaComponent.h"
@@ -18,6 +19,7 @@
 #include "CSMovementTuning.h"
 #include "CSPhysicsBodyComponent.h"
 #include "CSStrikeComponent.h"
+#include "CSTuningOverrides.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/Canvas.h"
@@ -1296,6 +1298,84 @@ namespace CSPlaytestScenarios
 		return Steps;
 	}
 
+	// ------------------------------------------------------------ motion (any map): which layer makes the look
+
+	/** How a motion step shows the body: as shipped, arms held at full motor strength, or the animation alone. */
+	enum class EMotionLayer : uint8 { Shipped, FullArms, AnimationOnly };
+
+	/** Sets the arms' share of the motor strength for this player (empty Values: back to the asset's). */
+	void SetLimbStrength(const FCtx& C, float Scale)
+	{
+		ACSCharacter* Self = C.Player();
+		UCSDevTools* DevTools = Self ? Self->GetDevTools() : nullptr;
+		if (!DevTools)
+		{
+			return;
+		}
+		FCSTuningOverrides Overrides;
+		if (Scale >= 0.f)
+		{
+			Overrides.Values.Add(TEXT("NormalLimbStrengthScale"), Scale);
+		}
+		FString Reason;
+		DevTools->SetOverrides(Overrides, false, Reason);
+	}
+
+	/** Gait at Forward for Seconds, shown through Layer, from Camera. */
+	FCSPlaytestStep Motion(const TCHAR* Label, float Seconds, ECSGait Gait, float Forward, EMotionLayer Layer, ECSReviewCamera Camera = ECSReviewCamera::Side)
+	{
+		FCSPlaytestStep Step = Locomotion(Label, Seconds, Gait, Forward, Camera);
+		const auto Start = Step.OnStart;
+		Step.OnStart = [Start, Layer](const FCtx& C)
+		{
+			Start(C);
+			SetLimbStrength(C, Layer == EMotionLayer::FullArms ? 1.f : -1.f);
+		};
+		const auto Tick = Step.OnTick;
+		Step.OnTick = [Tick, Layer](const FCtx& C, float Time, float DeltaTime)
+		{
+			Tick(C, Time, DeltaTime);
+			if (Layer == EMotionLayer::AnimationOnly)
+			{
+				// The bodies still simulate; the mesh shows the animated pose alone.
+				if (ACSCharacter* Self = C.Player())
+				{
+					Self->GetMesh()->SetAllBodiesBelowPhysicsBlendWeight(TEXT("spine_01"), 0.f, false, true);
+				}
+			}
+		};
+		Step.OnEnd = [Layer](const FCtx& C)
+		{
+			if (Layer == EMotionLayer::FullArms)
+			{
+				SetLimbStrength(C, -1.f);
+			}
+			if (ACSCharacter* Self = C.Player(); Self && Layer == EMotionLayer::AnimationOnly)
+			{
+				Self->GetMesh()->SetAllBodiesBelowPhysicsBlendWeight(TEXT("spine_01"), 1.f, false, true);
+			}
+		};
+		return Step;
+	}
+
+	TArray<FCSPlaytestStep> BuildMotion()
+	{
+		TArray<FCSPlaytestStep> Steps;
+		// No dummies: the map's own would put the player in the combat stance.
+		Steps.Add(SetUpRun(0, 500.f));
+		struct FGaitCase { const TCHAR* Name; ECSGait Gait; };
+		for (const FGaitCase& Case : {FGaitCase{TEXT("walk"), ECSGait::Walk}, FGaitCase{TEXT("jog"), ECSGait::Jog}, FGaitCase{TEXT("sprint"), ECSGait::Sprint}})
+		{
+			// Each gait three ways, so the difference between frames is the layer.
+			Steps.Add(Motion(*FString::Printf(TEXT("%s, as shipped"), Case.Name), 3.f, Case.Gait, 1.f, EMotionLayer::Shipped));
+			Steps.Add(Motion(*FString::Printf(TEXT("%s, arms at full motor strength"), Case.Name), 3.f, Case.Gait, 1.f, EMotionLayer::FullArms));
+			Steps.Add(Motion(*FString::Printf(TEXT("%s, the animation alone"), Case.Name), 3.f, Case.Gait, 1.f, EMotionLayer::AnimationOnly));
+		}
+		Steps.Add(Motion(TEXT("idle, as shipped, from the front"), 2.5f, ECSGait::Jog, 0.f, EMotionLayer::Shipped, ECSReviewCamera::Front));
+		Steps.Add(Motion(TEXT("idle, the animation alone, from the front"), 2.5f, ECSGait::Jog, 0.f, EMotionLayer::AnimationOnly, ECSReviewCamera::Front));
+		return Steps;
+	}
+
 	// ------------------------------------------------------------ body (any map)
 
 	/** The player's own view in first person with the view pitched Pitch degrees, moving Forward. */
@@ -1413,7 +1493,7 @@ UCSPlaytestRunner::UCSPlaytestRunner()
 
 TArray<FString> UCSPlaytestRunner::ScenarioNames()
 {
-	return {TEXT("locomotion"), TEXT("stance"), TEXT("punch"), TEXT("knockdown"), TEXT("fight"), TEXT("moves"), TEXT("stamina"), TEXT("body"), TEXT("screens")};
+	return {TEXT("locomotion"), TEXT("stance"), TEXT("punch"), TEXT("knockdown"), TEXT("fight"), TEXT("moves"), TEXT("stamina"), TEXT("body"), TEXT("screens"), TEXT("motion")};
 }
 
 TArray<FCSPlaytestStep> UCSPlaytestRunner::BuildScenario(const FString& Name)
@@ -1428,6 +1508,7 @@ TArray<FCSPlaytestStep> UCSPlaytestRunner::BuildScenario(const FString& Name)
 	if (Name == TEXT("stamina")) { return BuildStamina(); }
 	if (Name == TEXT("body")) { return BuildBody(); }
 	if (Name == TEXT("screens")) { return BuildScreens(); }
+	if (Name == TEXT("motion")) { return BuildMotion(); }
 	if (Name == TEXT("gym")) { return BuildGym(); }
 	return {};
 }
