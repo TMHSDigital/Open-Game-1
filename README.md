@@ -43,7 +43,7 @@ It is an early prototype, made by one developer, and every design decision, work
 |---|---|
 | **Phase** | Early prototype. Movement, a physics body that staggers and falls, simulation runs, five strikes (jab, straight, two hooks, a kick), a block and a dodge, stamina, and an opponent that fights back. Stand-in animation clips, no art direction yet. |
 | **Engine** | Unreal Engine 5.8, C++ project in [`Game/`](Game/): a start plane, a movement gym and a capture stage |
-| **Latest block** | [Decision 0020](docs/decisions/0020-next-block-more-attacks-and-stamina.md): more attacks and stamina |
+| **Latest block** | [Decision 0021](docs/decisions/0021-realistic-art-direction-with-adjustable-gore-and-dismemberme.md): realistic art direction, with adjustable gore and dismemberment later |
 | **Steam** | Build 0.1.12 is live on the private development branch; build 0.1.11 is live on the default branch (promoted 2026-11-27); the game is not publicly available yet ([setup checklist](docs/steam/SETUP-CHECKLIST.md), [build history](https://tmhsdigital.github.io/Open-Game-1/builds.html)) |
 | **Latest devlog** | [Fixing the open audit issues](docs/devlog/2026-11-26-06-fix-the-open-audit-issues-starting-with.md) |
 
