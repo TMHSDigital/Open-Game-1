@@ -45,7 +45,7 @@ It is an early prototype, made by one developer, and every design decision, work
 | **Engine** | Unreal Engine 5.8, C++ project in [`Game/`](Game/): a start plane, a movement gym and a capture stage |
 | **Latest block** | [Decision 0024](docs/decisions/0024-claude-records-a-promotion-once-steam-shows-it-live-on-defau.md): Claude records a promotion once Steam shows it live on default |
 | **Steam** | Build 0.1.13 is live on the private development branch; build 0.1.11 is live on the default branch (promoted 2026-11-27); the game is not publicly available yet ([setup checklist](docs/steam/SETUP-CHECKLIST.md), [build history](https://tmhsdigital.github.io/Open-Game-1/builds.html)) |
-| **Latest devlog** | [Realistic art direction and the base character rebuild](docs/devlog/2026-11-27-01-polish-the-base-character-the-model-s-sc.md) |
+| **Latest devlog** | [The realistic base character goes into the game](docs/devlog/2026-11-27-02-fit-the-realistic-base-character-to-the.md) |
 
 ## In the build
 
