@@ -9,7 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from og import gh, secrets
-from og.assets import _repo_root
+from og.repo import repo_root as _repo_root
+from og.text import fill, slug
 
 OPEN_DOC = Path("docs") / "OPEN-DECISIONS.md"
 ADR_DIR = Path("docs") / "decisions"
@@ -232,7 +233,7 @@ def next_adr_number(repo: Path) -> int:
 
 
 def _kebab(title: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:60].strip("-") or "decision"
+    return slug(title, 60, "decision")
 
 
 # ---- consistency ------------------------------------------------------------
@@ -420,7 +421,7 @@ def close_decision(repo: Path, od_id: str, title: str, decision: str) -> Path:
     number = next_adr_number(repo)
     filename = f"{number:04d}-{_kebab(title)}.md"
     rel = (ADR_DIR / filename).as_posix()
-    fill = {
+    values = {
         "number": f"{number:04d}", "title": title, "status": "Accepted",
         "date": datetime.date.today().isoformat(),
         "issue": _issue_cell(row.issue, slug) if row.issue else "none",
@@ -431,9 +432,7 @@ def close_decision(repo: Path, od_id: str, title: str, decision: str) -> Path:
         "alternatives": _bullets(row.options),
         "links": f"- Open decision: {row.id}",
     }
-    text = _template(repo)
-    for k, v in fill.items():
-        text = text.replace("{{" + k + "}}", v)
+    text = fill(_template(repo), values)
     path = repo / rel
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8", newline="\n")

@@ -11,6 +11,13 @@ import warnings
 from dataclasses import dataclass
 from pathlib import Path
 
+from og.repo import RepoError, repo_root
+
+
+def _repo_root() -> Path:
+    return repo_root(project=False)  # the scan works on any repository's staged files
+
+
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff"}
 # Binary asset formats (LFS-tracked, see .gitattributes). Their compressed bytes match the loose
 # email pattern by chance, so the private-email rule is skipped for them; every other rule still
@@ -111,7 +118,7 @@ def _local_value_rules() -> list:
                 key = key.strip()
                 if sep and key in LOCAL_VALUE_KEYS and not values[key]:
                     values[key] = val.strip().strip("\"'")
-        except (OSError, subprocess.SubprocessError):
+        except (OSError, subprocess.SubprocessError, RepoError):
             pass  # no .env, or not inside a repository
         _local_rx = [re.compile(r"(?<![A-Za-z0-9])(?P<s>" + re.escape(v) + r")(?![A-Za-z0-9])")
                      for v in values.values() if len(v) >= 4 and v != "480"]
@@ -280,11 +287,6 @@ def _resolve_lfs(name: str, pointer: bytes, root: Path):
     if len(data) != int(size) or hashlib.sha256(data).hexdigest() != oid[7:]:
         return fail("working tree file does not match LFS pointer")
     return data, None
-
-
-def _repo_root() -> Path:
-    return Path(subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True,
-                               check=True, text=True).stdout.strip())
 
 
 def _index_blob(name: str, root: Path):

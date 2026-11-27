@@ -7,6 +7,8 @@ import re
 import sys
 import urllib.request
 from pathlib import Path
+
+from og.repo import repo_root as _repo_root
 from typing import Literal
 
 HEADER = ["id", "name", "source_url", "author", "license", "license_url",
@@ -150,14 +152,6 @@ def render_credits(rows: list[dict]) -> str:
             out.append(f"- {line} ({r['source_url']})" if r["source_url"] else f"- {line}")
         out.append("")
     return "\n".join(out)
-
-
-def _repo_root() -> Path:
-    cwd = Path.cwd().resolve()
-    for d in (cwd, *cwd.parents):
-        if (d / ".git").exists():
-            return d
-    return cwd
 
 
 def _load_catalog(repo: Path, source: str | None) -> dict:

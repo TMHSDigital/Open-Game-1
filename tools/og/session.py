@@ -20,6 +20,8 @@ import sys
 from pathlib import Path
 
 from og import docs, gh, secrets
+from og.repo import repo_root as _repo_root
+from og.text import fill, slug
 from og.devlog import (IndexRow, front_value, merge_index, parse_front, parse_index,
                        to_webp)
 
@@ -51,15 +53,11 @@ def _template(repo: Path, rel: str) -> str:
     raise SessionError(f"missing template {rel}")
 
 
-def _render(text: str, values: dict[str, str]) -> str:
-    for k, v in values.items():
-        text = text.replace("{{" + k + "}}", v)
-    return text
+_render = fill
 
 
 def _slugify(text: str) -> str:
-    s = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
-    return s[:40].strip("-") or "session"
+    return slug(text, 40, "session")
 
 
 def _state_path(repo: Path) -> Path:
@@ -542,14 +540,6 @@ def milestone(repo: Path, n: int, slug: str, today: datetime.date | None = None,
 
 
 # ---- CLI ----
-
-def _repo_root() -> Path:
-    out = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True,
-                         text=True, encoding="utf-8")
-    if out.returncode != 0:
-        raise SessionError("not inside a git repository")
-    return Path(out.stdout.strip())
-
 
 def _run_session(args) -> int:
     try:

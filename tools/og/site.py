@@ -17,10 +17,11 @@ from pathlib import Path
 from markdown_it import MarkdownIt
 
 from og import decisions, gh
+from og.repo import repo_root as _repo_root
+from og.text import SLOT as _SLOT, fill as _fill
 from og.devlog import parse_front, parse_index
 
 SITE_DIR = Path(__file__).resolve().parents[2] / "site"
-_SLOT = re.compile(r"\{\{(\w+)\}\}")
 _DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 _SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 _HTTP = re.compile(r"https?://", re.I)
@@ -35,10 +36,6 @@ def _render_md(text: str) -> str:
 
 def _esc(s) -> str:
     return html.escape(str(s), quote=True)
-
-
-def _fill(template: str, values: dict[str, str]) -> str:
-    return _SLOT.sub(lambda m: values.get(m.group(1), m.group(0)), template)
 
 
 DESCRIPTION = ("Combat Simulator, a physics-driven combat simulator for Steam built in public with "
@@ -468,14 +465,6 @@ def broken_links(out: Path) -> list[tuple[str, str]]:
             if not (page.parent / link.split("#")[0]).exists():
                 bad.append((page.relative_to(out).as_posix(), link))
     return bad
-
-
-def _repo_root() -> Path:
-    cwd = Path.cwd().resolve()
-    for d in (cwd, *cwd.parents):
-        if (d / ".git").exists():
-            return d
-    return cwd
 
 
 def _run_build(args) -> int:

@@ -12,6 +12,8 @@ import re
 import sys
 from pathlib import Path
 
+from og.repo import repo_root as _repo_root
+
 _LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)|<img[^>]+src=\"([^\"]+)\"")
 _EXTERNAL = re.compile(r"(?:[a-z][a-z0-9+.-]*:|#|/)", re.I)
 _BUILD_ROW = re.compile(r"^\|\s*(\d+\.\d+\.\d+)\s*\|")
@@ -75,14 +77,6 @@ def broken_links(repo: Path) -> list[str]:
 
 def check(repo: Path) -> list[str]:
     return readme_status(repo) + broken_links(repo)
-
-
-def _repo_root() -> Path:
-    cwd = Path.cwd().resolve()
-    for d in (cwd, *cwd.parents):
-        if (d / ".git").exists():
-            return d
-    return cwd
 
 
 def _run(args) -> int:

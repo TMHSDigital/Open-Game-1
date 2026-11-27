@@ -14,8 +14,18 @@ TOOLS = Path(__file__).resolve().parents[1]
 REPO = TOOLS.parent
 
 
+def make_project(cwd):
+    """A git repository the CLI accepts as this project (og.repo.MARKERS)."""
+    cwd = Path(cwd)
+    if not (cwd / ".git").exists():
+        subprocess.run(["git", "init", "-q"], cwd=cwd, check=True)
+    (cwd / "tools" / "og").mkdir(parents=True, exist_ok=True)
+    (cwd / "docs").mkdir(exist_ok=True)
+    (cwd / "docs" / "OPEN-DECISIONS.md").touch()
+
+
 def og(*args, cwd):
-    (Path(cwd) / ".git").mkdir(exist_ok=True)  # repo-root marker for the CLI
+    make_project(cwd)
     env = {**os.environ, "PYTHONPATH": str(TOOLS)}
     return subprocess.run([sys.executable, "-m", "og", *args], cwd=cwd,
                           capture_output=True, text=True, env=env)
