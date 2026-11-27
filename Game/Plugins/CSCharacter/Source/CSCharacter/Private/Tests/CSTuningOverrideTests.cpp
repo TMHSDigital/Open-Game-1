@@ -157,6 +157,7 @@ bool FCSTuningOverridesRejectBadFileTest::RunTest(const FString& Parameters)
 		{TEXT("text for a number"), TEXT("{\"version\":1,\"values\":{\"WalkSpeed\":\"fast\"}}"), TEXT("WalkSpeed")},
 		{TEXT("walk above jog"), TEXT("{\"version\":1,\"values\":{\"WalkSpeed\":390}}"), TEXT("JogSpeed")},
 		{TEXT("another version"), TEXT("{\"version\":7,\"values\":{}}"), TEXT("version")},
+		{TEXT("a version that is not whole"), TEXT("{\"version\":1.9,\"values\":{}}"), TEXT("whole number")},
 		{TEXT("no values"), TEXT("{\"version\":1}"), TEXT("values")},
 	};
 	// An unknown path, the dev tools switch and a value out of range are not rejections: see

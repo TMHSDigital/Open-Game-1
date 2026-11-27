@@ -127,7 +127,7 @@ bool UCSGameSettings::SetField(FName Key, float Value)
 	return true;
 }
 
-bool UCSGameSettings::Update(FName Key, float Value)
+bool UCSGameSettings::Update(FName Key, float Value, bool bSave)
 {
 	const FCSSettingRow* Row = FindRow(Key);
 	if (!Row)
@@ -140,12 +140,34 @@ bool UCSGameSettings::Update(FName Key, float Value)
 		return true;
 	}
 	SetField(Key, Cleaned);
+	if (bSave)
+	{
+		Save();
+	}
+	else
+	{
+		bUnsaved = true;
+	}
+	OnChanged.Broadcast();
+	return true;
+}
+
+void UCSGameSettings::SaveIfChanged()
+{
+	if (bUnsaved)
+	{
+		Save();
+	}
+}
+
+void UCSGameSettings::Save()
+{
+	bUnsaved = false;
+	++SaveCount;
 	if (bPersist)
 	{
 		SaveConfig();
 	}
-	OnChanged.Broadcast();
-	return true;
 }
 
 void UCSGameSettings::ResetAll()
@@ -163,10 +185,7 @@ void UCSGameSettings::ResetAll()
 	{
 		return;
 	}
-	if (bPersist)
-	{
-		SaveConfig();
-	}
+	Save();
 	OnChanged.Broadcast();
 }
 

@@ -272,8 +272,9 @@ TSharedRef<SWidget> SCSPauseScreen::BuildSettingsTab()
 			.bIsBool(Row.bIsBool)
 			.Value_Lambda([Key] { return UCSGameSettings::Get()->GetValue(Key); })
 			.IsChanged_Lambda([Key, Default] { return !FMath::IsNearlyEqual(UCSGameSettings::Get()->GetValue(Key), Default, 1.e-4f); })
-			// Update saves and applies at once, so there is nothing left to do on commit.
-			.OnValueChanged_Lambda([Key](float NewValue) { UCSGameSettings::Get()->Update(Key, NewValue); })
+			// Applied on every step of a drag, written to the ini once when it is let go.
+			.OnValueChanged_Lambda([Key](float NewValue) { UCSGameSettings::Get()->Update(Key, NewValue, /*bSave*/ false); })
+			.OnValueCommitted_Lambda([] { UCSGameSettings::Get()->SaveIfChanged(); })
 			.OnReset_Lambda([Key, Default] { UCSGameSettings::Get()->Update(Key, Default); })
 		];
 	}

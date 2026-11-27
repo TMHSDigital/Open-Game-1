@@ -49,10 +49,17 @@ public:
 	float GetValue(FName Key) const;
 
 	/**
-	 * Sets a value: clamped to its row and rounded to its step, saved, and announced through
-	 * OnChanged when it differs from the old value. False for an unknown key.
+	 * Sets a value: clamped to its row and rounded to its step, and announced through OnChanged when
+	 * it differs from the old value. Saved at once, unless bSave is false (a slider step in a drag):
+	 * then it is saved by the next SaveIfChanged. False for an unknown key.
 	 */
-	bool Update(FName Key, float Value);
+	bool Update(FName Key, float Value, bool bSave = true);
+
+	/** Writes the ini if a change made with Update(..., false) is not saved yet. */
+	void SaveIfChanged();
+
+	/** How many times the settings were written (also counted while bPersist is false: tests). */
+	int32 GetSaveCount() const { return SaveCount; }
 
 	/** Every setting back to its default; saved and announced once if anything changed. */
 	void ResetAll();
@@ -65,6 +72,14 @@ public:
 
 	/** False: Update and ResetAll do not write the ini (tests). */
 	bool bPersist = true;
+
+private:
+	void Save();
+
+	bool bUnsaved = false;
+	int32 SaveCount = 0;
+
+public:
 
 	/** Version of the stored fields, for migrations when a setting is renamed or changes meaning. */
 	UPROPERTY(Config)

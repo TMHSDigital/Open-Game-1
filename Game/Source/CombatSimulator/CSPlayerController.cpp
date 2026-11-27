@@ -24,9 +24,13 @@ void ACSPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	UCSGameSettings::Get()->OnChanged.Remove(SettingsChangedHandle);
 	SettingsChangedHandle.Reset();
-	// Leaving the map with the screen open: take the widget down with the world it belongs to.
+	// Leaving the map with the screen open: take the widget down with the world it belongs to, and
+	// give the game its input back, as closing the screen would.
+	if (bPauseScreenOpen)
+	{
+		SetPauseScreenOpen(false);
+	}
 	ShowPauseScreen(false);
-	bPauseScreenOpen = false;
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -93,9 +97,19 @@ void ACSPlayerController::SetPauseScreenOpen(bool bOpen)
 	{
 		return;
 	}
-	bPauseScreenOpen = bOpen;
 	// The engine's pause: time stops for the world, the screen and this controller's input keep running.
-	SetPause(bOpen);
+	// A pause the game mode refuses (CanBePaused) opens nothing: a pause screen over a running fight
+	// would be worse than no screen.
+	if (!SetPause(bOpen) && bOpen)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("The pause screen did not open: the game refused to pause."));
+		return;
+	}
+	bPauseScreenOpen = bOpen;
+	if (!bOpen)
+	{
+		UCSGameSettings::Get()->SaveIfChanged();
+	}
 	SetShowMouseCursor(bOpen);
 	ShowPauseScreen(bOpen);
 	if (bOpen)

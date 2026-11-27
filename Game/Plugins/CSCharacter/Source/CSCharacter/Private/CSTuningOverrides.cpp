@@ -26,6 +26,11 @@ bool FCSTuningOverrides::Parse(const FString& Json, FString& OutError)
 		OutError = TEXT("there is no version number");
 		return false;
 	}
+	if (FileVersion != FMath::RoundToDouble(FileVersion))
+	{
+		OutError = FString::Printf(TEXT("version %g is not a whole number"), FileVersion);
+		return false;
+	}
 	if (int32(FileVersion) != CurrentVersion)
 	{
 		OutError = FString::Printf(TEXT("version %d is not supported (this build reads version %d)"), int32(FileVersion), CurrentVersion);

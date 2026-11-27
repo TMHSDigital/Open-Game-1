@@ -145,7 +145,31 @@ bool FCSSettingsChangeNotifiesOnceTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSSettingsLookScaleAppliedTest, "CombatSimulator.CS.Settings.LookScaleApplied", CSSettingsTests::TestFlags)
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSSettingsDragSavesOnceTest, "CombatSimulator.CS.Settings.DragSavesOnce", CSSettingsTests::TestFlags)
+bool FCSSettingsDragSavesOnceTest::RunTest(const FString& Parameters)
+{
+	// A slider drag (Issue #60): every step is applied, the ini is written once when it is let go.
+	using namespace CSSettingsTests;
+	const TStrongObjectPtr<UCSGameSettings> Settings = Fresh();
+	int32 Calls = 0;
+	Settings->OnChanged.AddLambda([&Calls] { ++Calls; });
+	const int32 Before = Settings->GetSaveCount();
+	for (const float Step : {1.2f, 1.4f, 1.6f, 1.8f})
+	{
+		Settings->Update(Mouse, Step, /*bSave*/ false);
+	}
+	TestEqual(TEXT("Every drag step is applied"), Calls, 4);
+	TestEqual(TEXT("No drag step writes the ini"), Settings->GetSaveCount(), Before);
+	Settings->SaveIfChanged();
+	TestEqual(TEXT("Letting go writes it once"), Settings->GetSaveCount(), Before + 1);
+	Settings->SaveIfChanged();
+	TestEqual(TEXT("Nothing new: no second write"), Settings->GetSaveCount(), Before + 1);
+	Settings->Update(Mouse, 1.f);
+	TestEqual(TEXT("A single change (a key step, a reset) writes at once"), Settings->GetSaveCount(), Before + 2);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSSettingsLookScaleAppliedTest,"CombatSimulator.CS.Settings.LookScaleApplied", CSSettingsTests::TestFlags)
 bool FCSSettingsLookScaleAppliedTest::RunTest(const FString& Parameters)
 {
 	TStrongObjectPtr<UCSMovementTuning> Tuning(NewObject<UCSMovementTuning>(GetTransientPackage()));
