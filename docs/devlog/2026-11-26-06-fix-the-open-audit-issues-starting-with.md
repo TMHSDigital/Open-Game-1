@@ -13,7 +13,7 @@ clip: null
 
 ## Narrative
 
-<!-- narrative -->
+This session worked through the open audit issues on main, one commit per issue. Fully fixed: saved tuning lost on a stale entry (#67), kicks counted as punches (#69), and #59. Also fully fixed: input actions bound from one table (#32), key rebinding on the pause screen's Keys tab (#68), and a release gate that starts the packaged game once before upload (#39). Also fully fixed: one writer and reader per devlog format (#35), one shared test world (#33), new tests for the session and decisions command line (#52), and Python and PowerShell lint in CI (#51). Also fully fixed: a history of finished runs on the Run tab (#70), and editor-only content kept out of the Steam build (#53, checked with a Shipping package that passed its start check). Partly done, with the rest listed on each issue: tuning changes by event (#34), shared tooling helpers (#50), and the pause screen (#60) and contact and dummy (#61) leftovers. A flaky punch test (#71) was filed and now logs why a punch misses; it passed nine runs in a row. Per-character performance gating (#49) was looked at and left for a design pass: the camera rig also decides body facing, and the headless tests render nothing. Next: by-hand checks of key capture and the Run tab history, the owner's decisions, and the milestone 2 play-test (#57).
 
 ## Changes
 
