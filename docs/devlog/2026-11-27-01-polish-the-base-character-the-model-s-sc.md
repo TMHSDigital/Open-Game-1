@@ -13,7 +13,7 @@ clip: null
 
 ## Narrative
 
-<!-- narrative -->
+This session started from the release side and ended on the character. Build 0.1.12 went to the development branch with the audit fixes, and the release check now protects the README line the upload rewrites. Promotions can now be recorded from here once Steam confirms the build is live on default (decision 0024), and 0.1.11 was recorded that way. The scripted play-test learned to judge itself: steps state checks and a failed check fails the run. New scenarios cover the movement gym, the body checks from milestone 2, the pause screen and a motion comparison that showed the clunky running comes from the stand-in clips, not the physics. The owner then set the art direction: realistic, with gore and dismemberment later behind settings (decision 0021), a base character generated with MakeHuman by script (decision 0022), and motion from CMU motion capture (decision 0023, replacing 0017). A new builder generates the athletic 180 cm body on the game's 89-bone skeleton. A trial in the game showed strikes and one ragdoll knee do not work on it yet, so the game keeps the current body until that fit is done (issue #74). Next: the fit and the switch, then skin and eyes, then the motion capture.
 
 ## Changes
 
