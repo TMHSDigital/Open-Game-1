@@ -82,6 +82,7 @@ bool UCSDevTools::ReloadTuning(ACSCharacter& Character, FString& OutMessage)
 	// Changes on top of the asset: the local player's character re-reads the store; any other keeps its own.
 	UCSDevTools* Tools = Character.GetDevTools();
 	FCSTuningOverrides Overrides = Character.GetTuningOverrides();
+	FString Fitted;
 	if (!Source->bDevTools)
 	{
 		Overrides = FCSTuningOverrides();
@@ -89,7 +90,7 @@ bool UCSDevTools::ReloadTuning(ACSCharacter& Character, FString& OutMessage)
 	else if (Tools && Character.IsLocallyControlled() && Character.IsPlayerControlled())
 	{
 		bool bFound = false;
-		if (!Tools->ReadStore(Overrides, bFound, Reason))
+		if (!Tools->ReadStore(Overrides, bFound, Reason, Fitted))
 		{
 			OutMessage = FString::Printf(TEXT("%s: tuning changes in %s rejected, %s. Keeping the last good values."),
 				*Character.GetName(), *GetOverrideStore().Describe(), *Reason);
@@ -114,6 +115,7 @@ bool UCSDevTools::ReloadTuning(ACSCharacter& Character, FString& OutMessage)
 	{
 		OutMessage += TEXT(" ") + Tools->GetTuningSourceText();
 	}
+	OutMessage += DescribeFitted(Character, Fitted);
 	UE_LOG(LogCSCharacter, Log, TEXT("%s"), *OutMessage);
 	if (Tools)
 	{
@@ -161,9 +163,20 @@ void UCSDevTools::SetOverrideStoreForTests(ICSTuningOverrideStore* Store)
 	UnsavedOverrides.Reset();
 }
 
-bool UCSDevTools::ReadStore(FCSTuningOverrides& OutOverrides, bool& bOutFound, FString& OutReason) const
+FString UCSDevTools::DescribeFitted(const ACSCharacter& Character, const FString& Fitted)
+{
+	if (Fitted.IsEmpty())
+	{
+		return FString();
+	}
+	UE_LOG(LogCSCharacter, Warning, TEXT("%s: saved tuning changes made to fit this build: %s"), *Character.GetName(), *Fitted);
+	return FString::Printf(TEXT(" Saved values changed to fit this build: %s."), *Fitted);
+}
+
+bool UCSDevTools::ReadStore(FCSTuningOverrides& OutOverrides, bool& bOutFound, FString& OutReason, FString& OutFitted) const
 {
 	OutOverrides = FCSTuningOverrides();
+	OutFitted.Reset();
 	if (UnsavedOverrides.IsSet())
 	{
 		// Newer than anything in the store, which refused them.
@@ -188,6 +201,8 @@ bool UCSDevTools::ReadStore(FCSTuningOverrides& OutOverrides, bool& bOutFound, F
 	{
 		return false;
 	}
+	// A row renamed or a range narrowed since the file was saved costs that one value, not the file.
+	OutFitted = FString::Join(OutOverrides.FitToRanges(), TEXT("; "));
 	if (const ACSCharacter* Character = GetCharacter())
 	{
 		OutOverrides.PruneEqualTo(Character->GetPackagedTuning());
@@ -205,7 +220,8 @@ bool UCSDevTools::LoadOverrides()
 	FCSTuningOverrides Overrides;
 	bool bFound = false;
 	FString Reason;
-	if (!ReadStore(Overrides, bFound, Reason) || !Character->TryApplyTuning(Overrides, Reason))
+	FString Fitted;
+	if (!ReadStore(Overrides, bFound, Reason, Fitted) || !Character->TryApplyTuning(Overrides, Reason))
 	{
 		const FString Message = FString::Printf(TEXT("%s: tuning changes in %s rejected, %s. Keeping the last good values."),
 			*Character->GetName(), *GetOverrideStore().Describe(), *Reason);
@@ -213,10 +229,12 @@ bool UCSDevTools::LoadOverrides()
 		SetReloadResult(false, Message);
 		return false;
 	}
-	if (Overrides.Values.Num() > 0)
+	if (Overrides.Values.Num() > 0 || !Fitted.IsEmpty())
 	{
-		// Say so on screen: the build is not running on the values it was packaged with.
-		const FString Message = FString::Printf(TEXT("%s: %s"), *Character->GetName(), *GetTuningSourceText());
+		// Say so on screen: the build is not running on the values it was packaged with, and any
+		// saved value this build could not take as it was is named.
+		const FString Message = FString::Printf(TEXT("%s: %s"), *Character->GetName(), *GetTuningSourceText())
+			+ DescribeFitted(*Character, Fitted);
 		UE_LOG(LogCSCharacter, Log, TEXT("%s"), *Message);
 		SetReloadResult(true, Message);
 	}

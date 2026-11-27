@@ -221,8 +221,14 @@ private:
 	ACSCharacter* GetCharacter() const;
 	void SetOverlayVisible(bool bVisible);
 	void SetReloadResult(bool bAccepted, const FString& Message);
-	/** Reads and checks the store. bOutFound: something was stored. False: it is bad, OutReason says why. */
-	bool ReadStore(FCSTuningOverrides& OutOverrides, bool& bOutFound, FString& OutReason) const;
+	/**
+	 * Reads and checks the store. bOutFound: something was stored. False: it is bad, OutReason says why.
+	 * Entries another build saved that this one cannot take are dropped or clamped, not a rejection:
+	 * OutFitted names them (empty when all fit).
+	 */
+	bool ReadStore(FCSTuningOverrides& OutOverrides, bool& bOutFound, FString& OutReason, FString& OutFitted) const;
+	/** Logs and returns " Saved values changed to fit this build: ..." for Fitted, or empty. */
+	static FString DescribeFitted(const ACSCharacter& Character, const FString& Fitted);
 	void UpdateHUDHook();
 	void TakeSample(float DeltaTime);
 	void DrawOverlay(AHUD* HUD, UCanvas* Canvas);

@@ -154,14 +154,13 @@ bool FCSTuningOverridesRejectBadFileTest::RunTest(const FString& Parameters)
 	const FCase Cases[] = {
 		{TEXT("an empty file"), TEXT(""), TEXT("not valid JSON")},
 		{TEXT("a cut-off file"), TEXT("{"), TEXT("not valid JSON")},
-		{TEXT("a field that does not exist"), TEXT("{\"version\":1,\"values\":{\"NoSuchField\":1}}"), TEXT("NoSuchField")},
 		{TEXT("text for a number"), TEXT("{\"version\":1,\"values\":{\"WalkSpeed\":\"fast\"}}"), TEXT("WalkSpeed")},
-		{TEXT("a value out of range"), TEXT("{\"version\":1,\"values\":{\"WalkSpeed\":99999}}"), TEXT("WalkSpeed")},
 		{TEXT("walk above jog"), TEXT("{\"version\":1,\"values\":{\"WalkSpeed\":390}}"), TEXT("JogSpeed")},
 		{TEXT("another version"), TEXT("{\"version\":7,\"values\":{}}"), TEXT("version")},
 		{TEXT("no values"), TEXT("{\"version\":1}"), TEXT("values")},
-		{TEXT("the dev tools switch"), TEXT("{\"version\":1,\"values\":{\"bDevTools\":0}}"), TEXT("bDevTools")},
 	};
+	// An unknown path, the dev tools switch and a value out of range are not rejections: see
+	// OverridesFitToThisBuild.
 	// Each rejection is logged as a warning.
 	AddExpectedMessagePlain(TEXT("rejected, "), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, UE_ARRAY_COUNT(Cases));
 	for (const FCase& Case : Cases)
@@ -182,6 +181,44 @@ bool FCSTuningOverridesRejectBadFileTest::RunTest(const FString& Parameters)
 		TestEqual(FString::Printf(TEXT("%s: the packaged value stays"), Case.What), Sim.Character->GetActiveTuning().WalkSpeed, 180.f);
 		TestEqual(FString::Printf(TEXT("%s: no change is counted"), Case.What), DevTools->GetTuningSourceText(), FString(TEXT("tuning: packaged")));
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSTuningOverridesFitToThisBuildTest, "CombatSimulator.CS.Tuning.OverridesFitToThisBuild", CSTuningOverrideTests::TestFlags)
+bool FCSTuningOverridesFitToThisBuildTest::RunTest(const FString& Parameters)
+{
+	// Saved by an older build: a row since removed, the dev tools switch (never a row), a value under
+	// a minimum since raised, and a change that still fits. Only the one that fits survives as it was.
+	CSTuningOverrideTests::FScopedStore Scoped;
+	TStrongObjectPtr<UCSMovementTuning> Tuning(CSTuningOverrideTests::NewTuning());
+	CSTuningOverrideTests::FMoveSim Sim;
+	if (!Sim.Init(*this, 1.f / 60.f, Tuning.Get()))
+	{
+		return false;
+	}
+	UCSDevTools* DevTools = Sim.Character->GetDevTools();
+	Scoped.Store.Put(TEXT("{\"version\":1,\"values\":{\"NoSuchField\":1,\"bDevTools\":0,\"StaminaRegen\":0,\"WalkSpeed\":200}}"));
+	AddExpectedMessagePlain(TEXT("made to fit this build"), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, 1);
+	TestTrue(TEXT("The file is accepted"), DevTools->LoadOverrides());
+	TestTrue(TEXT("The result is accepted"), DevTools->WasLastReloadAccepted());
+	TestEqual(TEXT("The change that fits is in use"), Sim.Character->GetActiveTuning().WalkSpeed, 200.f);
+	TestEqual(TEXT("The value under the minimum is raised to it"), Sim.Character->GetActiveTuning().StaminaRegen, 1.f);
+	TestTrue(TEXT("Dev tools stay on"), Sim.Character->GetActiveTuning().bDevTools);
+	const FString Message = DevTools->GetLastReloadMessage();
+	for (const TCHAR* Named : {TEXT("NoSuchField"), TEXT("bDevTools"), TEXT("StaminaRegen")})
+	{
+		TestTrue(FString::Printf(TEXT("The message names %s: %s"), Named, *Message), Message.Contains(Named));
+	}
+	TestFalse(TEXT("The message does not name the change that fit"), Message.Contains(TEXT("WalkSpeed")));
+
+	// FitToRanges on its own: what it keeps, what it changes.
+	FCSTuningOverrides Overrides;
+	Overrides.Values = {{TEXT("NoSuchField"), 1.f}, {TEXT("StaminaRegen"), 0.f}, {TEXT("WalkSpeed"), 200.f}};
+	const TArray<FString> Notes = Overrides.FitToRanges();
+	TestEqual(TEXT("Two notes"), Notes.Num(), 2);
+	TestFalse(TEXT("The unknown path is gone"), Overrides.Values.Contains(TEXT("NoSuchField")));
+	TestEqual(TEXT("The value is clamped"), Overrides.Values.FindRef(TEXT("StaminaRegen")), 1.f);
+	TestEqual(TEXT("The fitting value is kept"), Overrides.Values.FindRef(TEXT("WalkSpeed")), 200.f);
 	return true;
 }
 

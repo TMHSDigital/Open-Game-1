@@ -40,6 +40,13 @@ struct CSCHARACTER_API FCSTuningOverrides
 	 */
 	bool ApplyTo(UCSMovementTuning& Target, FString& OutError) const;
 
+	/**
+	 * Makes values saved by another build fit this one: drops each path that is not a row of the
+	 * range table and clamps each value to its row's range. Returns one note per entry it dropped or
+	 * clamped (empty when all fit), so a saved file loses only what this build cannot take.
+	 */
+	TArray<FString> FitToRanges();
+
 	/** Drops every entry whose value equals the packaged one, so Values counts real changes. */
 	void PruneEqualTo(const UCSMovementTuning& Packaged);
 

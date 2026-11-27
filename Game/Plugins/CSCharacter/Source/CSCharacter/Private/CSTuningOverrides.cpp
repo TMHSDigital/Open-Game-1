@@ -102,6 +102,29 @@ bool FCSTuningOverrides::ApplyTo(UCSMovementTuning& Target, FString& OutError) c
 	return true;
 }
 
+TArray<FString> FCSTuningOverrides::FitToRanges()
+{
+	TArray<FString> Notes;
+	for (auto It = Values.CreateIterator(); It; ++It)
+	{
+		const FCSTuningRow* Row = CSTuning::FindRow(It.Key());
+		if (!Row)
+		{
+			Notes.Add(FString::Printf(TEXT("%s dropped (not a tuning value in this build)"), *It.Key()));
+			It.RemoveCurrent();
+			continue;
+		}
+		const float Fitted = FMath::Clamp(It.Value(), Row->Min, Row->Max);
+		if (Fitted != It.Value())
+		{
+			Notes.Add(FString::Printf(TEXT("%s %g set to %g (this build allows [%g, %g])"), *It.Key(), It.Value(), Fitted, Row->Min, Row->Max));
+			It.Value() = Fitted;
+		}
+	}
+	Notes.Sort();
+	return Notes;
+}
+
 void FCSTuningOverrides::PruneEqualTo(const UCSMovementTuning& Packaged)
 {
 	for (auto It = Values.CreateIterator(); It; ++It)
