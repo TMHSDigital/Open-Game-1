@@ -19,12 +19,13 @@
 # desktop session (it opens a small window).
 #
 # Exit codes: 0 ok, 1 other error, 10+n gate n failed, 30 steamcmd error, 31 no BuildID,
-#             40 refused (a -Branch other than development, 'promoted' with CLAUDECODE set, or a
-#                test-only switch outside the test harness).
+#             40 refused (a -Branch other than development, 'promoted' inside Claude Code for a
+#                build Steam does not show live on default, or a test-only switch outside the
+#                test harness).
 #
-# Claude Code may run the development-branch steps (dev, upload-only, preview); see decision 0014.
-# Recording a promotion (promoted) is the owner's: the script refuses it when CLAUDECODE is set.
-# No script ever sets the default branch live.
+# Claude Code may run the development-branch steps (dev, upload-only, preview), and may record a
+# promotion (promoted) once steamcmd shows that build live on the default branch (decision 0024).
+# No script ever sets the default branch live: the owner does, in Steamworks.
 #
 # IDs come from environment variables. If one is not set, only these keys are read from .env:
 # STEAM_APPID, STEAM_DEPOT_WIN, STEAM_BUILD_ACCOUNT, STEAMCMD_PATH. Values are never printed.
@@ -758,6 +759,18 @@ function Invoke-Promote {
     Write-Host 'Next: fill [narrative], then follow checklist.md.'
 }
 
+# Why BuildId is not the one live on the public (default) branch, or empty when it is.
+function Test-LiveOnDefault([string]$BuildId) {
+    if (-not $BuildId) { return 'the ledger has no BuildID for it.' }
+    $run = Invoke-SteamCmdQuiet @('+@NoPromptForPassword', '1', '+login', $env:STEAM_BUILD_ACCOUNT, '+app_info_update', '1', '+app_info_print', $env:STEAM_APPID, '+quit')
+    if ($run.Code -ne 0) { return "steamcmd exited $($run.Code); is steamcmd logged in? Steam could not confirm the build is live." }
+    if (($run.Lines -join "`n") -notmatch '"branches"') { return 'steamcmd printed no branches block, so Steam could not confirm the build is live.' }
+    $steam = Get-SteamBranchInfo $run.Lines
+    $live = if ($steam.ContainsKey('public')) { $steam['public'].BuildId } else { '' }
+    if ($live -ne $BuildId) { return "Steam shows $(if ($live) { "BuildID $live" } else { 'no build' }) live on the default branch, not BuildID $BuildId. Set it live in Steamworks first." }
+    return $null
+}
+
 function Invoke-Promoted {
     $ledger = Read-Ledger $LedgerPath
     $row = Get-RowOrStop $ledger $Version
@@ -769,6 +782,12 @@ function Invoke-Promoted {
         if ($unfilled.Count) { Stop-Release 1 "Fill the [narrative] marker in $($unfilled -join ' and ') under $draft first. Nothing was recorded." }
     }
     if (-not (Test-Path -LiteralPath $notesFile)) { Write-Warning "No $notesFile; the GitHub Release body is left as it is."; $notesFile = $null }
+    if ($env:CLAUDECODE) {
+        # Decision 0024: inside Claude Code a promotion is recorded only once Steam shows it.
+        $problem = Test-LiveOnDefault $row.build_id
+        if ($problem) { Stop-Release 40 "Not recording $Version as live on default: $problem Nothing was recorded." }
+        Write-Host "Steam shows BuildID $($row.build_id) live on the default branch."
+    }
     if (Test-Path -LiteralPath $draft) {
         # Everything in the draft is published text (Steam post, GitHub release body): scan it first.
         $draftFiles = @(Get-ChildItem -LiteralPath $draft -Recurse -File | ForEach-Object { $_.FullName })
@@ -823,10 +842,6 @@ try {
     $branchProblem = Test-ReleaseBranch $Branch
     if ($branchProblem) { Stop-Release 40 $branchProblem }
     $Branch = $Branch.Trim()
-    if ($Mode -eq 'promoted' -and $env:CLAUDECODE) {
-        $cmd = "pwsh tools/steam/release.ps1 $Mode$(if ($Version) { " $Version" })"
-        Stop-Release 40 "Refusing '$Mode' inside Claude Code (CLAUDECODE is set). The owner runs it in their own terminal: $cmd"
-    }
 
     Push-Location $RepoDir
     try {

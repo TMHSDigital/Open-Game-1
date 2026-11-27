@@ -1,6 +1,6 @@
 # 0014: Claude runs Steam development uploads
 
-Status: Accepted
+Status: Superseded by 0024
 Date: 2026-11-23
 Issue: [#15](https://github.com/TMHSDigital/Open-Game-1/issues/15)
 Supersedes: none (amends who runs uploads in 0007 and 0010)

@@ -5,7 +5,7 @@
 3. Before building a system, check `E:\Game-Systems\catalogues\views\INDEX.md` and `E:\Game-Systems\docs\specs\`.
 4. Every session starts and ends with the `session` skill.
 5. Decisions go through the `decide` skill.
-6. Steam: Claude runs uploads to the `development` branch through `tools/steam/release.ps1` (`dev`, `upload-only`, `preview`), never by calling steamcmd directly and never skipping a gate. Never set the `default` branch live and never record a promotion: those stay with the owner (decision 0014). A session that changed the game ends with a `development` upload, and one is always made before a play-test, so Steam never lags main.
+6. Steam: Claude runs uploads to the `development` branch through `tools/steam/release.ps1` (`dev`, `upload-only`, `preview`), never by calling steamcmd directly and never skipping a gate. Never set the `default` branch live: that stays with the owner, in Steamworks. After the owner has set a build live, Claude records it with `release.ps1 promoted <ver>`, which checks that Steam shows that build live on default first (decision 0024). A session that changed the game ends with a `development` upload, and one is always made before a play-test, so Steam never lags main.
 7. Assets enter only through the `asset-import` skill.
 8. The Unreal project lives in `Game/`.
 9. No emojis, in docs, devlogs, commits or code.

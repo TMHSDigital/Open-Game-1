@@ -17,9 +17,9 @@ Steam setup still to do is in [SETUP-CHECKLIST.md](SETUP-CHECKLIST.md). The uplo
 | `preview` | `pwsh tools/steam/release.ps1 preview` | Claude or owner |
 | `upload-only` | `pwsh tools/steam/release.ps1 upload-only` | Claude or owner |
 | `dev` | `pwsh tools/steam/release.ps1 dev` | Claude or owner |
-| `promoted <ver>` | `pwsh tools/steam/release.ps1 promoted 0.1.4` | owner, own terminal |
+| `promoted <ver>` | `pwsh tools/steam/release.ps1 promoted 0.1.4` | Claude or the owner, after the owner set it live (decision 0024) |
 
-Claude Code runs the development-branch steps (`dev`, `upload-only`, `preview`) since decision 0014. The script still refuses `promoted` when `CLAUDECODE` is set (exit 40), and no mode can set `default` live, so the public branch stays with the owner. steamcmd uses the owner's cached login; if Steam asks for a password or a Steam Guard code the upload fails and the owner logs in to steamcmd again.
+Claude Code runs the development-branch steps (`dev`, `upload-only`, `preview`) since decision 0014, and records a promotion since decision 0024. Inside Claude Code, `promoted` first asks steamcmd which BuildID is live on the default (public) branch and refuses (exit 40, nothing recorded) unless it is that version's. No mode can set `default` live, so the public branch stays with the owner. steamcmd uses the owner's cached login; if Steam asks for a password or a Steam Guard code the upload fails and the owner logs in to steamcmd again.
 
 ## Modes
 
@@ -95,7 +95,7 @@ If `dev` fails with exit 30 and mentions a branch, the build may have uploaded b
 
 1. `pwsh tools/steam/release.ps1 promote <version>` (Claude can run this through the `release` skill, which also fills the `[narrative]` marker from the devlogs since the last default build).
 2. Follow `_release/<version>/checklist.md`: set the build live on `default` in Steamworks, publish `post.bbcode` as a Steam event.
-3. In your own terminal: `pwsh tools/steam/release.ps1 promoted <version>`. It refuses while a `[narrative]` marker is still unfilled, and when `og secrets` finds anything in `_release/<version>/` (the text it publishes).
+3. `pwsh tools/steam/release.ps1 promoted <version>` (Claude runs it once Steam shows the build live on default; the owner can run it in their own terminal). It refuses while a `[narrative]` marker is still unfilled, and when `og secrets` finds anything in `_release/<version>/` (the text it publishes).
 
 ## Reading the Environments page
 

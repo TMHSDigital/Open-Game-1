@@ -1,6 +1,6 @@
 ---
 name: release
-description: Steam releases for Combat Simulator through tools/steam/release.ps1. Claude runs dry-run, status and promote (and fills the promotion post from the devlogs); Claude also runs development-branch uploads (decision 0014); recording a promotion is run by the owner in their own terminal, and this skill prints the exact command. Use when the user says release, ship a build, upload to Steam, promote to default, what is on Steam, or Steam setup status.
+description: Steam releases for Combat Simulator through tools/steam/release.ps1. Claude runs dry-run, status and promote (and fills the promotion post from the devlogs); Claude also runs development-branch uploads, and records a promotion once the owner has set the build live on default and Steam shows it (decision 0024). Use when the user says release, ship a build, upload to Steam, promote to default, what is on Steam, or Steam setup status.
 allowed-tools: Bash(pwsh tools/steam/release.ps1 dry-run:*) Bash(pwsh tools/steam/release.ps1 status:*) Bash(pwsh tools/steam/release.ps1 promote :*) Bash(pwsh tools/steam/test-release.ps1:*) PowerShell(pwsh tools/steam/release.ps1 dry-run:*) PowerShell(pwsh tools/steam/release.ps1 status:*) PowerShell(pwsh tools/steam/release.ps1 promote :*) Read Edit Grep Bash(git log:*)
 ---
 
@@ -10,8 +10,8 @@ Full reference: `docs/steam/BUILD-WORKFLOW.md`. History: `docs/steam/BUILDS.md`.
 
 ## Rules
 
-- Claude runs `dry-run`, `status`, `promote <ver>` and the test script `tools/steam/test-release.ps1`, and the development-branch uploads in the next rule. The only mode Claude never runs is `promoted`.
-- Claude runs `dev`, `upload-only` and `preview` itself, always through `tools/steam/release.ps1` and never by calling steamcmd directly or skipping a gate (decision 0014). Claude never runs `promoted` (the script refuses it inside Claude Code, exit 40) and never sets `default` live. If steamcmd asks for a password or a Steam Guard code, stop and ask the owner to log in to steamcmd; never handle the credentials.
+- Claude runs `dry-run`, `status`, `promote <ver>` and the test script `tools/steam/test-release.ps1`, the development-branch uploads in the next rule, and `promoted <ver>` once the owner has set that build live on default.
+- Claude runs `dev`, `upload-only` and `preview` itself, always through `tools/steam/release.ps1` and never by calling steamcmd directly or skipping a gate (decision 0024). Claude never sets `default` live. Inside Claude Code, `promoted` first checks with steamcmd that the build is live on the default branch and refuses with exit 40 otherwise, recording nothing. If steamcmd asks for a password or a Steam Guard code, stop and ask the owner to log in to steamcmd; never handle the credentials.
 - Never pass the script's test-only switches (`-SkipGitGates`, `-CheckCommand`, `-LedgerPath`, `-RepoDir`, `-NoGitHub`). They exist for `tools/steam/test-release.ps1`; the script refuses them anywhere else (exit 40).
 - Never set the `default` branch live, and never suggest a command that does.
 - Never read `.env`, never print or write App IDs, Depot IDs or the build account name. The script prints only variable names.
@@ -41,13 +41,13 @@ Full reference: `docs/steam/BUILD-WORKFLOW.md`. History: `docs/steam/BUILDS.md`.
    - Write 1 to 3 short paragraphs for players: what changed and why it matters. Plain words, no emojis, no em dashes, no IDs, no internal paths, nothing from Steamworks pages.
    - BBCode in `post.bbcode` (`[p]`, `[b]`, `[list][*]`), Markdown in `github-release.md`.
    - Also tidy the generated change lists (drop pure tooling commits if they mean nothing to players) and fill Known issues from the devlogs.
-4. Show the owner the drafts and `checklist.md`. The owner sets the build live on `default` in Steamworks and publishes the post. Then print:
+4. Show the owner the drafts and `checklist.md`. The owner sets the build live on `default` in Steamworks (and publishes the post once the store page is public). When the owner says it is live, run it yourself:
 
    ```powershell
    pwsh tools/steam/release.ps1 promoted <ver>
    ```
 
-   It refuses while a `[narrative]` marker is left or when `og secrets` finds anything in `_release/<ver>/` (keep IDs, emails and Steamworks text out of the drafts), records `default_live_utc`, turns the prerelease into the Latest full release with `github-release.md` as its body, and records a `steam-default` deployment.
+   It refuses while a `[narrative]` marker is left or when `og secrets` finds anything in `_release/<ver>/` (keep IDs, emails and Steamworks text out of the drafts), refuses (exit 40) unless steamcmd shows the build's BuildID live on the default branch, records `default_live_utc`, turns the prerelease into the Latest full release with `github-release.md` as its body, and records a `steam-default` deployment.
 
 ## Check what is on Steam
 

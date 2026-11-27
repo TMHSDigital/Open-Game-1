@@ -464,7 +464,7 @@ try {
     Check 'inside Claude Code the upload login never prompts for a password' ($r.Code -eq 0 -and (Get-Content (Join-Path $fx.Root 'steamcmd-args.log') -Raw) -match '\+@NoPromptForPassword 1 \+login') $r.Output
     New-Fixture | Out-Null
 
-    # Decision 0014: Claude Code runs the development-branch steps; only 'promoted' is refused.
+    # Decision 0014 (now 0024): Claude Code runs the development-branch steps; see the promoted section.
     $r = Invoke-Release @('preview') @{ CLAUDECODE = '1' }
     Check "CLAUDECODE=1 allows 'preview' (development steps are Claude's, decision 0014)" ($r.Code -eq 0 -and $r.Output -notmatch 'own terminal') $r.Output
     $r = Invoke-Release @('dev', '-SkipGitGates', '-Branch', 'default') @{ CLAUDECODE = '1' }
@@ -474,7 +474,7 @@ try {
     $r = Invoke-Release @('dev', '-CheckCommand', $checkCmd, '-SteamCmd', (Join-Path $tmp 'steamcmd.exe')) -NoDefaults
     Check 'test-only switches are refused with a steamcmd that is not the fake (exit 40)' ($r.Code -eq 40 -and $r.Output -match 'test-only') $r.Output
     $r = Invoke-Release @('promoted', '0.0.1', '-SkipGitGates') @{ CLAUDECODE = '1' }
-    Check "CLAUDECODE=1 refuses 'promoted' with 40" ($r.Code -eq 40) $r.Output
+    Check "CLAUDECODE=1 'promoted' of a version not in the ledger records nothing" ($r.Code -ne 0) $r.Output
     Check 'Refusals made no ledger row and no gh calls' ((Get-LedgerRows $fx.Ledger).Count -eq 0 -and (Get-GhCalls).Count -eq 0)
 
     # --- ok: ledger row, previous development build replaced, release then deployment ------------
@@ -557,8 +557,13 @@ try {
     $r = Invoke-Release @('promoted', '0.1.1', '-SkipGitGates') @{ FAKE_CHECK_REAL = 'secrets' }
     Check 'promoted: a secret in _release/<ver>/ exits 1 and records nothing' ($r.Code -eq 1 -and (Get-Content -LiteralPath $fx.Ledger -Raw) -eq $ledgerBefore -and (Get-GhCalls).Count -eq 0 -and $r.Output -match 'patch-notes\.md') $r.Output
     Set-Content -LiteralPath $patchPath -Value $patchClean -NoNewline
-    $r = Invoke-Release @('promoted', '0.1.1', '-SkipGitGates') @{ FAKE_CHECK_REAL = 'secrets' }
-    Check 'promoted exits 0' ($r.Code -eq 0) $r.Output
+    # Decision 0024: inside Claude Code, only once Steam shows the build live on default.
+    $r = Invoke-Release @('promoted', '0.1.1', '-SkipGitGates') @{ FAKE_CHECK_REAL = 'secrets'; CLAUDECODE = '1'; FAKE_STEAMCMD_BRANCHES = 'public=11111,development=98765' }
+    Check 'promoted in Claude Code: another build live on default is refused (40), nothing recorded' ($r.Code -eq 40 -and $r.Output -match 'not BuildID 98765' -and (Get-Content -LiteralPath $fx.Ledger -Raw) -eq $ledgerBefore -and (Get-GhCalls).Count -eq 0) $r.Output
+    $r = Invoke-Release @('promoted', '0.1.1', '-SkipGitGates') @{ FAKE_CHECK_REAL = 'secrets'; CLAUDECODE = '1'; FAKE_STEAMCMD_INFO = 'nobranches' }
+    Check 'promoted in Claude Code: Steam unable to say is refused (40), nothing recorded' ($r.Code -eq 40 -and (Get-Content -LiteralPath $fx.Ledger -Raw) -eq $ledgerBefore -and (Get-GhCalls).Count -eq 0) $r.Output
+    $r = Invoke-Release @('promoted', '0.1.1', '-SkipGitGates') @{ FAKE_CHECK_REAL = 'secrets'; CLAUDECODE = '1'; FAKE_STEAMCMD_BRANCHES = 'public=98765,development=98765' }
+    Check 'promoted exits 0 (in Claude Code, Steam shows it live on default)' ($r.Code -eq 0 -and $r.Output -match 'Steam shows BuildID 98765 live') $r.Output
     $rows = Get-LedgerRows $fx.Ledger
     $cur = @($rows | Where-Object version -eq '0.1.1')
     $old = @($rows | Where-Object version -eq '0.0.9')
