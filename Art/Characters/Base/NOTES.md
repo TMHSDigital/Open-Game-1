@@ -90,6 +90,57 @@ script. Build choices:
 - The scene is built in metres and converted to a centimetre scene (Unit Scale 0.01, armature
   scaled 100 and applied) before it is saved and exported: the export skill's skeletal path.
 
+## Realistic base character (decision 0022, 2026-11-27)
+
+`build_human.py` builds the realistic base character. **It is not the game's character yet**: the committed `SK_BaseCharacter.blend` and `.fbx` still come from `build_base_character.py` until the fit below is finished, and then switch over in one tested commit. Build it to a scratch folder with:
+
+    pwsh tools/blender/run.ps1 -UserAddons -Script Art/Characters/Base/build_human.py [-- --out-dir D] [--check-only]
+
+- The body is generated with MPFB (the MakeHuman plugin, installed from extensions.blender.org;
+  build 20261010 was used) from MakeHuman's CC0 core assets: an adult male, the athletic build the
+  owner picked (gender 1, age 0.5, muscle 0.9, weight 0.6, proportions 1). The height macro is
+  searched until the body is 180 cm (it settled at 0.5625).
+- `-UserAddons` is needed because MPFB is a user extension; the export step still runs with
+  factory settings.
+- MPFB fits its rig in MakeHuman's own frame (hips near z = 0), so the human is generated without
+  feet_on_ground and the baked mesh and the joints are moved up together; the build fails unless
+  the pelvis then sits at hip height.
+- MPFB's `game_engine` rig (53 bones, the UE4 layout) gives the joints and the weights. The UE5
+  layout's extra bones are placed by rule: five spine bones evenly from spine_01 to the neck, two
+  neck bones evenly from the neck to the head, metacarpals from a quarter of the way from wrist
+  to knuckle, twist bones at a third and two thirds of their limb. Spine and neck weights are split
+  onto the extra bones by height; metacarpal and twist bones carry none yet.
+- Helper geometry (eyes, teeth, clothes helpers) is removed: the mesh is the body only, 26,756
+  triangles. Eyes, teeth, brows and skin textures come next, through the asset import.
+- Checked (build): 180.1 cm, feet on the ground, 89 bones in reference order, at most 4 influences, no
+  unweighted vertex, one material, UVs. A posed render (arms overhead, a deep squat, a guard)
+  showed no tearing.
+- The ledger row is `makehuman-core-assets` (CC0-1.0). The MPFB FAQ: "There are in practice no
+  restrictions on neither output nor bundled graphical assets".
+
+What a trial import into the game showed on 2026-11-27, and must be fixed before the switch:
+
+- Bone frames: `build_human.py` rolls every bone so its local Z axis matches the first scripted
+  body (the reference rolls alone turned the frames on MPFB's joints). That fixed most of the
+  ragdoll hinges; `calf_r` still bends backward in CombatSimulator.CS.Body.HingesBendTheRightWay.
+- Strikes: the jab never extends (the left arm stays down) and the hand twists against the
+  forearm into a ribbon. The twist bones carry no weight yet, and the strike's fist and hand
+  targets are worth checking in the new frames.
+- Reach: the realistic arm (upper arm plus forearm 48.1 cm, against 56.4 on the scripted body)
+  lands about 49 cm from the chest. With the 35 cm capsule two fighters cannot stand close enough;
+  a 28 cm capsule (the body is about 26 cm wide without the arms) and a step-in scaled by arm
+  length got the straight and both hooks landing. PunchReach itself must stay 68: it is also the
+  drive distance, and lowering it made the fist go less far.
+- Motors: the chest strayed 6.5 cm (limit 5) stopping from a jog; NormalProfile at 1.6 times its
+  strength brought it back within the limit.
+- The `eyes` socket for this head: (0, 13, 169) cm (bridge of the nose 15.3 cm ahead of the head
+  axis at 169 cm).
+- The asset ledger row (`makehuman-core-assets`, CC0-1.0) is added in the commit that makes the
+  generated files the game's character.
+
+`build_base_character.py` stays as the game's character until then, and afterwards for its helpers
+(armature, centimetre scene, export) and the reference frames.
+
 ## Skeletal round-trip (verified 2026-11-22, Blender 5.1.1, UE 5.8.3)
 
 Method: the committed FBX was imported headless into a throwaway scratch project with the default

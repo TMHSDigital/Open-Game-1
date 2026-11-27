@@ -1360,4 +1360,6 @@ def main():
     print("BUILD OK")
 
 
-main()
+# Guarded so build_human.py can import the export helpers without building this body.
+if __name__ == "__main__":
+    main()

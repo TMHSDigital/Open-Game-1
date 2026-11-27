@@ -29,6 +29,8 @@ License strings are normalized before the verdict, so `cc-by-sa-4.0`, `CC BY-NC 
 
 Every file under these roots must be covered by a ledger row. Third-party files never go anywhere else in the project.
 
+One exception: a project asset that a script in this repository generates from third-party inputs, and then substantially changes, lives with the project's own assets. The realistic base character is the first case: `Art/Characters/Base/build_human.py` generates it with MPFB from MakeHuman's CC0 assets, then re-rigs and re-weights it (decision 0022). The third-party inputs themselves are not committed. The generated files still get a ledger row, and its `local_paths` names them exactly. This applies only to inputs whose license allows that use without carrying a license file (CC0 or public domain). Anything that must carry its license text goes under a ThirdParty root.
+
 ## The ledger
 
 `assets/THIRD_PARTY.csv`, one row per imported asset. The header is exact:

@@ -7,6 +7,9 @@
 #   pwsh -NoProfile -File tools/blender/run.ps1 -Script <script.py> [-Blend <file.blend>] [-- <script args>]
 #   & tools/blender/run.ps1 -Script <script.py> [-Blend <file.blend>] [-- <script args>]   (from pwsh)
 #
+# -UserAddons keeps the user's preferences and extensions instead of factory settings: for a script
+# that needs an installed extension (Art/Characters/Base/build_human.py needs MPFB).
+#
 # Everything after -- is passed to the script (it reads them from sys.argv after "--").
 #
 # Override the Blender location with $env:BLENDER_PATH
@@ -19,12 +22,14 @@
 # itself; the first argument that is not -Script or -Blend then starts the script arguments.
 $Script = $null
 $Blend = $null
+$UserAddons = $false
 $ScriptArgs = @()
 for ($i = 0; $i -lt $args.Count; $i++) {
     $a = [string]$args[$i]
     if ($a -eq '--') { $ScriptArgs = @($args | Select-Object -Skip ($i + 1) | ForEach-Object { [string]$_ }); break }
     elseif ($a -ieq '-Script' -and $i + 1 -lt $args.Count) { $Script = [string]$args[++$i] }
     elseif ($a -ieq '-Blend' -and $i + 1 -lt $args.Count) { $Blend = [string]$args[++$i] }
+    elseif ($a -ieq '-UserAddons') { $UserAddons = $true }
     else { $ScriptArgs = @($args | Select-Object -Skip $i | ForEach-Object { [string]$_ }); break }
 }
 
@@ -55,7 +60,8 @@ if ($Blend) {
     }
     $argList += (Resolve-Path -LiteralPath $Blend).Path
 }
-$argList += @('--factory-startup', '--python-exit-code', '1', '--python', (Resolve-Path -LiteralPath $Script).Path)
+if (-not $UserAddons) { $argList += '--factory-startup' }
+$argList += @('--python-exit-code', '1', '--python', (Resolve-Path -LiteralPath $Script).Path)
 if ($ScriptArgs.Count -gt 0) { $argList += @('--') + $ScriptArgs }
 
 Write-Host ">> $Blender $($argList -join ' ')"
