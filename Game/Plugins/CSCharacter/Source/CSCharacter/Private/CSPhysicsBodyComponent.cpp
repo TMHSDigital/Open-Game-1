@@ -1110,6 +1110,8 @@ ECSContactResult UCSPhysicsBodyComponent::ReceiveContact(AActor* OtherActor, FNa
 	}
 
 	ECSContactResult Result = ECSContactResult::Ignored;
+	// Read before the hit: a hit that knocks the character down is still the last hit.
+	const bool bWasRagdoll = State == ECSBodyState::Ragdoll;
 	const bool bRagdolls = Change.Size() >= T.RagdollImpulseThreshold;
 	if (State == ECSBodyState::Ragdoll)
 	{
@@ -1138,13 +1140,20 @@ ECSContactResult UCSPhysicsBodyComponent::ReceiveContact(AActor* OtherActor, FNa
 		ApplyImpulseAtBone(BodyBone, Change * GetBodyMass());
 		Result = bRagdolls ? ECSContactResult::Ragdoll : ECSContactResult::Stagger;
 	}
-	LastContact.Time = Now;
-	LastContact.Bone = BodyBone;
-	LastContact.VelocityChange = float(Change.Size());
-	LastContact.Result = Result;
-	LastContact.Source = GetNameSafe(OtherActor);
-	LastContact.Point = ImpactPoint;
-	OnAnyContact.Broadcast(GetCharacter(), OtherActor, LastContact);
+	FCSContactRecord Contact;
+	Contact.Time = Now;
+	Contact.Bone = BodyBone;
+	Contact.VelocityChange = float(Change.Size());
+	Contact.Result = Result;
+	Contact.Source = GetNameSafe(OtherActor);
+	Contact.Point = ImpactPoint;
+	// A ragdoll rolling on the floor or against a prop would replace the hit that knocked it down
+	// with a row of 'ignored' ones: the last hit is the last one that did something.
+	if (!bWasRagdoll)
+	{
+		LastContact = Contact;
+	}
+	OnAnyContact.Broadcast(GetCharacter(), OtherActor, Contact);
 	return Result;
 }
 
@@ -1158,6 +1167,13 @@ void UCSPhysicsBodyComponent::TrackNearbyBodies()
 	}
 	PreviousNearbyVelocities = MoveTemp(NearbyVelocities);
 	NearbyVelocities.Reset();
+	if (State == ECSBodyState::Ragdoll)
+	{
+		// A contact on a ragdoll changes nothing, so the sweep would be wasted (one per character
+		// per frame). The first frames after getting up use the velocity after the contact.
+		PreviousNearbyVelocities.Reset();
+		return;
+	}
 
 	// Everything that could reach the character within a few frames, however fast.
 	static constexpr float Radius = 400.f;

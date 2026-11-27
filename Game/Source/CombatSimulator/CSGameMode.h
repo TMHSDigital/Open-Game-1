@@ -163,8 +163,16 @@ private:
 		FTransform Home;
 		TWeakObjectPtr<UCSMovementTuning> Tuning;
 		TArray<FName> Tags;
+		FLinearColor Tint = FLinearColor(0.85f, 0.45f, 0.2f);
 	};
 	TArray<FDummyRespawn> PendingDummies;
+
+	/**
+	 * The dummies a plain reset brings back: the map's, or a run's once one has put its own. Kept
+	 * here rather than read from the dummies still alive, so a dummy that fell out of the world
+	 * comes back too.
+	 */
+	TArray<FDummyRespawn> PlaygroundDummies;
 
 	/** The dummies the map was made with, noted when play began, for ResetPlaygroundToMap. */
 	TArray<FDummyRespawn> MapDummies;

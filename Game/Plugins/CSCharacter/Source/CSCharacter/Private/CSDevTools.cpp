@@ -447,8 +447,17 @@ ACSHitBall* UCSDevTools::RequestThrow()
 	{
 		Direction = Character->GetActorForwardVector();
 	}
-	// From the chest, far enough out to start clear of the character's own body.
-	const FVector From = Character->GetActorLocation() + FVector(0.f, 0.f, 40.f) + Direction * 80.f;
+	// From the chest, far enough out to start clear of the character's own body (80 cm, so a third
+	// person throw does not hit the thrower's back), but never beyond a wall in the way: the ball
+	// starts short of whatever the line from the chest meets first.
+	const FVector Chest = Character->GetActorLocation() + FVector(0.f, 0.f, 40.f);
+	FVector From = Chest + Direction * 80.f;
+	FHitResult Hit;
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(CSDevThrow), false, Character);
+	if (GetWorld()->LineTraceSingleByChannel(Hit, Chest, From, ECC_WorldStatic, Params))
+	{
+		From = Hit.Location - Direction * (ACSHitBall::RadiusCm + 2.f);
+	}
 	return ACSHitBall::Throw(GetWorld(), Character, From, Direction, T.DevBallMass, T.DevBallSpeed);
 }
 

@@ -107,8 +107,10 @@ void ACSGameMode::BeginPlay()
 		Respawn.Home = It->GetActorTransform();
 		Respawn.Tuning = It->Tuning;
 		Respawn.Tags = It->Tags;
+		Respawn.Tint = It->Tint;
 		MapDummies.Add(MoveTemp(Respawn));
 	}
+	PlaygroundDummies = MapDummies;
 }
 
 void ACSGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -118,6 +120,7 @@ void ACSGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	PendingRespawns.Reset();
 	PendingDummies.Reset();
 	MapDummies.Reset();
+	PlaygroundDummies.Reset();
 	PropHomes.Reset();
 	Super::EndPlay(EndPlayReason);
 }
@@ -173,6 +176,7 @@ void ACSGameMode::HandleWorldTickStart(UWorld* World, ELevelTick TickType, float
 		}
 		Dummy->Tuning = Respawn.Tuning.Get();
 		Dummy->Tags = Respawn.Tags;
+		Dummy->Tint = Respawn.Tint;
 		Dummy->FinishSpawning(Respawn.Home);
 	}
 	if (!Dummies.IsEmpty())
@@ -382,20 +386,12 @@ void ACSGameMode::ResetPlaygroundInternal(const TArray<FDummyRespawn>* Replaceme
 	}
 	if (Replacement)
 	{
-		// Whatever an earlier reset in this frame still had to bring back is replaced too.
-		PendingDummies = *Replacement;
+		PlaygroundDummies = *Replacement;
 	}
+	// Whatever an earlier reset in this frame still had to bring back is replaced too.
+	PendingDummies = PlaygroundDummies;
 	for (ACSTargetDummy* Dummy : Dummies)
 	{
-		if (!Replacement)
-		{
-			FDummyRespawn Respawn;
-			Respawn.Class = Dummy->GetClass();
-			Respawn.Home = Dummy->GetHomeTransform();
-			Respawn.Tuning = Dummy->Tuning;
-			Respawn.Tags = Dummy->Tags;
-			PendingDummies.Add(MoveTemp(Respawn));
-		}
 		Dummy->Destroy();
 	}
 

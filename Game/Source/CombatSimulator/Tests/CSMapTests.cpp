@@ -565,6 +565,7 @@ bool FCSMapsGymDummyLauncherAndResetTest::RunTest(const FString& Parameters)
 
 	// 0: check what is placed, change the player's tuning, knock things about, reset.
 	// 1: wait for the new dummy and the new player, then check everything is back.
+	// 2: the dummy is gone (as if it fell out of the world): a reset still brings one back.
 	ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([this, Run]()
 	{
 		UWorld* World = PlayWorld();
@@ -618,6 +619,20 @@ bool FCSMapsGymDummyLauncherAndResetTest::RunTest(const FString& Parameters)
 		ACSTargetDummy* Dummy = FindDummy(World);
 		const bool bNewDummy = Dummy && Dummy != Run->OldDummy.Get() && Dummy->HasActorBegunPlay();
 		const bool bNewPlayer = Player && Player != Run->OldPawn.Get();
+		if (Run->Stage == 2)
+		{
+			if (bNewDummy && Now - Run->StageStart > 0.5)
+			{
+				TestTrue(TEXT("A dummy that was gone is back on its spot"), FVector::Dist2D(Dummy->GetActorLocation(), Run->DummyHome) < 30.f);
+				return true;
+			}
+			if (Now - Run->StageStart > 10.0)
+			{
+				AddError(TEXT("A reset did not bring back a dummy that was gone"));
+				return true;
+			}
+			return false;
+		}
 		if (bNewDummy && bNewPlayer && Now - Run->StageStart > 1.0)
 		{
 			TestTrue(TEXT("The new dummy is on its spot"), FVector::Dist2D(Dummy->GetActorLocation(), Run->DummyHome) < 30.f);
@@ -637,7 +652,13 @@ bool FCSMapsGymDummyLauncherAndResetTest::RunTest(const FString& Parameters)
 			TestEqual(TEXT("No balls are left"), Balls, 0);
 			TActorIterator<APlayerStart> Start(World);
 			TestTrue(TEXT("The player is back at the PlayerStart"), bool(Start) && FVector::Dist2D(Player->GetActorLocation(), Start->GetActorLocation()) < 100.f);
-			return true;
+
+			Dummy->Destroy();
+			Run->OldDummy = nullptr;
+			TestTrue(TEXT("The reset key is accepted with no dummy left"), Player->GetDevTools()->RequestReset());
+			Run->Stage = 2;
+			Run->StageStart = Now;
+			return false;
 		}
 		if (Now - Run->StageStart > 10.0)
 		{
