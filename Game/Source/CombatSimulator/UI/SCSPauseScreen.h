@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "CSKeyBindings.h"
 #include "CSPauseMenuModel.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
@@ -10,6 +11,7 @@ class FCSTuningPanelModel;
 class SBox;
 class SButton;
 class SHorizontalBox;
+class UInputMappingContext;
 
 /**
  * The pause screen: Resume, Quit and the tabs Run, Settings, Tuning (dev tools only) and Keys.
@@ -17,7 +19,8 @@ class SHorizontalBox;
  * Shown by ACSPlayerController while the game is paused. Everything on it is generated from data:
  * the tabs from FCSPauseMenuModel::Tabs, the run setup rows from FCSRunSetup::Rows (the run's state
  * and results from UCSRunDirector), the settings rows from UCSGameSettings::Rows, the tuning
- * rows from CSTuning::Rows and the key list from the character's mapping context.
+ * rows from CSTuning::Rows and the key list from the character's mapping context. On the Keys tab
+ * the rebindable keys (FCSKeyBindings) are buttons: select one, then press the new key.
  *
  * Layout takes a share of whatever size the viewport is; the tab body scrolls. Usable with mouse,
  * keyboard or gamepad alone: focus starts on Resume, the D-pad or stick moves it, the bottom face
@@ -61,6 +64,14 @@ private:
 	TSharedRef<SWidget> BuildSettingsTab();
 	TSharedRef<SWidget> BuildTuningTab();
 	TSharedRef<SWidget> BuildKeysTab();
+	/** A button showing a rebindable key; clicked, it waits for the next key or button pressed. */
+	TSharedRef<SWidget> BuildKeyCell(int32 BindingIndex);
+	/** The mapping context the Keys tab lists: the character's, or the class default's. */
+	const UInputMappingContext* GetKeysContext() const;
+	/** Re-reads the rebindable keys and their current keys. */
+	void RefreshBindings();
+	/** The key pressed while a key cell was waiting: rebinds it, or cancels on Escape or Start. */
+	void CaptureKey(const FKey& Key);
 	void StepTab(int32 Direction);
 	FReply Resume();
 	/** Margins that leave the panel a share of the viewport, whatever its size. */
@@ -73,4 +84,11 @@ private:
 	TSharedPtr<SButton> ResumeButton;
 	TSharedPtr<FCSTuningPanelModel> TuningModel;
 	double OpenedAt = 0.0;
+
+	// Keys tab: the rebindable keys, the one waiting for a key press (INDEX_NONE: none), and the
+	// result of the last change.
+	TArray<FCSKeyBinding> Bindings;
+	int32 CapturingBinding = INDEX_NONE;
+	FString KeyMessage;
+	bool bKeyMessageIsError = false;
 };

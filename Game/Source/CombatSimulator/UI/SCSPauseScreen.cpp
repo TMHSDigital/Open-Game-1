@@ -7,6 +7,7 @@
 #include "../Run/CSRunStore.h"
 #include "CSCharacter.h"
 #include "CSDevTools.h"
+#include "CSKeyBindings.h"
 #include "CSTuningPanelModel.h"
 #include "CSTuningRanges.h"
 #include "Engine/World.h"
@@ -197,13 +198,32 @@ FReply SCSPauseScreen::Resume()
 
 FReply SCSPauseScreen::OnPreviewMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
 {
-	return IsInClickGrace() ? FReply::Handled() : FReply::Unhandled();
+	if (IsInClickGrace())
+	{
+		return FReply::Handled();
+	}
+	if (CapturingBinding != INDEX_NONE)
+	{
+		// A key cell is waiting: the mouse button is the new key.
+		CaptureKey(MouseEvent.GetEffectingButton());
+		return FReply::Handled();
+	}
+	return FReply::Unhandled();
 }
 
 FReply SCSPauseScreen::OnPreviewKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent)
 {
 	// Seen before any focused control, so these keys always work.
 	const FKey Key = InKeyEvent.GetKey();
+	if (CapturingBinding != INDEX_NONE)
+	{
+		// A key cell is waiting: this key is the new one (Escape and Start cancel), not a command.
+		if (!InKeyEvent.IsRepeat())
+		{
+			CaptureKey(Key);
+		}
+		return FReply::Handled();
+	}
 	if (FCSPauseKeyGuard::IsCloseKey(Key))
 	{
 		// These are also the pause action's keys. A repeat here is the press that opened the screen,
@@ -408,7 +428,7 @@ TSharedRef<SWidget> SCSPauseScreen::BuildTuningTab()
 	return List;
 }
 
-TSharedRef<SWidget> SCSPauseScreen::BuildKeysTab()
+const UInputMappingContext* SCSPauseScreen::GetKeysContext() const
 {
 	const ACSPlayerController* Controller = Owner.Get();
 	const ACSCharacter* Character = Controller ? Cast<ACSCharacter>(Controller->GetPawn()) : nullptr;
@@ -416,13 +436,154 @@ TSharedRef<SWidget> SCSPauseScreen::BuildKeysTab()
 	{
 		Character = GetDefault<ACSCharacter>();
 	}
-	const UInputMappingContext* Context = Character->InputMappingContext.LoadSynchronous();
+	return Character->InputMappingContext.LoadSynchronous();
+}
+
+void SCSPauseScreen::RefreshBindings()
+{
+	const UInputMappingContext* Context = GetKeysContext();
+	const UEnhancedInputUserSettings* Settings = FCSKeyBindings::GetSettings(Owner.Get());
+	Bindings = (Context && Settings) ? FCSKeyBindings::List(*Context, *Settings) : TArray<FCSKeyBinding>();
+}
+
+void SCSPauseScreen::CaptureKey(const FKey& Key)
+{
+	const int32 Index = CapturingBinding;
+	CapturingBinding = INDEX_NONE;
+	if (Key == EKeys::Escape || Key == EKeys::Gamepad_Special_Right)
+	{
+		KeyMessage = TEXT("Not changed.");
+		bKeyMessageIsError = false;
+		return;
+	}
+	const UInputMappingContext* Context = GetKeysContext();
+	UEnhancedInputUserSettings* Settings = FCSKeyBindings::GetSettings(Owner.Get());
+	if (!Context || !Settings || !Bindings.IsValidIndex(Index))
+	{
+		KeyMessage = TEXT("Keys cannot be changed right now.");
+		bKeyMessageIsError = true;
+		return;
+	}
+	bKeyMessageIsError = !FCSKeyBindings::Rebind(*Settings, *Context, Bindings[Index], Key, KeyMessage);
+	RefreshBindings();
+}
+
+TSharedRef<SWidget> SCSPauseScreen::BuildKeyCell(int32 BindingIndex)
+{
+	if (!Bindings.IsValidIndex(BindingIndex))
+	{
+		return SNullWidget::NullWidget;
+	}
+	return SNew(SBox).HAlign(HAlign_Left)
+	[
+		SNew(SButton)
+		.OnClicked_Lambda([this, BindingIndex]
+		{
+			if (Bindings.IsValidIndex(BindingIndex))
+			{
+				CapturingBinding = BindingIndex;
+				KeyMessage = FString::Printf(TEXT("Press the new key for %s, or Escape to cancel."), *Bindings[BindingIndex].Label);
+				bKeyMessageIsError = false;
+			}
+			return FReply::Handled();
+		})
+		[
+			SNew(STextBlock)
+			.Font(Font(11))
+			.Text_Lambda([this, BindingIndex]
+			{
+				if (CapturingBinding == BindingIndex)
+				{
+					return FText::FromString(TEXT("Press a key..."));
+				}
+				if (!Bindings.IsValidIndex(BindingIndex))
+				{
+					return FText::GetEmpty();
+				}
+				const FCSKeyBinding& Binding = Bindings[BindingIndex];
+				FString Text = Binding.CurrentKey.GetDisplayName().ToString();
+				if (Binding.IsChanged())
+				{
+					Text += FString::Printf(TEXT("  (default %s)"), *Binding.DefaultKey.GetDisplayName().ToString());
+				}
+				return FText::FromString(Text);
+			})
+		]
+	];
+}
+
+TSharedRef<SWidget> SCSPauseScreen::BuildKeysTab()
+{
+	CapturingBinding = INDEX_NONE;
+	KeyMessage.Reset();
+	const ACSPlayerController* Controller = Owner.Get();
+	const UInputMappingContext* Context = GetKeysContext();
 	if (!Context)
 	{
 		return Label(TEXT("The key list is not available."));
 	}
+	RefreshBindings();
 	TSharedRef<SScrollBox> List = SNew(SScrollBox);
-	for (const FCSKeyRow& Row : FCSPauseMenuModel::KeyRows(*Context, Controller && Controller->AreDevToolsOn()))
+	if (Bindings.Num() > 0)
+	{
+		List->AddSlot().Padding(0.f, 0.f, 0.f, 6.f)
+		[
+			Label(TEXT("Select a key, then press the new key or button. A key that is already in use is refused."), 9, FaintColor)
+		];
+		List->AddSlot().Padding(0.f, 3.f)
+		[
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().FillWidth(0.32f)[SNullWidget::NullWidget]
+			+ SHorizontalBox::Slot().FillWidth(0.34f)[Label(TEXT("Keyboard and mouse"), 10, FaintColor)]
+			+ SHorizontalBox::Slot().FillWidth(0.34f)[Label(TEXT("Gamepad"), 10, FaintColor)]
+		];
+		// One row per rebindable action (or move direction): its keyboard key and its gamepad button.
+		TArray<FString> Labels;
+		for (const FCSKeyBinding& Binding : Bindings)
+		{
+			Labels.AddUnique(Binding.Label);
+		}
+		for (const FString& RowLabel : Labels)
+		{
+			const int32 Keyboard = Bindings.IndexOfByPredicate([&RowLabel](const FCSKeyBinding& B) { return B.Label == RowLabel && !B.bGamepad; });
+			const int32 Gamepad = Bindings.IndexOfByPredicate([&RowLabel](const FCSKeyBinding& B) { return B.Label == RowLabel && B.bGamepad; });
+			List->AddSlot().Padding(0.f, 2.f)
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().FillWidth(0.32f).VAlign(VAlign_Center)[Label(RowLabel)]
+				+ SHorizontalBox::Slot().FillWidth(0.34f)[BuildKeyCell(Keyboard)]
+				+ SHorizontalBox::Slot().FillWidth(0.34f)[BuildKeyCell(Gamepad)]
+			];
+		}
+		List->AddSlot().Padding(0.f, 8.f, 0.f, 0.f)
+		[
+			SNew(STextBlock)
+			.Font(Font(10))
+			.ColorAndOpacity_Lambda([this] { return FSlateColor(bKeyMessageIsError ? ErrorColor : GoodColor); })
+			.Text_Lambda([this] { return FText::FromString(KeyMessage); })
+		];
+		List->AddSlot().Padding(0.f, 8.f, 0.f, 0.f).HAlign(HAlign_Left)
+		[
+			SNew(SButton)
+			.Text(FText::FromString(TEXT("Reset all keys")))
+			.OnClicked_Lambda([this]
+			{
+				if (UEnhancedInputUserSettings* Settings = FCSKeyBindings::GetSettings(Owner.Get()))
+				{
+					FCSKeyBindings::ResetAll(*Settings);
+					RefreshBindings();
+					KeyMessage = TEXT("Every key is back to its default.");
+					bKeyMessageIsError = false;
+				}
+				return FReply::Handled();
+			})
+		];
+		List->AddSlot().Padding(0.f, 16.f, 0.f, 4.f)
+		[
+			Label(TEXT("Fixed keys"), 10, FaintColor)
+		];
+	}
+	for (const FCSKeyRow& Row : FCSPauseMenuModel::KeyRows(*Context, Controller && Controller->AreDevToolsOn(), Bindings.Num() > 0))
 	{
 		List->AddSlot().Padding(0.f, 3.f)
 		[

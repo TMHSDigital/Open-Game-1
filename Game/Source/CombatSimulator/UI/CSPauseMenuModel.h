@@ -70,7 +70,8 @@ struct COMBATSIMULATOR_API FCSPauseMenuModel
 	/**
 	 * One row per action of the mapping context, in the context's order, with every key the action
 	 * is mapped to. Read from the context itself, so the list cannot drift from the real keys.
-	 * Dev rows are left out unless bDevTools.
+	 * Dev rows are left out unless bDevTools. bFixedOnly: only the mappings the player cannot rebind
+	 * (the rebindable ones are listed by FCSKeyBindings::List).
 	 */
-	static TArray<FCSKeyRow> KeyRows(const UInputMappingContext& Context, bool bDevTools);
+	static TArray<FCSKeyRow> KeyRows(const UInputMappingContext& Context, bool bDevTools, bool bFixedOnly = false);
 };

@@ -9,14 +9,21 @@
 #if WITH_DEV_AUTOMATION_TESTS && WITH_EDITOR
 
 #include "../CSPlayerController.h"
+#include "../UI/CSKeyBindings.h"
 #include "../UI/CSPauseMenuModel.h"
 #include "../UI/CSTuningPanelModel.h"
 #include "../UI/SCSValueRow.h"
+#include "CSCharacter.h"
 #include "CSDevTools.h"
 #include "CSPlayTestRig.h"
+#include "CSStrikeComponent.h"
 #include "CSTuningOverrides.h"
 #include "CSTuningRanges.h"
+#include "Engine/LocalPlayer.h"
+#include "EnhancedInputDeveloperSettings.h"
+#include "EnhancedInputSubsystems.h"
 #include "InputAction.h"
+#include "InputKeyEventArgs.h"
 #include "InputMappingContext.h"
 #include "Kismet/GameplayStatics.h"
 #include "UObject/StrongObjectPtr.h"
@@ -422,6 +429,214 @@ bool FCSTuningPanelSaveFailureShownTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("The reason says so"), Reason.Contains(TEXT("could not be saved")));
 	TestTrue(TEXT("The status line says so"), Rig.Model->IsStatusError() && Rig.Model->StatusText().Contains(TEXT("could not be saved")));
 	TestEqual(TEXT("The value is still in play"), Rig.World.Character->GetActiveTuning().JogSpeed, 450.f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSPauseRebindableMappingsTest, "CombatSimulator.CS.Pause.RebindableMappings", CSPauseTests::TestFlags)
+bool FCSPauseRebindableMappingsTest::RunTest(const FString& Parameters)
+{
+	using namespace CSPauseTests;
+	// Issue #68: which keys the player can rebind, as create_input_assets.py marks them.
+	TestTrue(TEXT("Enhanced Input user settings are on (DefaultInput.ini)"), GetDefault<UEnhancedInputDeveloperSettings>()->bEnableUserSettings);
+	const UInputMappingContext* Context = LoadObject<UInputMappingContext>(nullptr, ContextPath);
+	if (!TestNotNull(FString(TEXT("IMC_Character exists")) + Regenerate, Context))
+	{
+		return false;
+	}
+	// The engine gives every default mapping of a name all of the player's keys of its device, so a
+	// name with two keys on one device would make each key fire both mappings.
+	TMap<FString, int32> KeysPerNameAndDevice;
+	TSet<FName> Names;
+	for (const FEnhancedActionKeyMapping& Mapping : Context->GetMappings())
+	{
+		const FString Action = Mapping.Action ? Mapping.Action->GetName() : FString();
+		const bool bFixed = Action == TEXT("IA_Pause") || Action.StartsWith(TEXT("IA_Look")) || Action.StartsWith(TEXT("IA_Debug"))
+			|| (Action == TEXT("IA_Move") && Mapping.Key.IsGamepadKey());
+		TestEqual(FString::Printf(TEXT("%s on %s is %s"), *Action, *Mapping.Key.ToString(), bFixed ? TEXT("fixed") : TEXT("rebindable")),
+			Mapping.IsPlayerMappable(), !bFixed);
+		if (Mapping.IsPlayerMappable())
+		{
+			Names.Add(Mapping.GetMappingName());
+			const int32 Count = ++KeysPerNameAndDevice.FindOrAdd(Mapping.GetMappingName().ToString() + (Mapping.Key.IsGamepadKey() ? TEXT(" gamepad") : TEXT(" keyboard")));
+			TestTrue(FString::Printf(TEXT("%s has one key per device (%s)"), *Mapping.GetMappingName().ToString(), *Mapping.Key.ToString()), Count == 1);
+		}
+	}
+	for (const TCHAR* Name : {TEXT("MoveForward"), TEXT("MoveBack"), TEXT("MoveLeft"), TEXT("MoveRight"), TEXT("Kick"), TEXT("Jump")})
+	{
+		TestTrue(FString::Printf(TEXT("%s is a rebindable mapping name"), Name), Names.Contains(FName(Name)));
+	}
+
+	// The Keys tab lists only the fixed keys as text once the rebindable ones are buttons.
+	const TArray<FCSKeyRow> Fixed = FCSPauseMenuModel::KeyRows(*Context, false, true);
+	TestNull(TEXT("Kick is not a fixed row"), Fixed.FindByPredicate([](const FCSKeyRow& Row) { return Row.Action == TEXT("Kick"); }));
+	TestNotNull(TEXT("Pause is a fixed row"), Fixed.FindByPredicate([](const FCSKeyRow& Row) { return Row.Action == TEXT("Pause"); }));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSPauseRebindKickTest, "CombatSimulator.CS.Pause.RebindKick", CSPauseTests::TestFlags)
+bool FCSPauseRebindKickTest::RunTest(const FString& Parameters)
+{
+	using namespace CSPlayRig;
+	// Issue #68: Kick rebound from F to G fires on G and not on F; keys in use are refused; the change
+	// survives a reload of the saved settings. Nothing is written to the player's own save file.
+	FCSKeyBindings::bSaveToDisk = false;
+	StartPlay(this, PlaneMap, 0.5f);
+	struct FState
+	{
+		int32 Stage = 0;
+		int32 Kicks = 0;
+		FDelegateHandle Handle;
+	};
+	TSharedRef<FState> State = MakeShared<FState>();
+	ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([this, State]()
+	{
+		UWorld* World = PlayWorld();
+		ACSPlayerController* PC = World ? Cast<ACSPlayerController>(World->GetFirstPlayerController()) : nullptr;
+		ACSCharacter* Character = PlayerCharacter(World);
+		UEnhancedInputUserSettings* Settings = FCSKeyBindings::GetSettings(PC);
+		const UInputMappingContext* Context = Character ? Character->InputMappingContext.LoadSynchronous() : nullptr;
+		const UInputAction* Kick = Character ? Character->KickAction.LoadSynchronous() : nullptr;
+		if (!TestNotNull(TEXT("The player has Enhanced Input user settings"), Settings) || !TestNotNull(TEXT("The character has its mapping context"), Context)
+			|| !TestNotNull(TEXT("The character has a kick action"), Kick))
+		{
+			return true;
+		}
+		auto KickBinding = [&]() -> TOptional<FCSKeyBinding>
+		{
+			for (const FCSKeyBinding& Binding : FCSKeyBindings::List(*Context, *Settings))
+			{
+				if (Binding.MappingName == TEXT("Kick") && !Binding.bGamepad)
+				{
+					return Binding;
+				}
+			}
+			return {};
+		};
+		const ULocalPlayer* LocalPlayer = PC->GetLocalPlayer();
+		const UEnhancedInputLocalPlayerSubsystem* Subsystem = LocalPlayer ? LocalPlayer->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>() : nullptr;
+
+		if (State->Stage == 0)
+		{
+			FCSKeyBindings::ResetAll(*Settings);
+			const TOptional<FCSKeyBinding> Binding = KickBinding();
+			if (!TestTrue(TEXT("Kick is listed as a rebindable keyboard key"), Binding.IsSet()))
+			{
+				return true;
+			}
+			TestEqual(TEXT("Kick starts on F"), Binding->CurrentKey, EKeys::F);
+			TestTrue(TEXT("The list has the four move keys"), FCSKeyBindings::List(*Context, *Settings).FilterByPredicate([](const FCSKeyBinding& B) { return B.MappingName.ToString().StartsWith(TEXT("Move")); }).Num() == 4);
+
+			struct FRefused
+			{
+				FKey Key;
+				const TCHAR* Names;
+			};
+			const FRefused Refused[] = {
+				{EKeys::SpaceBar, TEXT("Jump")},
+				{EKeys::Escape, TEXT("Pause")},
+				{EKeys::F1, TEXT("Debug Overlay")},
+				{EKeys::Gamepad_FaceButton_Top, TEXT("gamepad")},
+				{EKeys::Mouse2D, TEXT("cannot be used")},
+			};
+			for (const FRefused& Case : Refused)
+			{
+				FString Message;
+				TestFalse(FString::Printf(TEXT("Kick on %s is refused"), *Case.Key.ToString()), FCSKeyBindings::Rebind(*Settings, *Context, *Binding, Case.Key, Message));
+				TestTrue(FString::Printf(TEXT("The reason names %s (%s)"), Case.Names, *Message), Message.Contains(Case.Names));
+			}
+			TestEqual(TEXT("A refused key changes nothing"), KickBinding()->CurrentKey, EKeys::F);
+
+			FString Message;
+			TestTrue(TEXT("Kick on G is accepted"), FCSKeyBindings::Rebind(*Settings, *Context, *Binding, EKeys::G, Message));
+			TestEqual(TEXT("The message says so"), Message, FString(TEXT("Kick is now on G.")));
+			TestEqual(TEXT("Kick is now on G"), KickBinding()->CurrentKey, EKeys::G);
+			TestTrue(TEXT("It is shown as changed"), KickBinding()->IsChanged());
+
+			FString Reason;
+			TestFalse(TEXT("G is now taken: Jump cannot have it"), FCSKeyBindings::CanUse(*Context, *Settings,
+				*FCSKeyBindings::List(*Context, *Settings).FindByPredicate([](const FCSKeyBinding& B) { return B.MappingName == TEXT("Jump") && !B.bGamepad; }), EKeys::G, Reason));
+			TestTrue(FString::Printf(TEXT("The reason names Kick (%s)"), *Reason), Reason.Contains(TEXT("Kick")));
+			TestTrue(TEXT("F is free again: Jump can have it"), FCSKeyBindings::CanUse(*Context, *Settings,
+				*FCSKeyBindings::List(*Context, *Settings).FindByPredicate([](const FCSKeyBinding& B) { return B.MappingName == TEXT("Jump") && !B.bGamepad; }), EKeys::F, Reason));
+
+			State->Handle = UCSStrikeComponent::OnStrikeStarted.AddLambda([State, Character](ACSCharacter* Attacker)
+			{
+				if (Attacker == Character && Attacker->GetStrike() && Attacker->GetStrike()->GetMove() == ECSStrikeMove::Kick)
+				{
+					++State->Kicks;
+				}
+			});
+			++State->Stage;
+			return false;
+		}
+		if (State->Stage == 1)
+		{
+			// The mappings are rebuilt from the settings on the next frame: wait one more to be sure.
+			++State->Stage;
+			return false;
+		}
+		if (State->Stage == 2)
+		{
+			const TArray<FKey> Keys = Subsystem ? Subsystem->QueryKeysMappedToAction(Kick) : TArray<FKey>();
+			TestTrue(TEXT("The kick action is on G"), Keys.Contains(EKeys::G));
+			TestFalse(TEXT("The kick action is no longer on F"), Keys.Contains(EKeys::F));
+			PC->InputKey(FInputKeyEventArgs::CreateSimulated(EKeys::F, IE_Pressed, 1.f));
+			++State->Stage;
+			return false;
+		}
+		if (State->Stage == 3)
+		{
+			PC->InputKey(FInputKeyEventArgs::CreateSimulated(EKeys::F, IE_Released, 0.f));
+			TestEqual(TEXT("F no longer kicks"), State->Kicks, 0);
+			++State->Stage;
+			return false;
+		}
+		if (State->Stage == 4)
+		{
+			PC->InputKey(FInputKeyEventArgs::CreateSimulated(EKeys::G, IE_Pressed, 1.f));
+			++State->Stage;
+			return false;
+		}
+		if (State->Stage == 5)
+		{
+			PC->InputKey(FInputKeyEventArgs::CreateSimulated(EKeys::G, IE_Released, 0.f));
+			TestEqual(TEXT("G kicks"), State->Kicks, 1);
+			UCSStrikeComponent::OnStrikeStarted.Remove(State->Handle);
+
+			// Survives a restart: saved to a test slot, then read back as the game does at start.
+			UEnhancedInputDeveloperSettings* DevSettings = GetMutableDefault<UEnhancedInputDeveloperSettings>();
+			const FString RealSlot = DevSettings->InputSettingsSaveSlotName;
+			DevSettings->InputSettingsSaveSlotName = TEXT("CSTestInputSettings");
+			Settings->SaveSettings();
+			ULocalPlayer* Player = PC->GetLocalPlayer();
+			const UEnhancedInputUserSettings* Loaded = UEnhancedInputUserSettings::LoadOrCreateSettings(Player);
+			bool bLoadedG = false;
+			if (const UEnhancedPlayerMappableKeyProfile* Profile = Loaded ? Loaded->GetActiveKeyProfile() : nullptr)
+			{
+				if (const FKeyMappingRow* Row = Profile->GetPlayerMappingRows().Find(TEXT("Kick")))
+				{
+					for (const FPlayerKeyMapping& Mapping : Row->Mappings)
+					{
+						bLoadedG |= Mapping.GetCurrentKey() == EKeys::G;
+					}
+				}
+			}
+			TestTrue(TEXT("The saved settings have Kick on G"), bLoadedG);
+			UGameplayStatics::DeleteGameInSlot(DevSettings->InputSettingsSaveSlotName, Player ? Player->GetLocalPlayerIndex() : 0);
+			DevSettings->InputSettingsSaveSlotName = RealSlot;
+
+			FCSKeyBindings::ResetAll(*Settings);
+			TestEqual(TEXT("Reset puts Kick back on F"), KickBinding()->CurrentKey, EKeys::F);
+			return true;
+		}
+		return true;
+	}));
+	EndPlay();
+	ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([]()
+	{
+		FCSKeyBindings::bSaveToDisk = true;
+		return true;
+	}));
 	return true;
 }
 

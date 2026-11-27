@@ -68,7 +68,7 @@ It is an early prototype, made by one developer, and every design decision, work
 | First or third person | V | R3 |
 | Pause screen (runs, settings, tuning, keys) | Escape or Tab | Start |
 
-The dev keys (overlay, ragdoll, push, throw, reset, map switch) and the tuning tab are listed in [`docs/WORKFLOWS.md`](docs/WORKFLOWS.md#tune-character-movement).
+These are the default keys. The pause screen's Keys tab changes them, for the keyboard and mouse and for the gamepad: select a key, then press the new one. A key that is already in use is refused, and the change is kept for the next start. Look and the pause keys are fixed. The dev keys (overlay, ragdoll, push, throw, reset, map switch) and the tuning tab are listed in [`docs/WORKFLOWS.md`](docs/WORKFLOWS.md#tune-character-movement).
 
 ## Follow along
 

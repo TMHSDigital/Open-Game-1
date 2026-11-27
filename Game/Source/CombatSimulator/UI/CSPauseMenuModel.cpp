@@ -53,14 +53,14 @@ FString FCSPauseMenuModel::TabLabel(ECSPauseTab Tab)
 	return FString();
 }
 
-TArray<FCSKeyRow> FCSPauseMenuModel::KeyRows(const UInputMappingContext& Context, bool bDevTools)
+TArray<FCSKeyRow> FCSPauseMenuModel::KeyRows(const UInputMappingContext& Context, bool bDevTools, bool bFixedOnly)
 {
 	TArray<FCSKeyRow> Rows;
 	TArray<const UInputAction*> Actions;
 	for (const FEnhancedActionKeyMapping& Mapping : Context.GetMappings())
 	{
 		const UInputAction* Action = Mapping.Action;
-		if (!Action)
+		if (!Action || (bFixedOnly && Mapping.IsPlayerMappable()))
 		{
 			continue;
 		}

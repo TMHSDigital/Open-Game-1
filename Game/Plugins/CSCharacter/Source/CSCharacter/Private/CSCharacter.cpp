@@ -335,7 +335,11 @@ void ACSCharacter::NotifyControllerChanged()
 	}
 	if (!Subsystem->HasMappingContext(Context))
 	{
-		Subsystem->AddMappingContext(Context, 0);
+		// Registered with the Enhanced Input user settings (when the project enables them), so the
+		// player's own keys for its rebindable actions apply.
+		FModifyContextOptions Options;
+		Options.bNotifyUserSettings = true;
+		Subsystem->AddMappingContext(Context, 0, Options);
 	}
 }
 

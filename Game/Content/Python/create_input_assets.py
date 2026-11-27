@@ -11,6 +11,9 @@ Makes or refreshes:
                                   as a toggle)
   IMC_Character                   the mapping context, keyboard and mouse plus gamepad (KEYS below)
 
+The actions in REBINDABLE and the move keys in MAPPING_NAMES get player mappable key settings, so
+the player can change their keys on the pause screen's Keys tab.
+
 ACSCharacter reads these through the [/Script/CSCharacter.CSCharacter] section of
 Game/Config/DefaultGame.ini; IA_Pause belongs to the game's player controller
 ([/Script/CombatSimulator.CSPlayerController]) and is the only action that triggers while paused. The assets are owned by this script: a rerun rebuilds every mapping,
@@ -25,6 +28,8 @@ Run headless (editor closed):
         -script="<repo>/Game/Content/Python/create_input_assets.py" -unattended -nosplash -nullrhi
 or from a running editor through the Unreal MCP server (call_tool, Python execution).
 """
+
+import re
 
 import unreal
 
@@ -42,6 +47,46 @@ BOOLEAN = unreal.InputActionValueType.BOOLEAN
 
 # Actions that still trigger while the game is paused.
 PAUSED_ACTIONS = ("IA_Pause",)
+
+# Actions the player can rebind on the pause screen's Keys tab (Enhanced Input user settings,
+# enabled in DefaultInput.ini): action -> mapping name. The name is what the saved settings store,
+# so do not rename one. A mapping name may have at most one keyboard or mouse key and one gamepad
+# key: the engine gives every default mapping of a name all of the player's keys of its device, so
+# two keys under one name would each fire both mappings. Look, Pause (so the pause screen can
+# always be opened) and the dev keys are fixed.
+REBINDABLE = {
+    "IA_Jump": "Jump",
+    "IA_Sprint": "Sprint",
+    "IA_Crouch": "Crouch",
+    "IA_Walk": "Walk",
+    "IA_ToggleCamera": "ToggleCamera",
+    "IA_Attack": "Attack",
+    "IA_Block": "Block",
+    "IA_Dodge": "Dodge",
+    "IA_Kick": "Kick",
+}
+
+# Move has four keyboard keys with different modifiers, so each gets its own mapping name (set on
+# the mapping, overriding the action). The move stick has none: it is an axis, not a key.
+MAPPING_NAMES = {
+    ("IA_Move", "W"): "MoveForward",
+    ("IA_Move", "S"): "MoveBack",
+    ("IA_Move", "A"): "MoveLeft",
+    ("IA_Move", "D"): "MoveRight",
+}
+
+
+def display_name(mapping_name):
+    """"ToggleCamera" -> "Toggle Camera"."""
+    return unreal.Text(re.sub(r"(?<!^)(?=[A-Z])", " ", mapping_name))
+
+
+def make_key_settings(outer, mapping_name):
+    settings = unreal.new_object(unreal.PlayerMappableKeySettings, outer=outer)
+    settings.set_editor_property("name", mapping_name)
+    settings.set_editor_property("display_name", display_name(mapping_name))
+    return settings
+
 
 # Action name -> value type.
 ACTIONS = {
@@ -178,6 +223,8 @@ def main():
         action = load_or_create(name, unreal.InputAction, unreal.InputAction_Factory())
         action.set_editor_property("value_type", value_type)
         action.set_editor_property("trigger_when_paused", name in PAUSED_ACTIONS)
+        settings = make_key_settings(action, REBINDABLE[name]) if name in REBINDABLE else None
+        action.set_editor_property("player_mappable_key_settings", settings)
         actions[name] = action
 
     context = load_or_create(CONTEXT_NAME, unreal.InputMappingContext, unreal.InputMappingContext_Factory())
@@ -195,6 +242,14 @@ def main():
         if str(mapping.get_editor_property("key").get_editor_property("key_name")) != key_name:
             raise RuntimeError("Mapping %d is not %s" % (i, key_name))
         mapping.set_editor_property("modifiers", make_modifiers(context, modifiers))
+        behaviors = unreal.PlayerMappableKeySettingBehaviors
+        own_name = MAPPING_NAMES.get((action_name, key_name))
+        if own_name:
+            mapping.set_editor_property("setting_behavior", behaviors.OVERRIDE_SETTINGS)
+            mapping.set_editor_property("player_mappable_key_settings", make_key_settings(context, own_name))
+        else:
+            mapping.set_editor_property("setting_behavior", behaviors.INHERIT_SETTINGS_FROM_ACTION)
+            mapping.set_editor_property("player_mappable_key_settings", None)
         mappings[i] = mapping
     data.set_editor_property("mappings", mappings)
     context.set_editor_property("default_key_mappings", data)

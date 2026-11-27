@@ -13,7 +13,8 @@ public class CombatSimulator : ModuleRules
 			"Engine",
 			"InputCore",
 			"PhysicsCore",  // physical materials in the body tests (CSPhysicsBodyTests.cpp)
-			"EnhancedInput",  // input asset tests (CSInputAssetTests.cpp)
+			"EnhancedInput",  // input asset tests (CSInputAssetTests.cpp), key rebinding (UI/CSKeyBindings.cpp)
+			"GameplayTags",  // the failure reasons of an Enhanced Input key rebind
 			"AIModule",  // the opponent's controller (Opponent/CSOpponentController.h)
 			"CSCharacter",  // Game/Plugins/CSCharacter: ACSCharacter, UCSMovementTuning
 			"Json"  // run setups as text (Run/CSRunSetup.cpp)
