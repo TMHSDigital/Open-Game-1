@@ -135,6 +135,21 @@ What a trial import into the game showed on 2026-11-27, and must be fixed before
   strength brought it back within the limit.
 - The `eyes` socket for this head: (0, 13, 169) cm (bridge of the nose 15.3 cm ahead of the head
   axis at 169 cm).
+- Fixed on 2026-11-27 (second session), in `build_human.py` and the import:
+  - MPFB rests with the elbows bent 43 degrees and the arms 48 degrees below horizontal; the game
+    was built around 55 and 12. The arms are now posed to the scripted body's rest pose before
+    the mesh is baked.
+  - Every bone takes the scripted body's direction and roll (end bones its length too); MPFB's
+    hands, fingers, feet and head pointed 13 to 31 degrees off.
+  - Twist bones take a share of their limb's weight, as in `build_base_character.py`.
+  - `import_base_character.py` now updates the Skeleton's reference pose on reimport (an
+    Interchange pipeline with `update_skeleton_reference_pose`). Without it the Skeleton kept the
+    first body's pose (forearm 31.1 cm against the new mesh's 24.2) and every retargeted clip
+    played in the old frames.
+- Still open: in every clip the hands curl into hooks (also with the physics layer hidden), while
+  the hand deforms cleanly in Blender, so the fault is in the retarget, most likely the finger and
+  hand chains on the new proportions. Strikes and the knee hinge were not re-tested after the
+  fixes above.
 - The asset ledger row (`makehuman-core-assets`, CC0-1.0) is added in the commit that makes the
   generated files the game's character.
 

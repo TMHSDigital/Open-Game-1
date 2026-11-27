@@ -129,6 +129,14 @@ def import_mesh():
     task.automated = True
     task.replace_existing = True
     task.save = False
+    # A reimport keeps the Skeleton's reference pose unless told otherwise, and the retargeted clips
+    # are stored against the Skeleton: a new body (another rest pose, other bone lengths) would play
+    # them in the old body's frames. The Interchange mesh pipeline updates it when asked.
+    pipeline = unreal.InterchangeGenericAssetsPipeline()
+    pipeline.get_editor_property("mesh_pipeline").set_editor_property("update_skeleton_reference_pose", True)
+    override = unreal.InterchangePipelineStackOverride()
+    override.add_pipeline(pipeline)
+    task.options = override
     unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks([task])
     paths = [str(p) for p in task.imported_object_paths]
     log("imported " + ", ".join(paths))

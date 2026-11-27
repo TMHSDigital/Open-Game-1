@@ -8,9 +8,13 @@ layout (skeleton_reference.json) onto it, so everything in the game that names b
 - bones that exist in both (pelvis, thighs, arms, hands, fingers, head...) take MPFB's joints;
 - the UE5 spine has five bones and the neck two, where the rig has three and one: they are spaced
   along MPFB's spine and neck, and the spine and neck weights are split onto them by height;
-- metacarpals sit between the wrist and the knuckles, twist bones along their limb, and root, the
-  ik and helper bones at the origin or on the bone they copy, as in build_base_character.py.
-  These carry no weights.
+- twist bones sit along their limb where build_base_character.py puts them and take a share of
+  the limb's weight around them (a clip's twist spreads along the forearm, not at the wrist);
+- metacarpals sit between the wrist and the knuckles, and root, the ik and helper bones at the
+  origin or on the bone they copy. These carry no weights;
+- the arms are posed into the scripted body's rest pose (55 degrees below horizontal, elbows bent
+  12 degrees) before the mesh is baked, and every bone takes that body's direction and roll: the
+  joint limits, motors and retargets of the game were all built around those frames.
 
 Every vertex keeps at most four influences. The mesh is the MakeHuman body with its helper
 geometry removed (eyes, teeth and clothes helpers are separate assets, not part of this step).
@@ -30,7 +34,7 @@ import sys
 from pathlib import Path
 
 import bpy
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 HERE = Path(__file__).resolve().parent
 _spec = importlib.util.spec_from_file_location("base_builder", HERE / "build_base_character.py")
@@ -47,7 +51,11 @@ MACROS = {"gender": 1.0, "age": 0.5, "muscle": 0.9, "weight": 0.6, "proportions"
 MAX_INFLUENCES = base.MAX_INFLUENCES
 SPINE = ["spine_01", "spine_02", "spine_03", "spine_04", "spine_05"]
 NECK = ["neck_01", "neck_02"]
-TWIST_AT = {"_twist_01": 1.0 / 3.0, "_twist_02": 2.0 / 3.0}
+# Where along its limb each twist bone sits, and the old builder's weight share around it: a clip's
+# forearm twist spread over the forearm instead of landing at the wrist (a candy-wrapper twist).
+TWIST_AT = {"upperarm": (0.20, 0.55), "lowerarm": (0.75, 0.45), "thigh": (0.20, 0.55), "calf": (0.75, 0.45)}
+TWIST_SPREAD = 0.3
+TWIST_SHARE = 0.5
 
 
 def generate_human():
@@ -85,8 +93,9 @@ def bake(human, rig):
         o.select_set(o is human)
     if human.data.shape_keys:
         bpy.ops.object.shape_key_remove(all=True, apply_mix=True)
-    for mod in list(human.modifiers):
-        if mod.type == "MASK":
+    # The armature first: the posed rest pose (match_rest_pose) becomes the mesh's shape.
+    for mod in sorted(human.modifiers, key=lambda m: m.type != "ARMATURE"):
+        if mod.type in ("ARMATURE", "MASK"):
             bpy.ops.object.modifier_apply(modifier=mod.name)
         else:
             human.modifiers.remove(mod)
@@ -101,8 +110,33 @@ def rig_joints(rig):
     a rig read before its transform is up to date gives joints far below the body."""
     bpy.context.view_layer.update()
     m = rig.matrix_world
-    joints = {b.name: (m @ b.head_local, m @ b.tail_local) for b in rig.data.bones}
+    # The posed joints: the rest pose may have been turned to the reference's (match_rest_pose).
+    joints = {pb.name: (m @ pb.head, m @ pb.tail) for pb in rig.pose.bones}
     return joints
+
+
+def match_rest_pose(rig):
+    """Poses MPFB's arms into the first scripted body's rest pose: each upper arm and forearm
+    pointing as there (arm 55 degrees below horizontal, elbow bent 12 degrees; MPFB's own has the
+    arm at 48 and the elbow at 43). Every joint limit, motor and retarget of the game was built
+    around that rest pose; the pose is baked into the mesh with MPFB's own weights (bake)."""
+    ref, _ = base.all_joints()
+    bpy.context.view_layer.objects.active = rig
+    bpy.ops.object.mode_set(mode="POSE")
+    try:
+        for side in ("l", "r"):
+            for bone, frm, to in ((f"upperarm_{side}", f"upperarm_{side}", f"lowerarm_{side}"),
+                                  (f"lowerarm_{side}", f"lowerarm_{side}", f"hand_{side}")):
+                bpy.context.view_layer.update()
+                pb = rig.pose.bones[bone]
+                want = (ref[to][0] - ref[frm][0]).normalized()
+                have = (pb.tail - pb.head).normalized()
+                turn = have.rotation_difference(want).to_matrix().to_4x4()
+                pivot = Matrix.Translation(pb.head)
+                pb.matrix = pivot @ turn @ pivot.inverted() @ pb.matrix
+    finally:
+        bpy.ops.object.mode_set(mode="OBJECT")
+    bpy.context.view_layer.update()
 
 
 def feet_to_ground(human, joints):
@@ -143,11 +177,11 @@ def ue5_joints(ref, src):
         if n in out:
             continue
         if "_twist_" in n:
-            limb = n.split("_twist_")[0] + "_" + n.rsplit("_", 1)[1]
-            h, t = out[limb]
-            at = TWIST_AT["_twist_" + n.split("_twist_")[1][:2]]
-            p = h.lerp(t, at)
-            out[n] = (p, p + (t - h) / 6.0)
+            part, rest = n.split("_twist_")
+            index, side = int(rest[:2]), rest[-1]
+            h, t = out[f"{part}_{side}"]
+            at = TWIST_AT[part][index - 1]
+            out[n] = (h.lerp(t, at), h.lerp(t, at + 0.2))
         elif "_metacarpal_" in n:
             finger, side = n.split("_metacarpal_")
             hand = out["hand_" + side][0]
@@ -176,7 +210,7 @@ def reference_axes(ref):
     bpy.context.view_layer.objects.active = old
     bpy.ops.object.mode_set(mode="EDIT")
     try:
-        axes = {eb.name: eb.z_axis.copy() for eb in old.data.edit_bones}
+        axes = {eb.name: (eb.y_axis.copy(), eb.z_axis.copy(), eb.length) for eb in old.data.edit_bones}
     finally:
         bpy.ops.object.mode_set(mode="OBJECT")
     data = old.data
@@ -186,13 +220,22 @@ def reference_axes(ref):
 
 
 def match_rolls(arm, axes):
-    """Rolls every bone so its local Z axis is as close as it can be to the reference body's."""
+    """Gives every bone the reference body's orientation: its own head and length, the reference's
+    direction (Y) and roll (Z). The retargeted clips and the physics treat a bone's whole frame as
+    the reference, and MPFB's hands, fingers, feet and head point 13 to 31 degrees off the scripted
+    body's; the long bones barely change, the arms being posed to the reference (match_rest_pose)."""
     bpy.context.view_layer.objects.active = arm
     bpy.ops.object.mode_set(mode="EDIT")
     try:
         for eb in arm.data.edit_bones:
             if eb.name in axes:
-                eb.align_roll(axes[eb.name])
+                y, z, ref_length = axes[eb.name]
+                # End bones (hands, fingers, feet, head) take the reference length too: the retarget's
+                # IK chains scale by bone length.
+                end = eb.name.startswith(("hand_", "thumb_", "index_", "middle_", "ring_", "pinky_", "foot_", "ball_", "head"))
+                length = ref_length if end else (eb.tail - eb.head).length
+                eb.tail = eb.head + y * length
+                eb.align_roll(z)
     finally:
         bpy.ops.object.mode_set(mode="OBJECT")
 
@@ -244,6 +287,20 @@ def transfer_weights(obj, src, joints, ref):
             t = _param(v.co, joints["neck_01"][0], joints["neck_02"][1])
             for n, s in _split(t, NECK).items():
                 w[n] = w.get(n, 0.0) + neck * s
+        for part in TWIST_AT:
+            for side in ("l", "r"):
+                limb = f"{part}_{side}"
+                wl = w.get(limb, 0.0)
+                if wl <= 0.0:
+                    continue
+                h, e = joints[limb]
+                t = _param(v.co, h, e)
+                shares = [max(0.0, 1.0 - abs(t - f) / TWIST_SPREAD) * TWIST_SHARE for f in TWIST_AT[part]]
+                w[limb] = wl * (1.0 - sum(shares))
+                for i, sh in enumerate(shares, start=1):
+                    if sh > 0.0:
+                        tb = f"{part}_twist_{i:02d}_{side}"
+                        w[tb] = w.get(tb, 0.0) + wl * sh
         top = sorted(w.items(), key=lambda kv: -kv[1])[:MAX_INFLUENCES]
         total = sum(x for _, x in top)
         weights.append({n: x / total for n, x in top} if total > 0 else {})
@@ -291,6 +348,7 @@ def main():
     ref = base.load_reference()
     human = generate_human()
     rig = HumanService.add_builtin_rig(human, "game_engine")
+    match_rest_pose(rig)
     src = rig_joints(rig)
     bake(human, rig)
     src = feet_to_ground(human, src)
