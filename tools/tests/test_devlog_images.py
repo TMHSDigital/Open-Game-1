@@ -1,6 +1,7 @@
 import random
 from pathlib import Path
 
+import pytest
 from PIL import Image
 
 from og.devlog import to_webp
@@ -17,6 +18,7 @@ def noisy_png(path: Path, width: int, height: int, seed: int = 7) -> Path:
     return path
 
 
+@pytest.mark.slow
 def test_to_webp_caps_size_and_dims(tmp_path):
     src = noisy_png(tmp_path / "big.png", 3840, 2160)
     # The fixture must be too big at the starting quality, or the step-down is never exercised.

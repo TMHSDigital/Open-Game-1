@@ -69,6 +69,11 @@ try {
 
     if ($tests.Count -eq 0) { throw "No tests matched filter '$Filter'." }
     if ($failed.Count -gt 0) { throw "$($failed.Count) test(s) failed." }
+    # A report full of passes does not cover a crash after it was written (in shutdown, or in a
+    # latent command after the queue emptied). The editor exits 0 after a clean -TestExit.
+    if ($editorExit -ne 0) {
+        throw "The editor exited $editorExit after the tests; see $LogsDir\AutomationTests.log."
+    }
     Write-Host 'All tests passed.'
 }
 catch {

@@ -27,13 +27,13 @@ _ESCAPED = re.compile(r"\\(.)")
 
 def front_value(value) -> str:
     """A value as written after `key: ` in an entry's front matter: None is null, a list is
-    [a, b], anything else a double-quoted string with backslash and double quote escaped
-    (parse_front undoes it)."""
+    [a, b], anything else a double-quoted string on one line (runs of whitespace, newlines
+    included, become one space) with backslash and double quote escaped (parse_front undoes it)."""
     if value is None:
         return "null"
     if isinstance(value, (list, tuple)):
         return "[" + ", ".join(str(v) for v in value) + "]"
-    text = str(value).replace("\\", "\\\\").replace('"', '\\"')
+    text = " ".join(str(value).split()).replace("\\", "\\\\").replace('"', '\\"')
     return f'"{text}"'
 
 

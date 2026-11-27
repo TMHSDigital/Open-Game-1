@@ -123,6 +123,8 @@ def start(repo: Path, goal: str, today: datetime.date | None = None, commit: boo
     the release's clean-tree gate can run mid-session. The entry's path is already fixed, though
     (docs/devlog/<id>-<slug>.md), so the README can point at it before it exists."""
     repo = Path(repo)
+    # One line: the goal goes into front matter, a heading and a commit trailer.
+    goal = " ".join(goal.split())
     sp = _state_path(repo)
     if sp.is_file():
         old = json.loads(sp.read_text("utf-8"))
@@ -139,9 +141,8 @@ def start(repo: Path, goal: str, today: datetime.date | None = None, commit: boo
     slug = _slugify(goal)
     if commit:
         # The goal rides along, so a lost state file loses nothing (_resolve_start reads it back).
-        goal_line = " ".join(goal.split())
         _git(repo, "commit", "--allow-empty", "-m",
-             f"chore: session {sid} start\n\nSession-Start: {sid}\nSession-Goal: {goal_line}")
+             f"chore: session {sid} start\n\nSession-Start: {sid}\nSession-Goal: {goal}")
     head = _git(repo, "rev-parse", "HEAD", check=False)
     state = {"id": sid, "slug": slug, "goal": goal, "start_sha": head,
              "started_at": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),

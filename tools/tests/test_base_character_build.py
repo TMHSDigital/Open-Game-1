@@ -22,6 +22,8 @@ BLENDER = Path(os.environ.get(
     "BLENDER_PATH", r"C:\Program Files\Blender Foundation\Blender 5.1\blender.exe"))
 PWSH = shutil.which("pwsh")
 
+pytestmark = pytest.mark.slow
+
 needs_blender = pytest.mark.skipif(
     os.name != "nt" or PWSH is None or not BLENDER.exists(),
     reason="needs Windows, pwsh and Blender 5.1 (set BLENDER_PATH); skipped on CI without Blender")

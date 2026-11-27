@@ -18,3 +18,6 @@ packages = ["og"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+# The slow tests (headless Blender, a 4K image) take most of the run. Fast loop:
+#   uv run --project tools pytest tools/tests -q -m "not slow"
+markers = ["slow: needs Blender or takes seconds (deselect with -m \"not slow\")"]
