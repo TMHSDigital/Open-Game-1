@@ -91,6 +91,9 @@ public:
 	/** Every scenario name, in the order "all" plays them. */
 	static TArray<FString> ScenarioNames();
 
+	/** Scenarios that need their own map, so "all" leaves them out: gym (L_MovementGym). */
+	static TArray<FString> MapScenarioNames() { return {TEXT("gym")}; }
+
 	/** The steps of a scenario; empty for an unknown name. */
 	static TArray<FCSPlaytestStep> BuildScenario(const FString& Name);
 

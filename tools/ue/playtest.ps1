@@ -47,9 +47,13 @@ $ErrorActionPreference = 'Stop'
 
 # -Scenario punch,stance arrives as a list; the game takes one comma-separated value.
 $Scenario = ($Scenario | ForEach-Object { $_ -split ',' } | Where-Object { $_ }) -join ','
-$Scenarios = @('locomotion', 'stance', 'punch', 'knockdown', 'fight', 'moves', 'stamina')
+$Scenarios = @('locomotion', 'stance', 'punch', 'knockdown', 'fight', 'moves', 'stamina', 'body')
+# Scenarios on their own map, left out of 'all': gym plays on the movement gym.
+$MapScenarios = @{ gym = '/Game/Maps/L_MovementGym' }
+if (-not $PSBoundParameters.ContainsKey('Map') -and $MapScenarios.ContainsKey([string]$Scenario)) { $Map = $MapScenarios[[string]$Scenario] }
 if ($List) {
     $Scenarios | ForEach-Object { $_ }
+    $MapScenarios.Keys | ForEach-Object { "$_ (on $($MapScenarios[$_]))" }
     exit 0
 }
 

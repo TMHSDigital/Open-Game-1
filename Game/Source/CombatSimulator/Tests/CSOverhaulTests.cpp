@@ -113,7 +113,12 @@ bool FCSOverhaulPlaytestPartsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Names are read in order, once, in any case"), Some, TArray<FString>({TEXT("punch"), TEXT("locomotion")}));
 	TestEqual(TEXT("An unknown name is reported"), Unknown, TArray<FString>({TEXT("nope")}));
 
-	for (const FString& Name : UCSPlaytestRunner::ScenarioNames())
+	TestFalse(TEXT("all leaves out the scenarios on their own map"), All.Contains(TEXT("gym")));
+	TestEqual(TEXT("gym is played when named"), UCSPlaytestRunner::ParseScenarios(TEXT("gym"), Unknown), TArray<FString>({TEXT("gym")}));
+
+	TArray<FString> Every = UCSPlaytestRunner::ScenarioNames();
+	Every.Append(UCSPlaytestRunner::MapScenarioNames());
+	for (const FString& Name : Every)
 	{
 		const TArray<FCSPlaytestStep> Steps = UCSPlaytestRunner::BuildScenario(Name);
 		int32 Labelled = 0;

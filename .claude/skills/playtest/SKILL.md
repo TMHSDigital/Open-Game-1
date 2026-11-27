@@ -14,6 +14,7 @@ pwsh tools/ue/playtest.ps1                         # every scenario, editor bina
 pwsh tools/ue/playtest.ps1 -Scenario punch,stance  # some
 pwsh tools/ue/playtest.ps1 -Target Packaged        # the last package from tools/ue/package.ps1
 pwsh tools/ue/playtest.ps1 -List                   # scenario names
+pwsh tools/ue/playtest.ps1 -Scenario gym           # the movement gym (its own map)
 ```
 
 Run it in the background; it prints the summary path at the end. Exit 1 means the game did not play to the end.
@@ -40,6 +41,8 @@ Each step has a label, which starts a segment, a duration and a camera. Steps no
 | `moves` | Every strike at a dummy (jab, straight, both hooks from 75 cm, a kick from 100 and 150 cm), then the attack key as a player presses it (a one-two, then a hook moving right); notes landed and the hit, and the moves thrown. |
 | `stamina` | Straights as fast as they go until stamina runs out (notes how many were thrown tired and the first and last fist speeds), the guard with no stamina, and a rest (stamina before and after). |
 | `fight` | A dummy that fights back (decisions 0019 and 0020), throwing jabs, one-twos, hooks and kicks: the player stands, holds the block, dodges back on the tell, blocks and punches back, blocks from its own camera, blocks with no stamina (the guard must give way), lies down (the opponent must wait), and the run ends (it must stop); notes their punches thrown, landed, blocked and missed, the dodges and the player's punches. |
+| `body` | First person looking steeply down (hands in view) and at the floor ahead (the own shadow), idle and walking; the guard from the front and side, and a jump from the front (shoulders and arms). Nothing to measure: review the sheets. |
+| `gym` | On L_MovementGym only (the script opens it; `all` leaves it out): the four ramps (50 degrees must be refused), the three stairs, the gaps sprinting and jumping, jogging through the physics boxes, off the 2 m and 6 m ledges (6 m must knock down); notes the highest the feet got, the fastest fall, where the player ended, boxes moved, down and back up. |
 
 The review cameras are:
 

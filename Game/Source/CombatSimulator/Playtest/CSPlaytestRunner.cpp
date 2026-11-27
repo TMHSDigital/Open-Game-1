@@ -17,6 +17,7 @@
 #include "CSMovementTuning.h"
 #include "CSPhysicsBodyComponent.h"
 #include "CSStrikeComponent.h"
+#include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
@@ -1014,6 +1015,254 @@ namespace CSPlaytestScenarios
 		Steps.Add(KnockPlayer(TEXT("the player is knocked down: the player's camera"), ECSReviewCamera::Player));
 		return Steps;
 	}
+
+	// ------------------------------------------------------------ gym (L_MovementGym only)
+
+	/** Whether the gym's course is in this world (the scenario plays only on L_MovementGym). */
+	bool OnGymMap(const FCtx& C)
+	{
+		for (TActorIterator<AActor> It(C.World); It; ++It)
+		{
+			if (It->ActorHasTag(TEXT("Ramp15")))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/** The player's feet height, cm (the floor is at 0). */
+	float FeetZ(const ACSCharacter& Self)
+	{
+		return float(Self.GetActorLocation().Z - Self.GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
+	}
+
+	/**
+	 * A lane of the gym (create_movement_maps.py): the player starts at x -150 on lane Y, facing +X,
+	 * and moves forward at Gait for Seconds (jumping every JumpEvery s when on the ground, 0 for none).
+	 * Notes the highest the feet got, where the player ended, the fastest fall and whether it went down.
+	 */
+	FCSPlaytestStep GymLane(const TCHAR* Label, float Y, float Seconds, ECSGait Gait, float JumpEvery = 0.f, ECSReviewCamera Camera = ECSReviewCamera::Side)
+	{
+		FCSPlaytestStep Step;
+		Step.Label = Label;
+		Step.Seconds = Seconds;
+		Step.Camera = Camera;
+		struct FTrack { float Top = 0.f; float Fall = 0.f; float LastJump = -10.f; bool bOk = true; };
+		TSharedRef<FTrack> Track = MakeShared<FTrack>();
+		TSharedRef<TPair<float, float>> DownUp = MakeShared<TPair<float, float>>(-1.f, -1.f);
+		Step.OnStart = [Y, Gait, Track, DownUp](const FCtx& C)
+		{
+			*Track = FTrack();
+			*DownUp = TPair<float, float>(-1.f, -1.f);
+			ACSCharacter* Self = C.Player();
+			Track->bOk = Self && OnGymMap(C);
+			if (!Track->bOk)
+			{
+				C.Note(TEXT("skipped"), TEXT("not on L_MovementGym"));
+				return;
+			}
+			C.Place(FVector(-150.f, Y, Self->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 2.f), 0.f);
+			Self->SetGait(Gait);
+		};
+		Step.OnTick = [JumpEvery, Track, DownUp](const FCtx& C, float Time, float)
+		{
+			ACSCharacter* Self = C.Player();
+			if (!Track->bOk || !Self)
+			{
+				return;
+			}
+			if (!Self->IsRagdolled())
+			{
+				C.Move(1.f, 0.f);
+			}
+			const UCharacterMovementComponent* Move = Self->GetCharacterMovement();
+			if (JumpEvery > 0.f && Move->IsMovingOnGround() && Time > 0.4f && Time - Track->LastJump >= JumpEvery)
+			{
+				Self->Jump();
+				Track->LastJump = Time;
+			}
+			else if (Time - Track->LastJump > 0.3f)
+			{
+				Self->StopJumping();
+			}
+			Track->Top = FMath::Max(Track->Top, FeetZ(*Self));
+			if (Move->IsFalling())
+			{
+				Track->Fall = FMath::Max(Track->Fall, float(-Move->Velocity.Z));
+			}
+			C.Note(TEXT("highest feet cm"), Track->Top);
+			C.Note(TEXT("fastest fall cm/s"), Track->Fall);
+			C.Note(TEXT("ended at x cm"), float(Self->GetActorLocation().X));
+			C.Note(TEXT("ended at height cm"), FeetZ(*Self));
+			WatchBody(C, Self, Time, DownUp);
+		};
+		Step.OnEnd = [](const FCtx& C)
+		{
+			if (ACSCharacter* Self = C.Player())
+			{
+				Self->StopJumping();
+			}
+		};
+		return Step;
+	}
+
+	TArray<FCSPlaytestStep> BuildGym()
+	{
+		TArray<FCSPlaytestStep> Steps;
+		// Lanes and heights from Game/Content/Python/create_movement_maps.py.
+		Steps.Add(GymLane(TEXT("gym: ramp 15 degrees"), 700.f, 3.5f, ECSGait::Jog));
+		Steps.Add(GymLane(TEXT("gym: ramp 30 degrees"), 1200.f, 3.5f, ECSGait::Jog));
+		Steps.Add(GymLane(TEXT("gym: ramp 44 degrees, the steepest walkable"), 1700.f, 3.5f, ECSGait::Jog));
+		Steps.Add(GymLane(TEXT("gym: ramp 50 degrees, too steep"), 2200.f, 3.5f, ECSGait::Jog));
+		Steps.Add(GymLane(TEXT("gym: stairs, 15 cm steps"), 2900.f, 3.f, ECSGait::Jog));
+		Steps.Add(GymLane(TEXT("gym: stairs, 25 cm steps"), 3400.f, 3.f, ECSGait::Jog));
+		Steps.Add(GymLane(TEXT("gym: stairs, 40 cm steps"), 3900.f, 3.f, ECSGait::Jog));
+		Steps.Add(GymLane(TEXT("gym: gaps, sprinting and jumping"), 4600.f, 6.f, ECSGait::Sprint, 0.75f));
+		{
+			FCSPlaytestStep Step = GymLane(TEXT("gym: physics boxes, jogging through"), -625.f, 4.f, ECSGait::Jog);
+			TSharedRef<TMap<TWeakObjectPtr<AActor>, FVector>> Starts = MakeShared<TMap<TWeakObjectPtr<AActor>, FVector>>();
+			const auto Lane = Step.OnStart;
+			Step.OnStart = [Lane, Starts](const FCtx& C)
+			{
+				Lane(C);
+				Starts->Reset();
+				for (TActorIterator<AActor> It(C.World); It; ++It)
+				{
+					if (It->ActorHasTag(TEXT("PhysicsBox")))
+					{
+						Starts->Add(*It, It->GetActorLocation());
+					}
+				}
+				C.Place(FVector(300.f, -625.f, C.Player() ? C.Player()->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 2.f : 100.f), 0.f);
+			};
+			const auto Tick = Step.OnTick;
+			Step.OnTick = [Tick, Starts](const FCtx& C, float Time, float DeltaTime)
+			{
+				Tick(C, Time, DeltaTime);
+				int32 Moved = 0;
+				float Most = 0.f;
+				for (const TPair<TWeakObjectPtr<AActor>, FVector>& Box : *Starts)
+				{
+					if (const AActor* Actor = Box.Key.Get())
+					{
+						const float Off = float(FVector::Dist(Actor->GetActorLocation(), Box.Value));
+						Moved += Off > 10.f ? 1 : 0;
+						Most = FMath::Max(Most, Off);
+					}
+				}
+				C.Note(TEXT("boxes moved"), FString::Printf(TEXT("%d of %d"), Moved, Starts->Num()));
+				C.Note(TEXT("furthest box moved cm"), Most);
+			};
+			Steps.Add(Step);
+		}
+		Steps.Add(GymLane(TEXT("gym: off a 2 m ledge"), 6000.f, 6.f, ECSGait::Jog));
+		Steps.Add(GymLane(TEXT("gym: off a 6 m ledge (knocks down)"), 7800.f, 10.f, ECSGait::Jog));
+		return Steps;
+	}
+
+	// ------------------------------------------------------------ body (any map)
+
+	/** The player's own view in first person with the view pitched Pitch degrees, moving Forward. */
+	FCSPlaytestStep FirstPersonLook(const TCHAR* Label, float Seconds, float Pitch, float Forward)
+	{
+		FCSPlaytestStep Step;
+		Step.Label = Label;
+		Step.Seconds = Seconds;
+		Step.Camera = ECSReviewCamera::Player;
+		Step.OnStart = [](const FCtx& C)
+		{
+			if (ACSCharacter* Self = C.Player())
+			{
+				Self->SetGait(ECSGait::Walk);
+				Self->GetCameraRig()->SetView(ECSView::FirstPerson);
+			}
+		};
+		Step.OnTick = [Pitch, Forward](const FCtx& C, float, float)
+		{
+			if (C.Controller)
+			{
+				const FRotator View = C.Controller->GetControlRotation();
+				C.Controller->SetControlRotation(FRotator(Pitch, View.Yaw, 0.f));
+			}
+			if (!FMath::IsNearlyZero(Forward))
+			{
+				C.Move(Forward, 0.f);
+			}
+		};
+		Step.OnEnd = [](const FCtx& C)
+		{
+			if (ACSCharacter* Self = C.Player())
+			{
+				Self->GetCameraRig()->SetView(ECSView::ThirdPerson);
+			}
+			if (C.Controller)
+			{
+				C.Controller->SetControlRotation(FRotator(0.f, C.Controller->GetControlRotation().Yaw, 0.f));
+			}
+		};
+		return Step;
+	}
+
+	/** Holding the guard (arms up in front of the head) for Seconds, from Camera. */
+	FCSPlaytestStep GuardHeld(const TCHAR* Label, float Seconds, ECSReviewCamera Camera)
+	{
+		FCSPlaytestStep Step;
+		Step.Label = Label;
+		Step.Seconds = Seconds;
+		Step.Camera = Camera;
+		Step.OnTick = [](const FCtx& C, float Time, float)
+		{
+			if (ACSCharacter* Self = C.Player())
+			{
+				if (UCSGuardComponent* Guard = Self->GetGuard())
+				{
+					Guard->SetBlockHeld(Time > 0.3f);
+				}
+			}
+		};
+		Step.OnEnd = [](const FCtx& C)
+		{
+			if (ACSCharacter* Self = C.Player())
+			{
+				if (UCSGuardComponent* Guard = Self->GetGuard())
+				{
+					Guard->SetBlockHeld(false);
+				}
+			}
+		};
+		return Step;
+	}
+
+	TArray<FCSPlaytestStep> BuildBody()
+	{
+		TArray<FCSPlaytestStep> Steps;
+		// No dummies, so nothing turns the player into the combat stance.
+		Steps.Add(SetUpRun(0, 500.f));
+		// Milestone 2 gaps (#57): hands in view looking down, the first-person shadow's head, the shoulder.
+		Steps.Add(FirstPersonLook(TEXT("first person, idle, looking steeply down"), 3.f, -80.f, 0.f));
+		Steps.Add(FirstPersonLook(TEXT("first person, walking, looking steeply down"), 3.f, -80.f, 1.f));
+		Steps.Add(FirstPersonLook(TEXT("first person, idle, looking at the floor ahead (own shadow)"), 3.f, -35.f, 0.f));
+		Steps.Add(FirstPersonLook(TEXT("first person, walking, looking at the floor ahead (own shadow)"), 3.f, -35.f, 1.f));
+		Steps.Add(GuardHeld(TEXT("guard up, from the front (shoulders)"), 2.5f, ECSReviewCamera::Front));
+		Steps.Add(GuardHeld(TEXT("guard up, from the side (shoulders)"), 2.5f, ECSReviewCamera::Side));
+		{
+			FCSPlaytestStep Step = Locomotion(TEXT("jump, from the front (arms)"), 2.5f, ECSGait::Jog, 0.f, ECSReviewCamera::Front);
+			Step.OnTick = [](const FCtx& C, float Time, float DeltaTime)
+			{
+				if (ACSCharacter* Self = C.Player(); Self && Time >= 0.5f && Time - DeltaTime < 0.5f)
+				{
+					Self->Jump();
+				}
+				if (ACSCharacter* Self = C.Player(); Self && Time >= 0.8f && Time - DeltaTime < 0.8f)
+				{
+					Self->StopJumping();
+				}
+			};
+			Steps.Add(Step);
+		}
+		return Steps;
+	}
 }
 
 // ---------------------------------------------------------------- runner
@@ -1029,7 +1278,7 @@ UCSPlaytestRunner::UCSPlaytestRunner()
 
 TArray<FString> UCSPlaytestRunner::ScenarioNames()
 {
-	return {TEXT("locomotion"), TEXT("stance"), TEXT("punch"), TEXT("knockdown"), TEXT("fight"), TEXT("moves"), TEXT("stamina")};
+	return {TEXT("locomotion"), TEXT("stance"), TEXT("punch"), TEXT("knockdown"), TEXT("fight"), TEXT("moves"), TEXT("stamina"), TEXT("body")};
 }
 
 TArray<FCSPlaytestStep> UCSPlaytestRunner::BuildScenario(const FString& Name)
@@ -1042,6 +1291,8 @@ TArray<FCSPlaytestStep> UCSPlaytestRunner::BuildScenario(const FString& Name)
 	if (Name == TEXT("fight")) { return BuildFight(); }
 	if (Name == TEXT("moves")) { return BuildMoves(); }
 	if (Name == TEXT("stamina")) { return BuildStamina(); }
+	if (Name == TEXT("body")) { return BuildBody(); }
+	if (Name == TEXT("gym")) { return BuildGym(); }
 	return {};
 }
 
@@ -1061,7 +1312,7 @@ TArray<FString> UCSPlaytestRunner::ParseScenarios(const FString& Value, TArray<F
 				Out.AddUnique(Name);
 			}
 		}
-		else if (Known.Contains(Part))
+		else if (Known.Contains(Part) || MapScenarioNames().Contains(Part))
 		{
 			Out.AddUnique(Part);
 		}
