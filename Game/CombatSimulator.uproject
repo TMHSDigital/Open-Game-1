@@ -49,7 +49,10 @@
 		},
 		{
 			"Name": "GameFeatures",
-			"Enabled": true
+			"Enabled": true,
+			"TargetAllowList": [
+				"Editor"
+			]
 		},
 		{
 			"Name": "AndroidFileServer",
