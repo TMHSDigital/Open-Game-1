@@ -219,6 +219,18 @@ try {
     Check 'env.ps1: an empty .env value counts as not set' (-not "$emptyKey") "$emptyKey"
     Check 'env.ps1: the environment variable wins over .env' ("$fromEnv" -eq (Join-Path $tmp 'FromEnvironment')) "$fromEnv"
     Check 'Next version bumps the build number' ((Get-NextVersion '0.1.0') -eq '0.1.1')
+
+    # Gate 11's start check on a real process (issue 39): no exe, and an exe that exits without a
+    # result (a crash at start; where.exe stands in for the game).
+    $startDir = Join-Path $tmp 'startcheck'
+    $startResult = Join-Path $startDir 'result.txt'
+    Check 'Start check: no Shipping exe is a problem' ((Invoke-StartCheck $startDir 'CombatSimulator' $startResult) -match 'no CombatSimulator-Win64-Shipping\.exe')
+    $fakeGameDir = Join-Path $startDir 'CombatSimulator\Binaries\Win64'
+    New-Item -ItemType Directory -Force -Path $fakeGameDir | Out-Null
+    Copy-Item -LiteralPath (Join-Path $env:SystemRoot 'System32\where.exe') -Destination (Join-Path $fakeGameDir 'CombatSimulator-Win64-Shipping.exe')
+    Set-Content -LiteralPath $startResult 'PASS'
+    $crash = Invoke-StartCheck $startDir 'CombatSimulator' $startResult 30
+    Check 'Start check: a game that exits without a result fails, even with a stale PASS file left over' ($crash -match 'without a start check result') $crash
     Check 'Next version keeps the milestone' ((Get-NextVersion '0.3.17') -eq '0.3.18')
     $threw = $false; try { Get-NextVersion '1.2' | Out-Null } catch { $threw = $true }
     Check 'Next version refuses a version not shaped 0.<milestone>.<build>' $threw
@@ -416,6 +428,16 @@ try {
     $remoteNow = ((Invoke-Git $fx.Remote rev-parse main) | Out-String).Trim()
     $dirtyNow = @(Invoke-Git $fx.Repo status --porcelain | Where-Object { $_ })
     Check 'a steamcmd error undoes the version bump: HEAD, origin and the ini are as before' ($r.Code -eq 30 -and $headNow -eq $fx.Head -and $remoteNow -eq $fx.Head -and $dirtyNow.Count -eq 0 -and (Get-Content $ini -Raw) -match 'ProjectVersion=0\.1\.0' -and $r.Output -match 'undone') $r.Output
+    # Gate 11 (issue 39): a staged game that fails its start check stops before steamcmd, undoes
+    # the bump and records nothing.
+    $ledgerBefore = Get-Content -LiteralPath $fx.Ledger -Raw
+    $startSteamLog = Join-Path $fx.Root 'steamcmd-args-start.log'
+    $r = Invoke-Release @('dev', '-NoGitHub') @{ FAKE_CHECK_FAIL = 'start'; FAKE_STEAMCMD_LOG = $startSteamLog }
+    $headNow = ((Invoke-Git $fx.Repo rev-parse HEAD) | Out-String).Trim()
+    Check 'Gate 11: a failed start check exits 21 before steamcmd runs' ($r.Code -eq 21 -and -not (Test-Path -LiteralPath $startSteamLog) -and $r.Output -match 'packaged game starts') $r.Output
+    Check 'Gate 11: the version bump is undone and nothing is recorded' ($headNow -eq $fx.Head -and (Get-Content $ini -Raw) -match 'ProjectVersion=0\.1\.0' -and (Get-Content -LiteralPath $fx.Ledger -Raw) -eq $ledgerBefore -and $r.Output -match 'undone') $r.Output
+    $r = Invoke-Release @('dry-run')
+    Check 'Gate 11: dry-run starts the staged Shipping exe with -CSSmokeTest' ($r.Code -eq 0 -and $r.Output -match 'gate 11 ok' -and $r.Output -match 'content\\CombatSimulator\\Binaries\\Win64\\CombatSimulator-Win64-Shipping\.exe -CSSmokeTest=') $r.Output
     $r = Invoke-Release @('dev', '-NoGitHub')
     Check 'the next run after a failed upload reuses the same version (no gap)' ($r.Code -eq 0 -and (Get-Content $fx.Ledger -Raw) -match '\| 0\.1\.1 \| 98765 \|') $r.Output
 

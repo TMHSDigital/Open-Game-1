@@ -22,6 +22,7 @@ What `dev` does, in order:
 2. **Bump** `ProjectVersion` (`0.<milestone>.<build>`) in `Game/Config/DefaultGame.ini`, commit, push.
 3. **Package** with `tools/ue/package.ps1 -Config Shipping` (skip with `-SkipPackage`).
 4. **Stage** the Shipping package into `_scratch/steam/content`, dropping symbols, logs, `Saved`, `Intermediate`, `steam_appid.txt`, `Manifest_*.txt` and any stale non-Shipping exe left in the archive folder.
+   **Gate 11** (exit 21): start the staged Shipping exe once with `-CSSmokeTest=<file>`. `UCSStartupCheck` checks the player's character (mesh, physics asset, animation, tuning, mapping context, pause action), writes PASS or FAIL and quits. On a failure the bump is undone and nothing is uploaded.
 5. **Render** `steam/templates/*.vdf` into `_scratch/steam/` with IDs from env vars, single backslashes, `SetLive` and `Preview`.
 6. **Upload** (Claude or owner, `development` only; decision 0014). Any `ERROR!` line is exit 30, no BuildID is exit 31, and nothing is recorded.
 7. **Record**: ledger row (committed and pushed), `v<version>` GitHub prerelease with no game files, `steam-development` deployment.

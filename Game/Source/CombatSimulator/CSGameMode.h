@@ -9,6 +9,7 @@ class ACSCharacter;
 class ACSTargetDummy;
 class UCSHitFeedback;
 class UCSPlaytestRunner;
+class UCSStartupCheck;
 class UCSRunDirector;
 class UCSMovementTuning;
 
@@ -99,6 +100,9 @@ public:
 	/** Scripted play-tests (only active with -CSPlaytest=). */
 	UCSPlaytestRunner* GetPlaytestRunner() const { return PlaytestRunner; }
 
+	/** The release's start check on a packaged build (only active with -CSSmokeTest=). */
+	UCSStartupCheck* GetStartupCheck() const { return StartupCheck; }
+
 	/** Short names of RunMaps ("L_Plane"), in order. */
 	TArray<FString> GetRunMapNames() const;
 
@@ -176,6 +180,9 @@ private:
 
 	UPROPERTY(VisibleAnywhere, Category = "CS|Playtest")
 	TObjectPtr<UCSPlaytestRunner> PlaytestRunner;
+
+	UPROPERTY(VisibleAnywhere, Category = "CS|Playtest")
+	TObjectPtr<UCSStartupCheck> StartupCheck;
 
 	FString LastMapSwitchTarget;
 };

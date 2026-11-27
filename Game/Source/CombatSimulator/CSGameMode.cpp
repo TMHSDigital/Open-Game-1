@@ -7,6 +7,7 @@
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/PlayerStart.h"
 #include "Feedback/CSHitFeedback.h"
+#include "CSStartupCheck.h"
 #include "Playtest/CSPlaytestRunner.h"
 #include "Run/CSRunDirector.h"
 #include "EngineUtils.h"
@@ -32,6 +33,7 @@ ACSGameMode::ACSGameMode()
 	RunDirector = CreateDefaultSubobject<UCSRunDirector>(TEXT("RunDirector"));
 	HitFeedback = CreateDefaultSubobject<UCSHitFeedback>(TEXT("HitFeedback"));
 	PlaytestRunner = CreateDefaultSubobject<UCSPlaytestRunner>(TEXT("PlaytestRunner"));
+	StartupCheck = CreateDefaultSubobject<UCSStartupCheck>(TEXT("StartupCheck"));
 }
 
 APawn* ACSGameMode::SpawnDefaultPawnAtTransform_Implementation(AController* NewPlayer, const FTransform& SpawnTransform)

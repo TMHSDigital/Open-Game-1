@@ -15,6 +15,9 @@
 # -SkipGitGates, -CheckCommand, -LedgerPath, -RepoDir and -NoGitHub are refused (exit 40) outside the
 # test harness: a real release runs every gate.
 #
+# Gate 11 runs after packaging: it starts the staged Shipping build once (-CSSmokeTest) and needs a
+# desktop session (it opens a small window).
+#
 # Exit codes: 0 ok, 1 other error, 10+n gate n failed, 30 steamcmd error, 31 no BuildID,
 #             40 refused (a -Branch other than development, 'promoted' with CLAUDECODE set, or a
 #                test-only switch outside the test harness).
@@ -43,8 +46,8 @@ param(
     [switch]$NoGitHub,       # skips every gh call
     [string]$RepoDir,
     [string]$WorkDir,
-    [string]$CheckCommand    # replaces gates 6-8 and the promoted draft scan with:
-                             # pwsh -File <CheckCommand> tests|secrets|assets (real command in $env:RELEASE_REAL_CHECK)
+    [string]$CheckCommand    # replaces gates 6-8, gate 11 and the promoted draft scan with:
+                             # pwsh -File <CheckCommand> tests|secrets|assets|start (real command in $env:RELEASE_REAL_CHECK)
 )
 
 Set-StrictMode -Version Latest
@@ -211,6 +214,29 @@ function Copy-PackageToStaging([string]$From, [string]$To, [string]$Project) {
         $copied++; $bytes += $f.Length
     }
     [pscustomobject]@{ Files = $copied; Skipped = $skipped; Bytes = $bytes }
+}
+
+# Gate 11: starts the staged Shipping exe with -CSSmokeTest (UCSStartupCheck) and waits for its
+# result file. Returns a problem string, or nothing when the game started with a playable character.
+function Invoke-StartCheck([string]$Content, [string]$Project, [string]$ResultFile, [int]$TimeoutSeconds = 240) {
+    $exe = Join-Path $Content "$Project\Binaries\Win64\$Project-Win64-Shipping.exe"
+    if (-not (Test-Path -LiteralPath $exe)) { return "no $Project-Win64-Shipping.exe in $Content." }
+    if (Test-Path -LiteralPath $ResultFile) { Remove-Item -LiteralPath $ResultFile -Force }
+    New-Item -ItemType Directory -Force -Path (Split-Path $ResultFile) | Out-Null
+    # The staged folder is what gets uploaded: the game must not leave anything in it.
+    $filesBefore = @(Get-ChildItem -LiteralPath $Content -Recurse -File).Count
+    $gameArgs = @("-CSSmokeTest=`"$ResultFile`"", '-windowed', '-ResX=960', '-ResY=540', '-nosound', '-unattended')
+    $proc = Start-Process -FilePath $exe -ArgumentList $gameArgs -PassThru
+    if (-not $proc.WaitForExit($TimeoutSeconds * 1000)) {
+        try { $proc.Kill($true) } catch { }
+        return "the packaged game did not finish its start check in $TimeoutSeconds s."
+    }
+    $code = $proc.ExitCode
+    if (-not (Test-Path -LiteralPath $ResultFile)) { return "the packaged game exited (code $code) without a start check result: did it crash at start?" }
+    $result = (Get-Content -LiteralPath $ResultFile -Raw).Trim()
+    if ($code -ne 0 -or $result -ne 'PASS') { return "the packaged game's start check reported: $result (exit $code)." }
+    $filesAfter = @(Get-ChildItem -LiteralPath $Content -Recurse -File).Count
+    if ($filesAfter -ne $filesBefore) { return "the packaged game wrote files into $Content while starting; they would be uploaded." }
 }
 
 # Fills a template's {{KEY}} placeholders. Throws if any placeholder is left.
@@ -501,6 +527,18 @@ function Invoke-Upload {
     }
     $stage = Copy-PackageToStaging -From $BuildDir -To $staging -Project $ProjectName
     Write-Host ("Staged {0} files ({1:N0} MB) from {2} into {3}; {4} excluded." -f $stage.Files, ($stage.Bytes / 1MB), $BuildDir, $staging, $stage.Skipped)
+
+    # --- Gate 11: the staged game starts with a playable character -----------------------------
+    Invoke-Gate 11 'packaged game starts' {
+        $resultFile = Join-Path $WorkDir 'start-check.txt'
+        if ($CheckCommand) {
+            $code = Invoke-Check 'start' @((Join-Path $staging "$ProjectName\Binaries\Win64\$ProjectName-Win64-Shipping.exe"), "-CSSmokeTest=$resultFile")
+            if ($code -ne 0) { return "the packaged game's start check failed (exit $code)." }
+            return
+        }
+        Write-Host "Starting the staged game once (-CSSmokeTest); it closes itself."
+        Invoke-StartCheck $staging $ProjectName $resultFile
+    }
 
     # --- Render the run VDFs -------------------------------------------------------------------
     $depotVdf = Join-Path $WorkDir 'depot_build_run.vdf'

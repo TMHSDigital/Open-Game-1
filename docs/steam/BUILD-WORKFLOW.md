@@ -27,7 +27,7 @@ Claude Code runs the development-branch steps (`dev`, `upload-only`, `preview`) 
 |---|---|
 | `dev` | gates, version bump (local commit), package, stage, VDF, steamcmd, set live on `development`, ledger row (commit; the bump and the ledger are pushed together), `v<version>` GitHub prerelease, `steam-development` deployment |
 | `upload-only` | the same, with SetLive blank and no deployment. Used for the first build, before the `development` branch exists |
-| `dry-run` | gates, package, stage and VDF; prints the steamcmd line. Does not bump the version. Git gates 1 to 3 only warn, so you can dry-run before committing |
+| `dry-run` | gates, package, stage, start check (gate 11) and VDF; prints the steamcmd line. Does not bump the version. Git gates 1 to 3 only warn, so you can dry-run before committing |
 | `preview` | like `dry-run`, then steamcmd with `"Preview" "1"`: Steam checks the build and writes logs and a manifest, nothing is uploaded |
 | `status` | the ledger versus Steam's real branch state (steamcmd `app_info_print` with `+@NoPromptForPassword 1`), plus the open setup checklist items. If steamcmd fails or prints no branches block, it reports "Steam state: unknown" instead of a mismatch. steamcmd leaves the password-protected `development` branch out of `app_info_print` (or shows it without a build), so that row reads `?` with the reason, not MISMATCH: check the development build in the Steam client. The public branch is always compared |
 | `promote <ver>` | drafts the promotion into the gitignored `_release/<ver>/`: `post.bbcode`, `patch-notes.md`, `github-release.md`, `checklist.md`. Changes nothing on Steam or in tracked files |
@@ -39,7 +39,7 @@ Switches for every mode: `-SkipPackage` (reuse the last package in `E:\CombatSim
 
 ## Gates
 
-The gates run in this order on the tree as it is (before the version bump), and the first failure stops the run with exit code `10 + n`:
+Gates 1 to 10 run in this order on the tree as it is (before the version bump), and gate 11 runs on the staged package. The first failure stops the run with exit code `10 + n`:
 
 | n | Gate | Exit |
 |---|---|---|
@@ -53,6 +53,7 @@ The gates run in this order on the tree as it is (before the version bump), and 
 | 8 | asset ledger and decisions are consistent: `og check --only assets --only decisions` | 18 |
 | 9 | `STEAM_APPID`, `STEAM_DEPOT_WIN`, `STEAM_BUILD_ACCOUNT` are set and plausible (numeric, not 480, depot not equal to app). Only names are printed, never values | 19 |
 | 10 | the staging folder `_scratch/steam/content` was deleted and recreated empty | 20 |
+| 11 | after packaging and staging: the staged game starts. The script runs `CombatSimulator-Win64-Shipping.exe -CSSmokeTest=<file>` once in a small window. The game (`UCSStartupCheck`) waits for the player's character, checks that it has its mesh, physics asset, animation, tuning, mapping context and pause action, writes PASS or FAIL to the file and quits. A failure, a crash, a missing result or no result within 240 s stops the run before steamcmd, and the version bump is undone. Needs a desktop session | 21 |
 
 ## Exit codes
 
@@ -60,7 +61,7 @@ The gates run in this order on the tree as it is (before the version bump), and 
 |---|---|
 | 0 | ok |
 | 1 | any other error (bad arguments, packaging failed, a secret in the `_release/<ver>/` draft on `promoted`, a GitHub step failed after the upload). If the ledger commit or push fails after a real upload, the message says "Upload done as BuildID N; do not re-run": commit and push `docs/steam/BUILDS.md` by hand |
-| 11 to 20 | gate `code - 10` failed |
+| 11 to 21 | gate `code - 10` failed |
 | 30 | steamcmd error: non-zero exit, or any `ERROR!` line even when the exit code is 0 |
 | 31 | steamcmd printed no BuildID |
 | 40 | refused: a `-Branch` other than `development` (including `default`, `Default`, ` default`, `public`), or `promoted` with `CLAUDECODE` set |
