@@ -12,7 +12,10 @@
 #include "GameFramework/HUD.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/WorldSettings.h"
+#include "CSHitCameraShake.h"
+#include "Kismet/GameplayStatics.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "Sound/SoundBase.h"
 
 namespace
 {
@@ -26,6 +29,57 @@ UCSHitFeedback::UCSHitFeedback()
 	PrimaryComponentTick.bCanEverTick = true;
 	// Marks fade and the hit-stop ends in real time, also while the world is all but stopped.
 	PrimaryComponentTick.bTickEvenWhenPaused = false;
+	auto Set = [](TArray<TSoftObjectPtr<USoundBase>>& Out, const TCHAR* Stem)
+	{
+		for (int32 I = 0; I < 5; ++I)
+		{
+			const FString Name = FString::Printf(TEXT("%s_%03d"), Stem, I);
+			Out.Add(TSoftObjectPtr<USoundBase>(FSoftObjectPath(FString::Printf(TEXT("/Game/ThirdParty/KenneyImpactSounds/%s.%s"), *Name, *Name))));
+		}
+	};
+	Set(HeavyHitSounds, TEXT("impactPunch_heavy"));
+	Set(HitSounds, TEXT("impactPunch_medium"));
+	Set(BlockedSounds, TEXT("impactSoft_medium"));
+}
+
+USoundBase* UCSHitFeedback::PickSound(ECSContactResult Result, float Size, float& OutVolume) const
+{
+	OutVolume = 0.f;
+	if (Size < MinSoundSize)
+	{
+		return nullptr;
+	}
+	const TArray<TSoftObjectPtr<USoundBase>>* Set = nullptr;
+	if (Result == ECSContactResult::Blocked)
+	{
+		Set = &BlockedSounds;
+	}
+	else if (Result == ECSContactResult::Stagger || Result == ECSContactResult::Ragdoll)
+	{
+		Set = Size >= HeavyHitSize ? &HeavyHitSounds : &HitSounds;
+	}
+	if (!Set || Set->Num() == 0)
+	{
+		return nullptr;
+	}
+	OutVolume = FMath::Lerp(0.55f, 1.f, FMath::Clamp(Size / HitReferenceSize, 0.f, 1.f));
+	return (*Set)[FMath::RandRange(0, Set->Num() - 1)].LoadSynchronous();
+}
+
+float UCSHitFeedback::HitStopFor(float Size) const
+{
+	return FMath::Lerp(HitStopSeconds, FMath::Max(HitStopSeconds, HitStopSecondsMax), FMath::Clamp(Size / HitReferenceSize, 0.f, 1.f));
+}
+
+void UCSHitFeedback::Shake(float Size, float Scale)
+{
+	const UWorld* World = GetWorld();
+	APlayerController* PC = World ? World->GetFirstPlayerController() : nullptr;
+	const float Amount = Scale * FMath::Clamp(Size / HitReferenceSize, 0.15f, 1.f);
+	if (PC && PC->PlayerCameraManager && Amount > 0.f)
+	{
+		PC->PlayerCameraManager->StartCameraShake(UCSHitCameraShake::StaticClass(), Amount);
+	}
 }
 
 void UCSHitFeedback::BeginPlay()
@@ -66,6 +120,13 @@ void UCSHitFeedback::HandleContact(ACSCharacter* Victim, AActor* Other, const FC
 		// A blocked hit did not land: no flash, only the mark.
 		StartFlash(Victim);
 	}
+	float Volume = 0.f;
+	if (USoundBase* Sound = PickSound(Hit.Result, Hit.VelocityChange, Volume))
+	{
+		// A little lower for a bigger hit, and never twice the same.
+		const float Pitch = FMath::FRandRange(0.94f, 1.06f) - 0.08f * FMath::Clamp(Hit.VelocityChange / HitReferenceSize, 0.f, 1.f);
+		UGameplayStatics::PlaySoundAtLocation(this, Sound, Hit.Point, Volume, Pitch);
+	}
 	const ACSCharacter* Player = GetPlayer();
 	if (!Player)
 	{
@@ -87,6 +148,14 @@ void UCSHitFeedback::HandleContact(ACSCharacter* Victim, AActor* Other, const FC
 	Mark.bDealt = Victim != Player;
 	Mark.Time = FPlatformTime::Seconds();
 	Marks.Add(Mark);
+	if (Hit.Result != ECSContactResult::Blocked)
+	{
+		Shake(Hit.VelocityChange, Mark.bDealt ? DealtShakeScale : TakenShakeScale);
+	}
+	if (Mark.bDealt)
+	{
+		LastDealtSize = Hit.VelocityChange;
+	}
 }
 
 void UCSHitFeedback::HandleStrikeLanded(ACSCharacter* Attacker, AActor* Victim, ECSContactResult Result)
@@ -107,7 +176,7 @@ void UCSHitFeedback::HandleStrikeLanded(ACSCharacter* Attacker, AActor* Victim, 
 		DilationBefore = Settings->TimeDilation;
 	}
 	Settings->SetTimeDilation(HitStopDilation);
-	HitStopUntil = FPlatformTime::Seconds() + HitStopSeconds;
+	HitStopUntil = FPlatformTime::Seconds() + HitStopFor(LastDealtSize);
 }
 
 void UCSHitFeedback::EndHitStop()

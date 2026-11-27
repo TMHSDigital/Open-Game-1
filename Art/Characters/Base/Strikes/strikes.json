@@ -1,0 +1,139 @@
+{
+  "A_Stance_Idle": {
+    "frames": 41,
+    "seconds": 1.3333,
+    "active": null,
+    "loop": true,
+    "checks": {}
+  },
+  "A_Strike_Jab": {
+    "frames": 14,
+    "seconds": 0.4333,
+    "active": {
+      "start": 0.1,
+      "end": 0.2
+    },
+    "loop": false,
+    "checks": {
+      "fist_l": [
+        -1.1,
+        -74.8,
+        153.5
+      ],
+      "fist_r": [
+        -5.2,
+        -18.6,
+        156.7
+      ],
+      "foot_r": [
+        -23.7,
+        10.2,
+        0.9
+      ]
+    }
+  },
+  "A_Strike_Cross": {
+    "frames": 17,
+    "seconds": 0.5333,
+    "active": {
+      "start": 0.1333,
+      "end": 0.2333
+    },
+    "loop": false,
+    "checks": {
+      "fist_l": [
+        0.6,
+        -25.4,
+        158.0
+      ],
+      "fist_r": [
+        4.5,
+        -72.5,
+        152.6
+      ],
+      "foot_r": [
+        -16.7,
+        4.2,
+        0.9
+      ]
+    }
+  },
+  "A_Strike_HookLead": {
+    "frames": 19,
+    "seconds": 0.6,
+    "active": {
+      "start": 0.1667,
+      "end": 0.2667
+    },
+    "loop": false,
+    "checks": {
+      "fist_l": [
+        -11.5,
+        -64.9,
+        147.7
+      ],
+      "fist_r": [
+        -6.1,
+        -22.8,
+        156.8
+      ],
+      "foot_r": [
+        -23.7,
+        10.2,
+        0.9
+      ]
+    }
+  },
+  "A_Strike_HookRear": {
+    "frames": 19,
+    "seconds": 0.6,
+    "active": {
+      "start": 0.1667,
+      "end": 0.2667
+    },
+    "loop": false,
+    "checks": {
+      "fist_l": [
+        2.4,
+        -24.6,
+        158.3
+      ],
+      "fist_r": [
+        14.0,
+        -61.5,
+        146.4
+      ],
+      "foot_r": [
+        -15.4,
+        6.9,
+        0.9
+      ]
+    }
+  },
+  "A_Strike_FrontKick": {
+    "frames": 27,
+    "seconds": 0.8667,
+    "active": {
+      "start": 0.3,
+      "end": 0.4333
+    },
+    "loop": false,
+    "checks": {
+      "fist_l": [
+        6.1,
+        -31.0,
+        150.7
+      ],
+      "fist_r": [
+        -18.7,
+        -15.9,
+        135.9
+      ],
+      "foot_r": [
+        -8.0,
+        -85.1,
+        111.7
+      ]
+    }
+  }
+}

@@ -4,6 +4,8 @@
 
 #include "CSCharacter.h"
 #include "CSMovementTuning.h"
+#include "Animation/AnimMontage.h"
+#include "Animation/AnimSequenceBase.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 
@@ -121,6 +123,29 @@ float UCSAnimInstance::SplitStride(float NaturalRate, float RateMin, float RateM
 	return NaturalRate / OutStrideScale;
 }
 
+bool UCSAnimInstance::IsGuardUp() const
+{
+	return GuardMontage.IsValid() && Montage_IsPlaying(GuardMontage.Get());
+}
+
+void UCSAnimInstance::UpdateGuard(bool bWant)
+{
+	const bool bPlaying = GuardMontage.IsValid() && Montage_IsPlaying(GuardMontage.Get());
+	if (bWant && !bPlaying)
+	{
+		if (UAnimSequenceBase* Clip = GuardClip.LoadSynchronous())
+		{
+			// Looped for as long as the stance lasts; stopped when it ends.
+			GuardMontage = PlaySlotAnimationAsDynamicMontage(Clip, GuardSlot, GuardBlendSeconds, GuardBlendSeconds, 1.f, 1000000);
+		}
+	}
+	else if (!bWant && bPlaying)
+	{
+		Montage_Stop(GuardBlendSeconds, GuardMontage.Get());
+		GuardMontage.Reset();
+	}
+}
+
 void UCSAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 {
 	Super::NativeUpdateAnimation(DeltaSeconds);
@@ -138,6 +163,13 @@ void UCSAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 		bIsCrouching = bIsInAir = false;
 		SetState(ECSLocomotionState::Idle);
 		return;
+	}
+
+	if (const ACSCharacter* Fighter = Cast<ACSCharacter>(Character))
+	{
+		const UCSPhysicsBodyComponent* Body = Fighter->GetPhysicsBody();
+		const bool bStanding = !Body || Body->GetState() == ECSBodyState::Normal || Body->GetState() == ECSBodyState::Hit;
+		UpdateGuard(Fighter->IsInCombatStance() && bStanding && !Fighter->IsRagdolled() && !Character->bIsCrouched);
 	}
 
 	const FVector Velocity = Move->Velocity;

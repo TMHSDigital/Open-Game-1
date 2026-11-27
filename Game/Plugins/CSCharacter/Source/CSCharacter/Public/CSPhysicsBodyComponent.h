@@ -215,6 +215,15 @@ public:
 	/** Root is simulated by SetLimbSimulated now. */
 	bool IsLimbSimulated(FName Root) const { return ExtraSimulatedRoots.Contains(Root); }
 
+	/**
+	 * How much of the simulated upper body shows its animation instead of the simulation, 0 to 1:
+	 * a strike plays its authored clip at 1 (decision 0025), so the punch is the motion as authored
+	 * and not one the motors lag behind. The bodies go on simulating and following the pose, so
+	 * coming back to 0 is seamless. Only while standing (Normal or Hit); any other state clears it.
+	 */
+	void SetAnimationOverride(float Weight);
+	float GetAnimationOverride() const { return AnimationOverride; }
+
 	/** Mass of all bodies, kg (0 without a physics body). */
 	UFUNCTION(BlueprintPure, Category = "CS|Body")
 	float GetBodyMass() const;
@@ -281,6 +290,8 @@ protected:
 private:
 	/** Chains simulated on top of the Normal body (SetLimbSimulated). */
 	TArray<FName> ExtraSimulatedRoots;
+	/** SetAnimationOverride's weight. */
+	float AnimationOverride = 0.f;
 
 	ACSCharacter* GetCharacter() const;
 	const UCSMovementTuning& GetTuning() const;

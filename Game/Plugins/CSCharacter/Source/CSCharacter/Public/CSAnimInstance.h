@@ -111,6 +111,25 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "CS|Animation")
 	TArray<FCSStrideSample> CrouchStride;
 
+	/**
+	 * The fighting guard (decision 0025): looped on the upper body (GuardSlot) while the character
+	 * is in its combat stance, so the hands are up whether it stands or moves. Strikes play over it
+	 * in the full-body slot.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "CS|Animation")
+	TSoftObjectPtr<UAnimSequenceBase> GuardClip = TSoftObjectPtr<UAnimSequenceBase>(
+		FSoftObjectPath(TEXT("/Game/Characters/Base/Strikes/A_Stance_Idle.A_Stance_Idle")));
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "CS|Animation")
+	FName GuardSlot = TEXT("UpperBody");
+
+	/** Seconds the guard takes to come up, and to go down. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "CS|Animation", meta = (ClampMin = "0", Units = "s"))
+	float GuardBlendSeconds = 0.25f;
+
+	/** The guard is up now (playing, not blending out). */
+	bool IsGuardUp() const;
+
 	ECSLocomotionState GetLocomotionState() const { return State; }
 	float GetGroundSpeed() const { return GroundSpeed; }
 	float GetLocomotionAxis() const { return LocomotionAxis; }
@@ -182,6 +201,11 @@ protected:
 	/** How far the legs are turned from the facing toward the way they move, degrees, positive right (see ComputeLegYaw). */
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "CS|Animation")
 	float LegYaw = 0.f;
+
+	/** The guard loop playing in GuardSlot. */
+	TWeakObjectPtr<UAnimMontage> GuardMontage;
+	/** Starts or stops the guard loop for bWant. */
+	void UpdateGuard(bool bWant);
 
 	/** The steps play backward (backing off); kept between updates for ComputeLegYaw's margin. */
 	bool bStepsBackward = false;

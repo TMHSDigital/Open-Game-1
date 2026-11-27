@@ -9,6 +9,8 @@
 class ACSCharacter;
 class UCSMovementTuning;
 class USkeletalMeshComponent;
+class UAnimMontage;
+class UAnimSequenceBase;
 
 /** Where a strike is. */
 UENUM(BlueprintType)
@@ -153,7 +155,7 @@ public:
 	/** The farthest the fist got from the middle of the chest along the aim in the strike under way or the last one, cm. */
 	float GetPeakReach() const { return PeakReach; }
 
-	/** The fastest the fist moved in the strike under way or the last one, cm/s. */
+	/** The fastest the fist moved in the strike under way or the last one, cm/s; for a clip strike, the speed it hits at. */
 	float GetPeakSpeed() const { return PeakSpeed; }
 
 	/** The character the strike under way, or the last one, went for; null when it went straight. */
@@ -258,6 +260,38 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "CS|Strike", meta = (ClampMin = "1", Units = "cm"))
 	float FistRadius = 12.f;
 
+	/**
+	 * Strikes play their authored clips (decision 0025) when found: the clip is the motion, the
+	 * upper body shows it as authored (UCSPhysicsBodyComponent::SetAnimationOverride), and the fist
+	 * is swept along it. Off, or without the clip, the fist is steered through the physics body.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "CS|Strike")
+	bool bUseClips = true;
+
+	/** The animation slot strike clips play in: the full-body slot of the character's AnimGraph. */
+	UPROPERTY(EditAnywhere, Category = "CS|Strike")
+	FName ClipSlot = TEXT("DefaultSlot");
+
+	/** Seconds a strike clip blends in from the stance, and out back to it. */
+	UPROPERTY(EditAnywhere, Category = "CS|Strike", meta = (ClampMin = "0", Units = "s"))
+	float ClipBlendInSeconds = 0.06f;
+	UPROPERTY(EditAnywhere, Category = "CS|Strike", meta = (ClampMin = "0", Units = "s"))
+	float ClipBlendOutSeconds = 0.12f;
+
+	/**
+	 * A strike that lands on the head or neck snaps it back: the struck body is given this share of
+	 * the strike's speed on top of the hit, so a clean shot is seen (decision 0025). 0: none.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "CS|Strike", meta = (ClampMin = "0"))
+	float HeadSnapScale = 0.45f;
+
+	/** The bones a head snap goes to. */
+	UPROPERTY(EditAnywhere, Category = "CS|Strike")
+	TArray<FName> HeadBones = {TEXT("head"), TEXT("neck_02"), TEXT("neck_01")};
+
+	/** The strike under way plays its authored clip. */
+	bool IsPlayingClip() const { return Phase != ECSStrikePhase::None && Clip != nullptr; }
+
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
 private:
@@ -321,4 +355,30 @@ private:
 	float LungeLeash = 40.f;
 	/** Where the step in goes: the target's chest when the punch started (committed, so a dodge escapes it). */
 	FVector LungeGoal = FVector::ZeroVector;
+
+	/** The clip of the strike under way (null: steered through the physics body). */
+	UPROPERTY(Transient)
+	TObjectPtr<UAnimSequenceBase> Clip;
+	/** The montage it plays as. */
+	TWeakObjectPtr<UAnimMontage> ClipMontage;
+	/** The clip's play rate from the strike on (slower when tired). */
+	float ClipRate = 1.f;
+	/** The body was already reeling from a hit when the strike started: only a new hit breaks it off. */
+	bool bStartedInHit = false;
+	/** Extra wind-up for a clip strike thrown out of reach: the step in comes first, then the strike. */
+	float StepWindupSeconds = 0.f;
+
+public:
+	/** The most a clip strike's wind-up is drawn out to step in to a target out of reach, seconds. */
+	UPROPERTY(EditAnywhere, Category = "CS|Strike", meta = (ClampMin = "0", Units = "s"))
+	float MaxStepWindupSeconds = 0.35f;
+
+private:
+	/** Plays Clip in ClipSlot at Rate. */
+	void PlayClip(float Rate);
+	/** Stops the clip, blending out over BlendOut. */
+	void StopClip(float BlendOut);
+	void SetClipRate(float Rate);
+	/** Shows the clip on the upper body by Weight (0: the simulation). */
+	void SetAnimationOverride(float Weight);
 };

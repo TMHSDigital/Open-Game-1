@@ -92,9 +92,15 @@ public:
 	 *   Blend Poses by int -> to component space -> CS Stride Scale -> to local space -> Slot
 	 * and with LegYawVariable set as well, a CS Leg Yaw node driven by it after the stride:
 	 *   ... -> CS Stride Scale -> CS Leg Yaw -> to local space -> Slot
+	 *
+	 * With UpperSlotName set, a second slot plays on the upper body only (from UpperRootBone up,
+	 * blended in mesh space so it keeps its own facing over the legs' motion), before the
+	 * full-body slot: the guard plays there while the legs walk (decision 0025).
+	 *   ... -> Save Cached Pose -> Layered Blend (base: the cache; layer: UpperSlot on the cache) -> Slot
+	 * The upper slot gets its own slot group, so a strike in the full-body slot does not stop it.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "CS|Animation")
 	static FCSAnimBuildResult BuildLocomotionGraph(UAnimBlueprint* AnimBlueprint, const TArray<FCSPoseSource>& Poses,
 		FName PoseIndexVariable, FName SpeedVariable, FName PlayRateVariable, FName SlotName, FName StrideScaleVariable = NAME_None,
-		FName LegYawVariable = NAME_None);
+		FName LegYawVariable = NAME_None, FName UpperSlotName = NAME_None, FName UpperRootBone = NAME_None);
 };

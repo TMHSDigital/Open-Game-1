@@ -218,6 +218,10 @@ void UCSPhysicsBodyComponent::SetState(ECSBodyState NewState)
 	const ECSBodyState Old = State;
 	State = NewState;
 	StateSeconds = 0.f;
+	if (NewState != ECSBodyState::Normal && NewState != ECSBodyState::Hit)
+	{
+		AnimationOverride = 0.f; // the ragdoll and the get-up set their own blend weights
+	}
 	OnStateChanged.Broadcast(Old, NewState);
 }
 
@@ -304,6 +308,7 @@ void UCSPhysicsBodyComponent::EnterNormal()
 {
 	// Pelvis and legs animated (kinematic); the upper body simulated and driven to the pose.
 	ExtraSimulatedRoots.Reset();
+	AnimationOverride = 0.f;
 	Body->SetAllBodiesSimulatePhysics(false);
 	Body->SetEnableGravity(true);
 	Body->SetAllBodiesBelowSimulatePhysics(SimulatedRootBone, true, true);
@@ -315,6 +320,22 @@ void UCSPhysicsBodyComponent::EnterNormal()
 	}
 	HitAges.Reset();
 	ApplyMotors();
+}
+
+void UCSPhysicsBodyComponent::SetAnimationOverride(float Weight)
+{
+	Weight = FMath::Clamp(Weight, 0.f, 1.f);
+	if (!HasPhysicsBody() || (State != ECSBodyState::Normal && State != ECSBodyState::Hit))
+	{
+		AnimationOverride = 0.f;
+		return;
+	}
+	if (FMath::IsNearlyEqual(Weight, AnimationOverride, 0.001f))
+	{
+		return;
+	}
+	AnimationOverride = Weight;
+	Body->SetAllBodiesBelowPhysicsBlendWeight(SimulatedRootBone, 1.f - Weight, false, true);
 }
 
 void UCSPhysicsBodyComponent::SetLimbSimulated(FName Root, bool bSimulate)

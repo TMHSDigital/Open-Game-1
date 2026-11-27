@@ -22,7 +22,7 @@
 
 </div>
 
-A punch here is a fist steered at a body through the physics engine. The hit is the momentum it carries, and it staggers or knocks a body down by the same rules as a thrown ball or a fall. Two faceless figures on a grey grid plane fight it out: one is you, the other a dummy that stands still or fights back.
+A strike here is an authored jab, cross, hook or kick, and the body it lands on reacts through the physics engine: the hit is the momentum the strike carries, and it staggers or knocks a body down by the same rules as a thrown ball or a fall (decision 0025). Two realistic, unclothed figures on a grey grid plane fight it out: one is you, the other a dummy that stands still or fights back.
 
 It is an early prototype, made by one developer, and every design decision, work session and Steam build is recorded in this repository as it happens. There is no art yet, and the animation is stand-in clips with the rest done in code.
 
@@ -43,12 +43,13 @@ It is an early prototype, made by one developer, and every design decision, work
 |---|---|
 | **Phase** | Early prototype. Movement, a physics body that staggers and falls, simulation runs, five strikes (jab, straight, two hooks, a kick), a block and a dodge, stamina, and an opponent that fights back. Stand-in animation clips, no art direction yet. |
 | **Engine** | Unreal Engine 5.8, C++ project in [`Game/`](Game/): a start plane, a movement gym and a capture stage |
-| **Latest block** | [Decision 0024](docs/decisions/0024-claude-records-a-promotion-once-steam-shows-it-live-on-defau.md): Claude records a promotion once Steam shows it live on default |
+| **Latest block** | [Decision 0025](docs/decisions/0025-strikes-are-authored-motion-physics-only-for-the-hit-reactio.md): strikes are authored motion, physics only for the hit reaction |
 | **Steam** | Build 0.1.13 is live on the private development branch; build 0.1.13 is live on the default branch (promoted 2026-11-27); the game is not publicly available yet ([setup checklist](docs/steam/SETUP-CHECKLIST.md), [build history](https://tmhsdigital.github.io/Open-Game-1/builds.html)) |
 | **Latest devlog** | [The realistic base character goes into the game](docs/devlog/2026-11-27-02-fit-the-realistic-base-character-to-the.md) |
 
 ## In the build
 
+- Fighters stand in an orthodox guard (left hand and foot forward, hands at the face) when an opponent is near, also while they move. Strikes are authored clips: the jab snaps out from the guard, the cross turns the hips and pivots the rear heel, the hooks swing the elbow up level with the torso turned, the kick chambers the knee and drives the foot out. A clean shot to the head snaps it back; every hit is heard (a heavier sound for a bigger hit, a dull one on the guard), and hits shake the camera and freeze the world for an instant, longer for a bigger one.
 - Every fighter is a realistic, athletic 180 cm human, generated with MakeHuman and fitted to the game's skeleton (decision 0022). It has no skin, eyes or hair yet, and its movement still comes from the stand-in clips until motion capture replaces them (decision 0023).
 - You move with weight: walk, jog, a sprint that builds up, crouch and jump, in first or third person on one key. The upper body is simulated, so hits stagger it, big ones knock it down, and it gets back up on its own.
 - The attack key throws a jab, and pressed again straight after, a straight: a one-two. Pressed while moving sideways near an opponent it throws a hook from that side. The kick key throws a front kick, slow and heavy, with the leg simulated for its length. Every strike goes for the nearest opponent in front of you and steps in when it is out of reach.

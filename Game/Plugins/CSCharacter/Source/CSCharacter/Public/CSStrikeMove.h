@@ -64,6 +64,20 @@ struct CSCHARACTER_API FCSStrikeMoveData
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "CS|Strike")
 	float StaminaCost = 10.f;
 
+	/**
+	 * The authored clip the strike plays (decision 0025), built by
+	 * Art/Characters/Base/Strikes/build_strikes.py. Without it (not found) the strike falls back to
+	 * steering the fist through the physics body.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "CS|Strike", meta = (AllowedClasses = "/Script/Engine.AnimSequenceBase"))
+	FSoftObjectPath Clip;
+
+	/** Seconds into the clip the fist or foot can first land, and the last (its peak), from strikes.json. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "CS|Strike", meta = (ClampMin = "0", Units = "s"))
+	float ActiveStart = 0.f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "CS|Strike", meta = (ClampMin = "0", Units = "s"))
+	float ActiveEnd = 0.f;
+
 	/** The rows every character starts with, one per move, in ECSStrikeMove order. */
 	static TArray<FCSStrikeMoveData> Defaults();
 

@@ -7,7 +7,8 @@ Run headless:
 
 --kind static    meshes (+ UCX_ collision, SOCKET_ empties)
 --kind skeletal  armature + skinned meshes, no animation (from a centimetre scene, Unit Scale 0.01)
---kind anim      armature animation only (bakes the active action)
+--kind anim      armature animation only (bakes the active action, or --action NAME), from the
+                 same centimetre scene as the skeletal mesh it plays on
 --all            select every exportable object first (otherwise uses the saved selection)
 --check-only     validate without writing the file
 
@@ -55,6 +56,7 @@ def parse_args():
     p.add_argument("--kind", choices=["static", "skeletal", "anim"], required=True)
     p.add_argument("--all", action="store_true")
     p.add_argument("--check-only", action="store_true")
+    p.add_argument("--action", help="anim: the action to export (made active, its frame range used)")
     return p.parse_args(argv)
 
 
@@ -63,11 +65,13 @@ def fail(msg):
     sys.exit(2)
 
 
-# Unit Scale per export kind. Static meshes and animations come from a metre scene (1.0). Skeletal
+# Unit Scale per export kind. Static meshes come from a metre scene (1.0). Skeletal
 # meshes come from a centimetre scene (0.01, armature scaled 100 and applied): from a metre scene
 # UE 5.8 folds the metre-to-centimetre conversion of the top Armature node into the root bone,
 # which then imports at scale 100 (verified 2026-11-22, see Art/Characters/Base/NOTES.md).
-UNIT_SCALE = {"static": 1.0, "skeletal": 0.01, "anim": 1.0}
+# Animations come from the same centimetre scene as the skeleton they play on, so the bone
+# transforms match the imported skeleton (decision 0025, first strike clips).
+UNIT_SCALE = {"static": 1.0, "skeletal": 0.01, "anim": 0.01}
 
 
 def check_scene_units(scene, kind):
@@ -141,6 +145,17 @@ def main():
         kwargs["bake_anim_use_nla_strips"] = False
         kwargs["bake_anim_force_startend_keying"] = True
         kwargs["bake_anim_simplify_factor"] = 0.0  # keep every key; Unreal compresses on import
+        if args.action:
+            action = bpy.data.actions.get(args.action)
+            arms = [o for o in objs if o.type == "ARMATURE"]
+            if not action or len(arms) != 1:
+                fail(f"--action {args.action}: no such action, or not exactly one armature selected")
+            arms[0].animation_data_create()
+            arms[0].animation_data.action = action
+            if arms[0].animation_data.action_slot is None and action.slots:
+                arms[0].animation_data.action_slot = action.slots[0]
+            start, end = action.frame_range
+            scene.frame_start, scene.frame_end = int(start), int(end)
 
     if args.check_only:
         print(f"EXPORT CHECK OK ({len(objs)} objects, kind={args.kind})")

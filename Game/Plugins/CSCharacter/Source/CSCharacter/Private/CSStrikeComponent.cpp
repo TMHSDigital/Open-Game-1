@@ -3,7 +3,11 @@
 #include "CSCharacter.h"
 #include "CSCharacterLog.h"
 #include "CSMovementTuning.h"
+#include "CSPhysicsBodyComponent.h"
 #include "CSStaminaComponent.h"
+#include "Animation/AnimInstance.h"
+#include "Animation/AnimMontage.h"
+#include "Animation/AnimSequenceBase.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -42,11 +46,20 @@ const FCSStrikeMoveData& UCSStrikeComponent::GetMoveData(ECSStrikeMove Move) con
 
 float UCSStrikeComponent::MoveStrikeSeconds() const
 {
+	if (Clip)
+	{
+		// The clip's own timing: from the moment the fist can land to its peak.
+		return FMath::Max(MoveRow.ActiveEnd - MoveRow.ActiveStart, 0.01f) / ClipRate;
+	}
 	return GetTuning().PunchStrikeSeconds * MoveRow.StrikeScale;
 }
 
 float UCSStrikeComponent::MoveRecoverSeconds() const
 {
+	if (Clip)
+	{
+		return FMath::Max(Clip->GetPlayLength() - MoveRow.ActiveEnd, 0.01f) / ClipRate;
+	}
 	return GetTuning().PunchRecoverSeconds * MoveRow.RecoverScale;
 }
 
@@ -107,8 +120,17 @@ bool UCSStrikeComponent::IsFoe(const ACSCharacter& Other) const
 float UCSStrikeComponent::GetWindupSeconds() const
 {
 	const UCSMovementTuning& T = GetTuning();
+	const float Tired = bTired ? FMath::Clamp(T.TiredStrikeScale, 0.1f, 1.f) : 1.f;
+	if (Clip)
+	{
+		// The clip's draw back, or a longer one when asked (an opponent's tell): the clip then plays
+		// its draw back slower, so the tell is the strike being loaded.
+		const float Authored = MoveRow.ActiveStart;
+		const float Asked = WindupSecondsOverride >= 0.f ? WindupSecondsOverride * MoveRow.WindupScale : 0.f;
+		return FMath::Max(Authored + StepWindupSeconds, Asked) / Tired;
+	}
 	const float Base = WindupSecondsOverride >= 0.f ? WindupSecondsOverride : T.PunchWindupSeconds;
-	return Base * MoveRow.WindupScale / (bTired ? FMath::Clamp(T.TiredStrikeScale, 0.1f, 1.f) : 1.f);
+	return Base * MoveRow.WindupScale / Tired;
 }
 
 bool UCSStrikeComponent::StartPunch()
@@ -132,7 +154,9 @@ bool UCSStrikeComponent::StartMove(ECSStrikeMove Move)
 	// Thrown either way; without enough stamina it is thrown tired.
 	UCSStaminaComponent* Stamina = Character ? Character->GetStamina() : nullptr;
 	bTired = Stamina && !Stamina->Spend(MoveRow.StaminaCost);
-	if (MoveRow.bLeg)
+	Clip = bUseClips && MoveRow.Clip.IsValid() ? Cast<UAnimSequenceBase>(MoveRow.Clip.TryLoad()) : nullptr;
+	ClipRate = bTired ? FMath::Clamp(GetTuning().TiredStrikeScale, 0.1f, 1.f) : 1.f;
+	if (MoveRow.bLeg && !Clip)
 	{
 		if (UCSPhysicsBodyComponent* Physics = Character ? Character->GetPhysicsBody() : nullptr)
 		{
@@ -154,7 +178,23 @@ bool UCSStrikeComponent::StartMove(ECSStrikeMove Move)
 		const USkeletalMeshComponent* VictimBody = Victim->GetMesh();
 		LungeGoal = VictimBody ? VictimBody->GetSocketLocation(ChestBone) : Victim->GetActorLocation();
 	}
+	// Out of reach: a clip strike waits in its draw back for the step in to cover the gap.
+	StepWindupSeconds = 0.f;
+	if (Clip && Target.IsValid() && GetTuning().PunchLungeSpeed > 0.f)
+	{
+		const float Gap = float(FVector::Dist2D(LungeGoal, GetChestLocation())) - MoveReach();
+		StepWindupSeconds = FMath::Clamp(Gap / GetTuning().PunchLungeSpeed, 0.f, MaxStepWindupSeconds);
+	}
 	bHasLastHand = false;
+	if (Clip)
+	{
+		const UCSPhysicsBodyComponent* Physics = Character ? Character->GetPhysicsBody() : nullptr;
+		bStartedInHit = Physics && Physics->GetState() == ECSBodyState::Hit;
+		// The draw back plays at the rate that fills the wind-up (slower for a tell).
+		const float Windup = GetWindupSeconds();
+		PlayClip(Windup > UE_SMALL_NUMBER ? MoveRow.ActiveStart / Windup : ClipRate);
+		SetAnimationOverride(1.f);
+	}
 	if (GetWindupSeconds() > 0.f)
 	{
 		SetPhase(ECSStrikePhase::Windup);
@@ -167,8 +207,58 @@ bool UCSStrikeComponent::StartMove(ECSStrikeMove Move)
 	return true;
 }
 
+void UCSStrikeComponent::PlayClip(float Rate)
+{
+	USkeletalMeshComponent* Body = GetBody();
+	UAnimInstance* Anim = Body ? Body->GetAnimInstance() : nullptr;
+	if (!Anim || !Clip)
+	{
+		Clip = nullptr;
+		return;
+	}
+	ClipMontage = Anim->PlaySlotAnimationAsDynamicMontage(Clip, ClipSlot, ClipBlendInSeconds, ClipBlendOutSeconds, Rate);
+	if (!ClipMontage.IsValid())
+	{
+		Clip = nullptr;
+	}
+}
+
+void UCSStrikeComponent::SetClipRate(float Rate)
+{
+	USkeletalMeshComponent* Body = GetBody();
+	UAnimInstance* Anim = Body ? Body->GetAnimInstance() : nullptr;
+	if (Anim && ClipMontage.IsValid())
+	{
+		Anim->Montage_SetPlayRate(ClipMontage.Get(), Rate);
+	}
+}
+
+void UCSStrikeComponent::StopClip(float BlendOut)
+{
+	USkeletalMeshComponent* Body = GetBody();
+	UAnimInstance* Anim = Body ? Body->GetAnimInstance() : nullptr;
+	if (Anim && ClipMontage.IsValid() && Anim->Montage_IsPlaying(ClipMontage.Get()))
+	{
+		Anim->Montage_Stop(BlendOut, ClipMontage.Get());
+	}
+	ClipMontage.Reset();
+}
+
+void UCSStrikeComponent::SetAnimationOverride(float Weight)
+{
+	const ACSCharacter* Character = GetCharacter();
+	if (UCSPhysicsBodyComponent* Physics = Character ? Character->GetPhysicsBody() : nullptr)
+	{
+		Physics->SetAnimationOverride(Weight);
+	}
+}
+
 void UCSStrikeComponent::ReleaseArm()
 {
+	if (Clip)
+	{
+		return; // the clip brings the arm back
+	}
 	// The fist was driven fast; let go at that speed, the arm swings on past the target and up over
 	// the head. It is let go moving with the body instead, and the motors bring it back.
 	const ACSCharacter* Character = GetCharacter();
@@ -190,6 +280,7 @@ void UCSStrikeComponent::ReleaseArm()
 
 void UCSStrikeComponent::Cancel()
 {
+	StopClip(ClipBlendOutSeconds);
 	SetPhase(ECSStrikePhase::None);
 }
 
@@ -214,9 +305,15 @@ void UCSStrikeComponent::SetPhase(ECSStrikePhase NewPhase)
 		{
 			LastEndTime = World->GetTimeSeconds();
 		}
-		if (MoveRow.bLeg)
+		if (MoveRow.bLeg && !Clip)
 		{
 			EndLeg();
+		}
+		if (Clip)
+		{
+			SetAnimationOverride(0.f);
+			ClipMontage.Reset();
+			Clip = nullptr;
 		}
 	}
 }
@@ -312,6 +409,10 @@ void UCSStrikeComponent::BeginStrike()
 {
 	SetPhase(ECSStrikePhase::Strike);
 	AimAtTarget();
+	if (Clip)
+	{
+		SetClipRate(ClipRate);
+	}
 }
 
 void UCSStrikeComponent::StepIn()
@@ -476,12 +577,32 @@ void UCSStrikeComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 		Cancel();
 		return;
 	}
+	if (Clip && Phase != ECSStrikePhase::Recover)
+	{
+		// Hit while loading or throwing: the strike is broken off and the hit shows.
+		const ACSCharacter* Self = GetCharacter();
+		const UCSPhysicsBodyComponent* Physics = Self ? Self->GetPhysicsBody() : nullptr;
+		const bool bInHit = Physics && Physics->GetState() == ECSBodyState::Hit;
+		if (bInHit && !bStartedInHit)
+		{
+			Cancel();
+			return;
+		}
+		bStartedInHit &= bInHit;
+	}
 	const UCSMovementTuning& T = GetTuning();
 	if (Phase == ECSStrikePhase::Strike)
 	{
 		// The path the fist travelled in the frame just simulated, before the phase can end: the
 		// last frame of a strike is the one at full reach.
 		Sweep();
+	}
+	else if (Phase == ECSStrikePhase::Windup && Clip)
+	{
+		// Followed through the draw back, so the first frame of the strike sweeps (and measures)
+		// the way the fist came, not a standing start.
+		LastHandLocation = GetFistLocation();
+		bHasLastHand = GetBody() != nullptr;
 	}
 	PhaseSeconds += DeltaTime;
 	if (Phase == ECSStrikePhase::Windup && PhaseSeconds >= GetWindupSeconds())
@@ -498,6 +619,11 @@ void UCSStrikeComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 		SetPhase(ECSStrikePhase::None);
 		return;
 	}
+	if (Clip && Phase == ECSStrikePhase::Recover)
+	{
+		// Back to the simulation over the recovery, so the body is its own again in the stance.
+		SetAnimationOverride(1.f - FMath::Clamp(PhaseSeconds / FMath::Max(MoveRecoverSeconds(), 0.01f), 0.f, 1.f));
+	}
 	if (Phase == ECSStrikePhase::Windup || Phase == ECSStrikePhase::Strike)
 	{
 		// A wind-up drawn out longer than the punch's own (an opponent's tell) stands still and only
@@ -509,7 +635,10 @@ void UCSStrikeComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 			// Every frame until in reach: ground friction would stop a single push within the punch.
 			StepIn();
 		}
-		Drive(DeltaTime);
+		if (!Clip)
+		{
+			Drive(DeltaTime);
+		}
 	}
 }
 
@@ -608,7 +737,9 @@ void UCSStrikeComponent::Sweep()
 	{
 		// Relative to the character, so running does not count as a fast fist.
 		const FVector Relative = (Hand - From) / DeltaTime - Character->GetVelocity();
-		PeakSpeed = FMath::Max(PeakSpeed, float(Relative.Size()));
+		// A clip strike hits at its tuned speed (see below), and a frame of the clip blending over the
+		// last one is no measure of it: that is the speed it reports.
+		PeakSpeed = Clip ? MoveSpeed() : FMath::Max(PeakSpeed, float(Relative.Size()));
 	}
 	PeakReach = FMath::Max(PeakReach, float(FVector::DotProduct(Hand - GetChestLocation(), StrikeAim)));
 	LastHandLocation = Hand;
@@ -628,7 +759,10 @@ void UCSStrikeComponent::Sweep()
 	// What arrives: the weight behind the fist at the fastest the fist has been, along the aim. Held
 	// between half the driven speed and the most the drive can give, so one odd frame (a hitch, a
 	// joint snapping) cannot make the hit.
-	const FVector Velocity = StrikeAim * FMath::Clamp(PeakSpeed, MoveSpeed() * 0.5f, MoveSpeed() + T.PunchLean);
+	// A clip strike moves as authored, so it hits at the move's tuned speed (slower when tired): the
+	// speed is part of the move, not of how fast the authored hand happens to travel in a frame.
+	const FVector Velocity = Clip ? StrikeAim * MoveSpeed()
+		: StrikeAim * FMath::Clamp(PeakSpeed, MoveSpeed() * 0.5f, MoveSpeed() + T.PunchLean);
 	for (const FHitResult& Hit : Hits)
 	{
 		AActor* Other = Hit.GetActor();
@@ -656,6 +790,18 @@ void UCSStrikeComponent::Sweep()
 			const ECSContactResult Result = Physics
 				? Physics->ReceiveContact(Character, Bone, Velocity, MoveMass(), Point - StrikeAim * 30.f, Point, 1.f, true)
 				: ECSContactResult::None;
+			if (Result == ECSContactResult::Stagger && HeadSnapScale > 0.f && HeadBones.Contains(Bone))
+			{
+				// The head whips back on the neck: the hit loosened its motors, this gives it the motion.
+				if (USkeletalMeshComponent* Struck = Victim->GetMesh())
+				{
+					FBodyInstance* Head = Struck->GetBodyInstance(Bone);
+					if (Head && Head->IsValidBodyInstance() && Head->IsInstanceSimulatingPhysics())
+					{
+						Head->AddImpulse(Velocity * HeadSnapScale * FMath::Sqrt(MoveRow.MassScale), true);
+					}
+				}
+			}
 			if (Result == ECSContactResult::Stagger || Result == ECSContactResult::Ragdoll)
 			{
 				bLanded = true;
@@ -671,6 +817,11 @@ void UCSStrikeComponent::Sweep()
 				OnStrikeLanded.Broadcast(Character, Victim, Result);
 				SetPhase(ECSStrikePhase::Recover);
 				ReleaseArm();
+				if (Clip)
+				{
+					// Stopped on the guard: the clip goes no further and the arm comes back.
+					StopClip(FMath::Max(MoveRecoverSeconds(), 0.15f));
+				}
 				return;
 			}
 			else if (Result == ECSContactResult::Ignored)

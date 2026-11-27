@@ -223,7 +223,9 @@ bool FCSAttacksEveryMoveLandsTest::RunTest(const FString& Parameters)
 				Strike->GetMoveData(Case.Move).StaminaCost, 0.5f);
 			if (Case.Move == ECSStrikeMove::Kick)
 			{
-				TestTrue(TEXT("The kicking leg is simulated"), Player->GetPhysicsBody()->IsLimbSimulated(TEXT("thigh_r")));
+				// Its authored clip moves the leg (decision 0025); without one the leg is simulated and steered.
+				TestTrue(TEXT("The kick plays its clip, or the kicking leg is simulated"),
+					Strike->IsPlayingClip() || Player->GetPhysicsBody()->IsLimbSimulated(TEXT("thigh_r")));
 			}
 			Run->Next();
 			return false;

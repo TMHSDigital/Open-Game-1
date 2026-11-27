@@ -7,7 +7,7 @@ description: The one standard Blender-to-Unreal FBX export for Combat Simulator 
 
 There is one FBX preset for this project: `export_unreal_fbx.py` next to this file. Do not hand-tune export settings per asset. If the preset is wrong, fix it there and record the change as a decision (see the `decide` skill).
 
-Status: the preset was ported from an earlier Unreal project, where it was verified on Blender 5.1.1 (all parameters exist, and a 0.5 x 0.5 x 1.8 m reference box round-trips at 1.8 m with scale 1). In this repo the `static` kind (reference box) and the `skeletal` kind (`SK_BaseCharacter`) are verified on Blender 5.1.1 and UE 5.8.3; see `Art/Characters/Base/NOTES.md` and decision 0012. The `anim` kind and Blender 4.4 are not verified yet: on the first animation export, check the result in the editor and note it in the devlog.
+Status: the preset was ported from an earlier Unreal project, where it was verified on Blender 5.1.1 (all parameters exist, and a 0.5 x 0.5 x 1.8 m reference box round-trips at 1.8 m with scale 1). In this repo the `static` kind (reference box) and the `skeletal` kind (`SK_BaseCharacter`) are verified on Blender 5.1.1 and UE 5.8.3; see `Art/Characters/Base/NOTES.md` and decision 0012. The `anim` kind is verified on the strike clips (`Art/Characters/Base/Strikes`, decision 0025): exported from the character's centimetre scene, they import onto `SK_BaseCharacter_Skeleton` at the right scale and facing. Blender 4.4 is not verified.
 
 Blender versions: 4.4 and 5.1 are installed here. The owner's Blender-Developer-Tools target 4.5 and 5.2 LTS (open decision OD-009). The preset was verified on 5.1 only; run `--check-only` once on 4.4 before relying on it there.
 
@@ -28,7 +28,8 @@ The Blender-Developer-Tools `engine-export-presets` skill uses `-Z`/`Y` with `gl
 
 | Kind | Scene | Why |
 |---|---|---|
-| `static`, `anim` | Metric, Unit Scale 1.0 (metres) | Unreal bakes the metre-to-centimetre conversion into the mesh vertices; verified with the reference box |
+| `static` | Metric, Unit Scale 1.0 (metres) | Unreal bakes the metre-to-centimetre conversion into the mesh vertices; verified with the reference box |
+| `anim` | Metric, Unit Scale 0.01 (centimetres): the scene of the skeleton it plays on | The bone transforms match the imported skeleton; verified with the strike clips (decision 0025) |
 | `skeletal` | Metric, Unit Scale 0.01 (centimetres), armature scaled 100 and applied | From a metre scene UE 5.8 folds the conversion of the top `Armature` node into the root bone, which imports at scale 100 whatever Apply Scalings is set to. From a centimetre scene the root imports at scale 1 (verified 2026-11-22 with `SK_BaseCharacter`, see `Art/Characters/Base/NOTES.md` and decision `docs/decisions/0012-skeletal-meshes-export-from-a-centimetre-scene.md`) |
 
 The script enforces this per `--kind`. Build or model a character in metres if that is easier, then
@@ -36,8 +37,9 @@ convert just before saving the export .blend: set Unit Scale to 0.01, scale the 
 100 (its skinned meshes follow as children) and apply scale on the armature and its meshes.
 `Art/Characters/Base/build_base_character.py` does exactly this.
 
-Animations for a skeletal mesh need the same scale as the skeleton they play on; the `anim` kind
-has not been verified on a centimetre rig yet, so check it on the first animation export.
+Animations come from the same centimetre scene as the skeleton they play on (`anim`: Unit Scale
+0.01, like `skeletal`), so the bone transforms match; `--action NAME` exports one action with its
+frame range. Verified on the strike clips.
 
 ## Before export (in Blender)
 

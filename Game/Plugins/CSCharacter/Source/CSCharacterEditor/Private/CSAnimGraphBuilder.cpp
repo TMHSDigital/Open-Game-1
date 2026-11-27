@@ -8,7 +8,11 @@
 #include "AnimGraphNode_ComponentToLocalSpace.h"
 #include "AnimGraphNode_CSLegYaw.h"
 #include "AnimGraphNode_CSStrideScale.h"
+#include "AnimGraphNode_LayeredBoneBlend.h"
 #include "AnimGraphNode_LocalToComponentSpace.h"
+#include "AnimGraphNode_SaveCachedPose.h"
+#include "AnimGraphNode_UseCachedPose.h"
+#include "Animation/Skeleton.h"
 #include "AnimGraphNode_Root.h"
 #include "AnimGraphNode_SequencePlayer.h"
 #include "AnimGraphNode_Slot.h"
@@ -153,7 +157,8 @@ FCSAnimBuildResult UCSAnimGraphBuilder::SetBlendSpace1D(UBlendSpace* BlendSpace,
 }
 
 FCSAnimBuildResult UCSAnimGraphBuilder::BuildLocomotionGraph(UAnimBlueprint* AnimBlueprint, const TArray<FCSPoseSource>& Poses,
-	FName PoseIndexVariable, FName SpeedVariable, FName PlayRateVariable, FName SlotName, FName StrideScaleVariable, FName LegYawVariable)
+	FName PoseIndexVariable, FName SpeedVariable, FName PlayRateVariable, FName SlotName, FName StrideScaleVariable, FName LegYawVariable,
+	FName UpperSlotName, FName UpperRootBone)
 {
 	using namespace CSAnimGraphBuilderPrivate;
 	if (!AnimBlueprint || Poses.Num() == 0)
@@ -377,6 +382,83 @@ FCSAnimBuildResult UCSAnimGraphBuilder::BuildLocomotionGraph(UAnimBlueprint* Ani
 			Cast<UAnimSequence>(Pose.Asset) ? (Pose.bLoop ? TEXT(", loops") : TEXT(", plays once")) : TEXT(""));
 	}
 
+	FString Upper;
+	if (!UpperSlotName.IsNone())
+	{
+		// What feeds the full-body slot now goes through a cache, read twice: as the base of a layered
+		// blend and under the upper-body slot, which is the blend's one layer from UpperRootBone up.
+		if (SlotIn->LinkedTo.Num() != 1)
+		{
+			return Fail(TEXT("The full-body slot has no input to layer the upper body over."));
+		}
+		UEdGraphPin* Chain = SlotIn->LinkedTo[0];
+		SlotIn->BreakAllPinLinks();
+
+		FGraphNodeCreator<UAnimGraphNode_SaveCachedPose> SaveCreator(*Graph);
+		UAnimGraphNode_SaveCachedPose* Save = SaveCreator.CreateNode();
+		Save->CacheName = TEXT("Locomotion");
+		Save->NodePosX = X0 - 900;
+		Save->NodePosY = Y0 + 400;
+		SaveCreator.Finalize();
+
+		auto UseCache = [&](int32 Y)
+		{
+			FGraphNodeCreator<UAnimGraphNode_UseCachedPose> UseCreator(*Graph);
+			UAnimGraphNode_UseCachedPose* Use = UseCreator.CreateNode();
+			Use->SaveCachedPoseNode = Save;
+			Use->NodePosX = X0 - 800;
+			Use->NodePosY = Y;
+			UseCreator.Finalize();
+			return Use;
+		};
+		UAnimGraphNode_UseCachedPose* ForBase = UseCache(Y0 - 100);
+		UAnimGraphNode_UseCachedPose* ForUpper = UseCache(Y0 + 100);
+
+		FGraphNodeCreator<UAnimGraphNode_Slot> UpperCreator(*Graph);
+		UAnimGraphNode_Slot* UpperSlot = UpperCreator.CreateNode();
+		UpperSlot->Node.SlotName = UpperSlotName;
+		UpperSlot->NodePosX = X0 - 650;
+		UpperSlot->NodePosY = Y0 + 100;
+		UpperCreator.Finalize();
+
+		FGraphNodeCreator<UAnimGraphNode_LayeredBoneBlend> BlendCreator(*Graph);
+		UAnimGraphNode_LayeredBoneBlend* Layered = BlendCreator.CreateNode();
+		Layered->Node.bMeshSpaceRotationBlend = true;
+		if (Layered->Node.LayerSetup.Num() > 0)
+		{
+			FBranchFilter Filter;
+			Filter.BoneName = UpperRootBone.IsNone() ? FName(TEXT("spine_01")) : UpperRootBone;
+			Filter.BlendDepth = 0;
+			Layered->Node.LayerSetup[0].BranchFilters = {Filter};
+		}
+		Layered->NodePosX = X0 - 450;
+		Layered->NodePosY = Y0;
+		BlendCreator.Finalize();
+
+		UEdGraphPin* SaveIn = Save->FindPin(TEXT("Pose"), EGPD_Input);
+		UEdGraphPin* UpperSource = UpperSlot->FindPin(TEXT("Source"), EGPD_Input);
+		UEdGraphPin* BaseIn = Layered->FindPin(TEXT("BasePose"), EGPD_Input);
+		UEdGraphPin* LayerIn = Layered->FindPin(TEXT("BlendPoses_0"), EGPD_Input);
+		if (!SaveIn || !UpperSource || !BaseIn || !LayerIn
+			|| !Schema->TryCreateConnection(Chain, SaveIn)
+			|| !Schema->TryCreateConnection(FirstOutput(ForBase), BaseIn)
+			|| !Schema->TryCreateConnection(FirstOutput(ForUpper), UpperSource)
+			|| !Schema->TryCreateConnection(FirstOutput(UpperSlot), LayerIn)
+			|| !Schema->TryCreateConnection(FirstOutput(Layered), SlotIn))
+		{
+			return Fail(TEXT("Could not wire the upper-body layer."));
+		}
+		// Its own slot group: a full-body montage would otherwise stop the upper-body one.
+		if (USkeleton* Skeleton = AnimBlueprint->TargetSkeleton)
+		{
+			Skeleton->AddSlotGroupName(UpperSlotName);
+			Skeleton->SetSlotGroupName(UpperSlotName, UpperSlotName);
+			Skeleton->MarkPackageDirty();
+		}
+		Upper = FString::Printf(TEXT(" -> Layered Blend (%s from %s)"), *UpperSlotName.ToString(),
+			*(UpperRootBone.IsNone() ? FString(TEXT("spine_01")) : UpperRootBone.ToString()));
+	}
+
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(AnimBlueprint);
 	FKismetEditorUtilities::CompileBlueprint(AnimBlueprint);
 	if (AnimBlueprint->Status == BS_Error)
@@ -386,10 +468,10 @@ FCSAnimBuildResult UCSAnimGraphBuilder::BuildLocomotionGraph(UAnimBlueprint* Ani
 
 	FCSAnimBuildResult Result;
 	Result.bSuccess = true;
-	Result.Message = FString::Printf(TEXT("%s: Blend Poses by %s ->%s Slot %s -> Output Pose%s"),
+	Result.Message = FString::Printf(TEXT("%s: Blend Poses by %s ->%s%s Slot %s -> Output Pose%s"),
 		*AnimBlueprint->GetName(), *PoseIndexVariable.ToString(),
 		StrideScaleVariable.IsNone() ? TEXT("") : *FString::Printf(TEXT(" CS Stride Scale by %s ->%s"), *StrideScaleVariable.ToString(),
 			LegYawVariable.IsNone() ? TEXT("") : *FString::Printf(TEXT(" CS Leg Yaw by %s ->"), *LegYawVariable.ToString())),
-		*SlotName.ToString(), *Built);
+		*Upper, *SlotName.ToString(), *Built);
 	return Result;
 }

@@ -9,6 +9,7 @@ class ACSCharacter;
 class AHUD;
 class UCanvas;
 class UMaterialInstanceDynamic;
+class USoundBase;
 
 /** One mark on screen where a hit landed. */
 struct FCSHitMark
@@ -31,10 +32,12 @@ struct FCSHitMark
  *   colour parameter of its material; a material without one is left alone).
  * - Mark: a hit the player deals or takes is marked on screen where it landed, with its size and
  *   what it did, for MarkSeconds.
- * - Hit-stop: a punch the player lands freezes the world for HitStopSeconds (real time), so the
- *   hit is felt.
- *
- * No sound or particles: those wait for assets (decision 0018).
+ * - Hit-stop: a punch the player lands freezes the world (real time), longer for a bigger hit:
+ *   from HitStopSeconds up to HitStopSecondsMax at HitReferenceSize.
+ * - Sound: every hit between characters is heard where it landed: a heavy punch from
+ *   HeavyHitSize up, a lighter one below, a soft one on the guard; louder for a bigger hit
+ *   (CC0 Kenney Impact Sounds, decision 0025).
+ * - Shake: a hit the player deals or takes jolts the camera, by the hit's size (UCSHitCameraShake).
  */
 UCLASS()
 class COMBATSIMULATOR_API UCSHitFeedback : public UActorComponent
@@ -60,6 +63,42 @@ public:
 	/** Time dilation during the hit-stop. */
 	UPROPERTY(EditAnywhere, Category = "CS|Feedback", meta = (ClampMin = "0.0001", ClampMax = "1"))
 	float HitStopDilation = 0.05f;
+
+	/** The hit-stop of a hit at HitReferenceSize or bigger, real seconds. */
+	UPROPERTY(EditAnywhere, Category = "CS|Feedback", meta = (ClampMin = "0", Units = "s"))
+	float HitStopSecondsMax = 0.12f;
+
+	/** A hit this size (velocity change, cm/s) or bigger gets the full hit-stop, shake and loudness. */
+	UPROPERTY(EditAnywhere, Category = "CS|Feedback", meta = (ClampMin = "1"))
+	float HitReferenceSize = 350.f;
+
+	/** From this size up a hit sounds heavy. */
+	UPROPERTY(EditAnywhere, Category = "CS|Feedback", meta = (ClampMin = "0"))
+	float HeavyHitSize = 180.f;
+
+	/** Below this size a contact makes no sound (bodies brushing). */
+	UPROPERTY(EditAnywhere, Category = "CS|Feedback", meta = (ClampMin = "0"))
+	float MinSoundSize = 25.f;
+
+	/** Camera shake at full size for a hit the player deals, and for one it takes. 0: none. */
+	UPROPERTY(EditAnywhere, Category = "CS|Feedback", meta = (ClampMin = "0"))
+	float DealtShakeScale = 0.6f;
+	UPROPERTY(EditAnywhere, Category = "CS|Feedback", meta = (ClampMin = "0"))
+	float TakenShakeScale = 1.2f;
+
+	/** The sounds: hits landed heavy and medium, and hits on the guard. */
+	UPROPERTY(EditAnywhere, Category = "CS|Feedback")
+	TArray<TSoftObjectPtr<USoundBase>> HeavyHitSounds;
+	UPROPERTY(EditAnywhere, Category = "CS|Feedback")
+	TArray<TSoftObjectPtr<USoundBase>> HitSounds;
+	UPROPERTY(EditAnywhere, Category = "CS|Feedback")
+	TArray<TSoftObjectPtr<USoundBase>> BlockedSounds;
+
+	/** The sound a hit of this size and result plays (null: none), and how loud. */
+	USoundBase* PickSound(ECSContactResult Result, float Size, float& OutVolume) const;
+
+	/** The hit-stop for a hit of this size, real seconds. */
+	float HitStopFor(float Size) const;
 
 	/** The marks on screen now. */
 	const TArray<FCSHitMark>& GetMarks() const { return Marks; }
@@ -104,6 +143,9 @@ private:
 	TArray<FCSHitMark> Marks;
 	/** Real time the hit-stop ends; 0 when none. */
 	double HitStopUntil = 0.0;
+	/** Size of the last hit the player dealt, for the hit-stop that follows it. */
+	float LastDealtSize = 0.f;
+	void Shake(float Size, float Scale);
 	float DilationBefore = 1.f;
 
 	FDelegateHandle ContactHandle;
