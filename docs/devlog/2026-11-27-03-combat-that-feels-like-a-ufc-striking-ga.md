@@ -13,7 +13,7 @@ clip: null
 
 ## Narrative
 
-<!-- narrative -->
+Combat now aims at the feel of a UFC-style striking game, without grappling or clinching. The owner chose authored strikes with physics only for the hit reaction (decision 0025), replacing the fist that was pushed at the target by the physics engine. The stance and the strikes (a jab, a cross, both hooks and a rear push kick) are keyframed by a Blender script on the character's own rig, with fists, a hip turn, a heel pivot and a chin tuck, and exported through the export skill, whose animation export is now verified. In the game a strike plays its clip while the upper body shows it over the simulation; the fist is swept along the animated path and hits at the move's tuned speed, a clean head shot snaps the head back, a strike thrown out of reach steps in first, and a new hit breaks a strike off. Fighters hold an orthodox guard on an upper-body layer while they move. Hits are heard (CC0 impact sounds from Kenney, heavier for bigger hits and dull on the guard), shake the camera and freeze the world for a moment sized by the hit. With the clips every punch case lands, the point-blank one too (#76 fixed); all 133 tests and every play-test check pass, and build 0.1.15 is on the development branch. Next: motion capture boxing in place of the keyframed clips, footwork in the stance so the feet do not slide on a moving strike, a blocking animation, and gloves.
 
 ## Changes
 
