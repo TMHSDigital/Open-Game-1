@@ -1,6 +1,6 @@
 # 0017: The animation block is done in code, with no new clips
 
-Status: Accepted
+Status: Superseded by 0023
 Date: 2026-11-25
 Issue: [#63](https://github.com/TMHSDigital/Open-Game-1/issues/63)
 Supersedes: none
