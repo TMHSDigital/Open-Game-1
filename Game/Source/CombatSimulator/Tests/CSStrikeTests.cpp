@@ -226,7 +226,7 @@ bool FCSStrikePunchTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("Still one landed"), Stats.PunchesLanded, 1);
 		TestEqual(TEXT("Still one hit dealt"), Stats.Dealt.Hits, 1);
 		const FString Summary = FString::Join(Stats.SummaryLines(), TEXT("\n"));
-		TestTrue(TEXT("The results give the punches"), Summary.Contains(TEXT("Punches: 2 thrown, 1 landed (50%)")));
+		TestTrue(TEXT("The results give the punches"), Summary.Contains(TEXT("Strikes: 2 thrown, 1 landed (50%)")));
 
 		Player->GetPhysicsBody()->EnterRagdoll();
 		TestFalse(TEXT("A character that is down cannot punch"), Player->Attack());

@@ -54,7 +54,7 @@ It is an early prototype, made by one developer, and every design decision, work
 - Near an opponent you face it, and backing off is slower than going forward. Holding the block takes most of a hit from in front. The dodge is a quick step with no immunity: a punch misses because you are no longer where it was going.
 - Strikes, dodges and hits taken on the guard cost stamina, shown as a bar under the middle of the screen and over a fighting opponent's head. It comes back after a short pause. Out of it, strikes are slower and weaker and the guard drops until some is back.
 - A dummy set to fight back closes in, draws back slowly (its tell) and throws a jab, a one-two, a hook or a kick in a fixed order, then backs off and circles. It holds off when its own stamina is low and waits while you are down.
-- The pause screen's Run tab sets a run up: the map, how many dummies and where they stand, whether they fight back and how long their wind-up is, stamina on or off and how fast it recovers, ball launchers, a time limit and a knockdown goal. A run ends with its results: hits dealt and taken, strikes by move (landed of thrown), punches blocked, their punches, dodges, and how often you ran out of stamina.
+- The pause screen's Run tab sets a run up: the map, how many dummies and where they stand, whether they fight back and how long their wind-up is, stamina on or off and how fast it recovers, ball launchers, a time limit and a knockdown goal. A run ends with its results: hits dealt and taken, strikes thrown and landed, by move, strikes taken on a guard, their strikes, dodges, and how often you ran out of stamina.
 
 | Do | Keyboard and mouse | Gamepad |
 |---|---|---|

@@ -116,7 +116,7 @@ bool FCSDefenceRulesTest::RunTest(const FString& Parameters)
 	Stats.RecordOpponentPunchResult(ECSContactResult::Blocked);
 	Stats.RecordDodge();
 	const FString Summary = FString::Join(Stats.SummaryLines(), TEXT("\n"));
-	TestTrue(TEXT("The results list their punches"), Summary.Contains(TEXT("Their punches: 3 thrown, 1 landed, 1 blocked, 1 missed")));
+	TestTrue(TEXT("The results list their punches"), Summary.Contains(TEXT("Their strikes: 3 thrown, 1 landed, 1 blocked, 1 missed")));
 	TestTrue(TEXT("And the dodges"), Summary.Contains(TEXT("Dodges: 1")));
 	TestTrue(TEXT("And the blocked hits taken"), Summary.Contains(TEXT("1 blocked)")));
 

@@ -101,7 +101,10 @@ struct COMBATSIMULATOR_API FCSRunStats
 	/** An opponent's punch reached the player: landed (Stagger, Ragdoll) or on the guard (Blocked). */
 	void RecordOpponentPunchResult(ECSContactResult Result);
 
-	/** Punches landed over punches thrown, 0 to 1. 0 without punches. */
+	/**
+	 * Landed over thrown, 0 to 1; 0 with none thrown. The Punch counters count every strike, kicks
+	 * included (they are older than the kick); the results call them strikes.
+	 */
 	float PunchAccuracy() const;
 
 	/** Ball hits over balls thrown, 0 to 1 (at most 1: one ball can hit two). 0 without throws. Hits with the body do not count. */

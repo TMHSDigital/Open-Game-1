@@ -146,7 +146,7 @@ TArray<FString> FCSRunStats::SummaryLines() const
 	Lines.Add(FString::Printf(TEXT("Time: %s"), *FormatTime(Seconds)));
 	if (PunchesThrown > 0)
 	{
-		Lines.Add(FString::Printf(TEXT("Punches: %d thrown, %d landed (%d%%)"), PunchesThrown, PunchesLanded, FMath::RoundToInt(PunchAccuracy() * 100.f)));
+		Lines.Add(FString::Printf(TEXT("Strikes: %d thrown, %d landed (%d%%)"), PunchesThrown, PunchesLanded, FMath::RoundToInt(PunchAccuracy() * 100.f)));
 		if (PunchesBlocked > 0)
 		{
 			Lines.Add(FString::Printf(TEXT("  %d taken on a guard"), PunchesBlocked));
@@ -162,12 +162,12 @@ TArray<FString> FCSRunStats::SummaryLines() const
 	}
 	else
 	{
-		Lines.Add(TEXT("Punches: none thrown"));
+		Lines.Add(TEXT("Strikes: none thrown"));
 	}
 	if (OpponentPunches > 0)
 	{
 		const int32 Missed = FMath::Max(0, OpponentPunches - OpponentPunchesLanded - OpponentPunchesBlocked);
-		Lines.Add(FString::Printf(TEXT("Their punches: %d thrown, %d landed, %d blocked, %d missed"), OpponentPunches,
+		Lines.Add(FString::Printf(TEXT("Their strikes: %d thrown, %d landed, %d blocked, %d missed"), OpponentPunches,
 			OpponentPunchesLanded, OpponentPunchesBlocked, Missed));
 	}
 	if (Dodges > 0)

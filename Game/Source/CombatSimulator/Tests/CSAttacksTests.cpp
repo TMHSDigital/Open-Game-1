@@ -139,6 +139,9 @@ bool FCSAttacksRulesTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("The results list them"), Summary.Contains(TEXT("by move, landed of thrown: jab 1/2, kick 0/1")));
 	TestTrue(TEXT("And the tired strikes"), Summary.Contains(TEXT("1 thrown tired")));
 	TestTrue(TEXT("And running out"), Summary.Contains(TEXT("Out of stamina: 1 time")));
+	// Two jabs and a kick are three strikes, not three punches (#69).
+	TestTrue(TEXT("The total counts strikes, kicks included"), Summary.Contains(TEXT("Strikes: 3 thrown, 0 landed")));
+	TestFalse(TEXT("Nothing is called a punch"), Summary.Contains(TEXT("Punches:")));
 
 	for (const TCHAR* Field : {TEXT("StaminaMax"), TEXT("StaminaRegen"), TEXT("StaminaRegenDelay"), TEXT("TiredStrikeScale"),
 		TEXT("BlockStaminaCost"), TEXT("DodgeStaminaCost"), TEXT("GuardReturnShare")})
