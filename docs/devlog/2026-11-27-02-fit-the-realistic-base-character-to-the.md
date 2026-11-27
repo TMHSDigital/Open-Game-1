@@ -13,7 +13,7 @@ clip: null
 
 ## Narrative
 
-<!-- narrative -->
+The realistic MakeHuman body is now the game's character. The trial import had short arms, hands bent into hooks and punches falling short, and the root cause was one builder flag: without MPFB's joint helpers the rig never fitted the body. With the helpers kept, the arms posed to the game's rest pose and every bone given the old body's frames, the clips play naturally. Three game-side fixes followed. Ragdoll hinges now take their axis side to side, because a realistic, slightly knock-kneed leg tilted the old axis 18 degrees and the knees overshot. The motors are stiffer, with the arm strength scaled to keep punches reaching. And the strike aims no higher than the upper chest: on this spine the old top bone sat at the neck line, so level punches glanced off the neck and head, and the punch tests failed three runs in four. After that every automation test passes (133 of 133) and every play-test check passes, and build 0.1.13 is on the development branch. Open: a punch with the target pressed against the player still does not land (the test warns, #76), unchecked punches still miss now and then (#71), and the body has no skin, eyes or hair yet and still moves on the stand-in clips until motion capture (decision 0023).
 
 ## Changes
 
