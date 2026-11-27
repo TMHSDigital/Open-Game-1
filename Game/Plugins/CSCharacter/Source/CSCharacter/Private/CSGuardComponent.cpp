@@ -1,6 +1,7 @@
 #include "CSGuardComponent.h"
 
 #include "Components/SkeletalMeshComponent.h"
+#include "CSAnimInstance.h"
 #include "CSCharacter.h"
 #include "CSMovementTuning.h"
 #include "CSPhysicsBodyComponent.h"
@@ -171,7 +172,27 @@ float UCSGuardComponent::ApplyToMovement(UCharacterMovementComponent& Move, floa
 void UCSGuardComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-	if (IsGuardUp())
+	const ACSCharacter* Character = GetCharacter();
+	const USkeletalMeshComponent* Body = Character ? Character->GetMesh() : nullptr;
+	const UCSAnimInstance* Anim = Body ? Cast<UCSAnimInstance>(Body->GetAnimInstance()) : nullptr;
+	UCSPhysicsBodyComponent* Physics = Character ? Character->GetPhysicsBody() : nullptr;
+	const bool bUp = IsGuardUp();
+	const bool bClip = bUp && BlockClipWeight > 0.f && Anim && Anim->IsBlockShown();
+	if (bClip && Physics)
+	{
+		Physics->SetAnimationOverride(BlockClipWeight);
+		bShowingClip = true;
+	}
+	else if (bShowingClip)
+	{
+		const UCSStrikeComponent* Strike = Character ? Character->GetStrike() : nullptr;
+		if (Physics && !(Strike && Strike->IsPlayingClip()))
+		{
+			Physics->SetAnimationOverride(0.f);
+		}
+		bShowingClip = false;
+	}
+	if (bUp && !bClip)
 	{
 		DriveFists(DeltaTime);
 	}

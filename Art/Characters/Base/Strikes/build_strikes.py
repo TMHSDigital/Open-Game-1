@@ -167,8 +167,54 @@ def stance_loop():
     return keys, None
 
 
+def block_loop():
+    # The high guard: forearms up in front of the face, fists at the forehead, elbows in over the
+    # ribs, chin down behind the gloves and the knees a little deeper. A slow breath so it loops.
+    keys = []
+    n = 40
+    for f in range(0, n + 1, 10):
+        b = math.sin(2.0 * math.pi * f / n)
+        keys.append((f, stance(
+            pelvis=V(0.0, 2.0, -8.0 + 0.8 * b), pelvis_yaw=-22.0, spine_yaw=-6.0, spine_pitch=14.0,
+            head_pitch=16.0, clav_l=6.0, clav_r=6.0,
+            wrist_l=V(8.0, -27.0, 147.0 + 0.6 * b), wrist_r=V(-8.0, -23.0, 148.0 + 0.6 * b),
+            elbow_l=V(10.0, -30.0, 85.0), elbow_r=V(-10.0, -30.0, 85.0),
+            palm_l=V(-0.3, 1.0, 0.0), palm_r=V(0.3, 1.0, 0.0)), "linear"))
+    return keys, None
+
+
+# The shuffle: how far each foot travels per cycle (cm) and the cycle length (frames). In place, so
+# the planted foot slides back at the ground speed while the other swings forward.
+SHUFFLE_STRIDE = 30.0
+SHUFFLE_FRAMES = 12
+
+
+def shuffle_loop():
+    # Forward in the stance: the lead foot steps, the rear foot follows, low and short, the heel of
+    # the rear foot up. Played backward for backing off; the legs turn toward a sideways move.
+    def foot(phase, start, swing):
+        local = (phase - start) % 1.0
+        if local < swing:
+            t = local / swing
+            return SHUFFLE_STRIDE * (0.5 - (t * t * (3.0 - 2.0 * t))), 5.0 * math.sin(math.pi * t)
+        t = (local - swing) / (1.0 - swing)
+        return SHUFFLE_STRIDE * (-0.5 + t), 0.0
+    keys = []
+    for f in range(SHUFFLE_FRAMES + 1):
+        phase = f / SHUFFLE_FRAMES
+        lead, lead_up = foot(phase, 0.0, 0.36)
+        rear, rear_up = foot(phase, 0.4, 0.36)
+        keys.append((f, stance(
+            pelvis=V(0.0, 1.5, -5.5 - 0.8 * abs(math.sin(2.0 * math.pi * phase))),
+            ankle_l=V(15.0, -18.0 + lead, 7.5 + lead_up), ankle_r=V(-15.0, 20.0 + rear, 7.5 + rear_up),
+            heel_r=12.0 if rear_up < 0.5 else 0.0), "linear"))
+    return keys, None
+
+
 CLIPS = {
     "A_Stance_Idle": stance_loop,
+    "A_Stance_Shuffle": shuffle_loop,
+    "A_Block_High": block_loop,
     "A_Strike_Jab": jab,
     "A_Strike_Cross": cross,
     "A_Strike_HookLead": hook_lead,
@@ -461,6 +507,7 @@ def build(arm, only):
             "frames": last + 1, "seconds": round(last / FPS, 4),
             "active": None if active is None else {"start": round(active[0] / FPS, 4), "end": round(active[1] / FPS, 4)},
             "loop": active is None,
+            "stride_cm_s": round(SHUFFLE_STRIDE * FPS / SHUFFLE_FRAMES, 2) if name == "A_Stance_Shuffle" else 0.0,
             "checks": checks(rig, name, keys, active),
         }
         print(f"STRIKES {name}: {last + 1} frames, {meta[name]}")

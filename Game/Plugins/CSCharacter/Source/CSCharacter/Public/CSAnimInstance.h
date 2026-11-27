@@ -32,6 +32,8 @@ enum class ECSLocomotionPose : uint8
 	JumpStart,
 	Fall,
 	Land,
+	/** The legs in the fighting stance (decision 0025): stance idle, the shuffle step, then the jog. */
+	Stance,
 };
 
 /** How far a locomotion clip travels: what turns a ground speed into a play rate. */
@@ -112,6 +114,13 @@ public:
 	TArray<FCSStrideSample> CrouchStride;
 
 	/**
+	 * Stride of each sample of the Stance blend space: stance idle, the shuffle, the jog. Empty: the
+	 * stance has no legs of its own and the Ground pose walks under the guard.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "CS|Animation")
+	TArray<FCSStrideSample> StanceStride;
+
+	/**
 	 * The fighting guard (decision 0025): looped on the upper body (GuardSlot) while the character
 	 * is in its combat stance, so the hands are up whether it stands or moves. Strikes play over it
 	 * in the full-body slot.
@@ -120,8 +129,17 @@ public:
 	TSoftObjectPtr<UAnimSequenceBase> GuardClip = TSoftObjectPtr<UAnimSequenceBase>(
 		FSoftObjectPath(TEXT("/Game/Characters/Base/Strikes/A_Stance_Idle.A_Stance_Idle")));
 
+	/** The high guard, looped in GuardSlot instead of GuardClip while the block is up. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "CS|Animation")
+	TSoftObjectPtr<UAnimSequenceBase> BlockClip = TSoftObjectPtr<UAnimSequenceBase>(
+		FSoftObjectPath(TEXT("/Game/Characters/Base/Strikes/A_Block_High.A_Block_High")));
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "CS|Animation")
 	FName GuardSlot = TEXT("UpperBody");
+
+	/** Seconds the arms take to go from the guard to the block and back. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "CS|Animation", meta = (ClampMin = "0", Units = "s"))
+	float BlockBlendSeconds = 0.1f;
 
 	/** Seconds the guard takes to come up, and to go down. */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "CS|Animation", meta = (ClampMin = "0", Units = "s"))
@@ -129,6 +147,9 @@ public:
 
 	/** The guard is up now (playing, not blending out). */
 	bool IsGuardUp() const;
+
+	/** The high guard (the block clip) is the one playing. */
+	bool IsBlockShown() const { return IsGuardUp() && bGuardIsBlock; }
 
 	ECSLocomotionState GetLocomotionState() const { return State; }
 	float GetGroundSpeed() const { return GroundSpeed; }
@@ -204,8 +225,13 @@ protected:
 
 	/** The guard loop playing in GuardSlot. */
 	TWeakObjectPtr<UAnimMontage> GuardMontage;
-	/** Starts or stops the guard loop for bWant. */
-	void UpdateGuard(bool bWant);
+	/** The legs take the Stance pose instead of Ground (the combat stance, standing). */
+	bool bStanceLegs = false;
+
+	/** The clip playing in GuardMontage is BlockClip. */
+	bool bGuardIsBlock = false;
+	/** Starts or stops the guard loop for bWant, the high guard when bBlock. */
+	void UpdateGuard(bool bWant, bool bBlock);
 
 	/** The steps play backward (backing off); kept between updates for ComputeLegYaw's margin. */
 	bool bStepsBackward = false;

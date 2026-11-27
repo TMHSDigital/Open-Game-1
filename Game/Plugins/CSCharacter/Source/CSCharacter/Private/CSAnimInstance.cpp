@@ -3,7 +3,9 @@
 #include "CSPhysicsBodyComponent.h"
 
 #include "CSCharacter.h"
+#include "CSGuardComponent.h"
 #include "CSMovementTuning.h"
+#include "CSStrikeComponent.h"
 #include "Animation/AnimMontage.h"
 #include "Animation/AnimSequenceBase.h"
 #include "GameFramework/Character.h"
@@ -100,7 +102,8 @@ void UCSAnimInstance::SetState(ECSLocomotionState NewState)
 		State = NewState;
 		StateTime = 0.f;
 	}
-	PoseIndex = int32(PoseForState(State));
+	const ECSLocomotionPose Pose = PoseForState(State);
+	PoseIndex = int32(bStanceLegs && Pose == ECSLocomotionPose::Ground ? ECSLocomotionPose::Stance : Pose);
 }
 
 float UCSAnimInstance::ComputeLegYaw(float MoveAngle, float MaxYaw, bool bWasBackward, bool& bOutBackward)
@@ -128,15 +131,20 @@ bool UCSAnimInstance::IsGuardUp() const
 	return GuardMontage.IsValid() && Montage_IsPlaying(GuardMontage.Get());
 }
 
-void UCSAnimInstance::UpdateGuard(bool bWant)
+void UCSAnimInstance::UpdateGuard(bool bWant, bool bBlock)
 {
 	const bool bPlaying = GuardMontage.IsValid() && Montage_IsPlaying(GuardMontage.Get());
-	if (bWant && !bPlaying)
+	UAnimSequenceBase* Block = bBlock ? BlockClip.LoadSynchronous() : nullptr;
+	if (bWant && (!bPlaying || bGuardIsBlock != (Block != nullptr)))
 	{
-		if (UAnimSequenceBase* Clip = GuardClip.LoadSynchronous())
+		// Looped for as long as the stance lasts; stopped when it ends. The block and the guard
+		// replace each other in the slot (the new one blends over the old).
+		UAnimSequenceBase* Clip = Block ? Block : GuardClip.LoadSynchronous();
+		if (Clip)
 		{
-			// Looped for as long as the stance lasts; stopped when it ends.
-			GuardMontage = PlaySlotAnimationAsDynamicMontage(Clip, GuardSlot, GuardBlendSeconds, GuardBlendSeconds, 1.f, 1000000);
+			const float Blend = bPlaying ? BlockBlendSeconds : GuardBlendSeconds;
+			GuardMontage = PlaySlotAnimationAsDynamicMontage(Clip, GuardSlot, Blend, Blend, 1.f, 1000000);
+			bGuardIsBlock = Block != nullptr;
 		}
 	}
 	else if (!bWant && bPlaying)
@@ -169,7 +177,15 @@ void UCSAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	{
 		const UCSPhysicsBodyComponent* Body = Fighter->GetPhysicsBody();
 		const bool bStanding = !Body || Body->GetState() == ECSBodyState::Normal || Body->GetState() == ECSBodyState::Hit;
-		UpdateGuard(Fighter->IsInCombatStance() && bStanding && !Fighter->IsRagdolled() && !Character->bIsCrouched);
+		// Not over a strike playing in the same slot (thrown on the move): it would stop the strike.
+		const UCSStrikeComponent* Strike = Fighter->GetStrike();
+		const bool bStriking = Strike && Strike->IsPlayingClip();
+		const UCSGuardComponent* Guard = Fighter->GetGuard();
+		const bool bBlock = Guard && Guard->IsGuardUp();
+		if (!bStriking)
+		{
+			UpdateGuard((Fighter->IsInCombatStance() || bBlock) && bStanding && !Fighter->IsRagdolled() && !Character->bIsCrouched, bBlock);
+		}
 	}
 
 	const FVector Velocity = Move->Velocity;
@@ -197,12 +213,20 @@ void UCSAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 		Tuning = &CS->GetActiveTuning();
 	}
 
+	// In the fighting stance the legs shuffle (stance idle, shuffle at walk speed, jog at jog speed),
+	// when the Blueprint has the Stance pose.
+	const ACSCharacter* Stancer = Cast<ACSCharacter>(Character);
+	bStanceLegs = StanceStride.Num() >= 2 && Stancer && Stancer->IsInCombatStance() && !bIsCrouching;
+
 	// Blend position and play rate from the speed actually moved, so the feet match the ground.
 	const float StandingGaits[] = {Walk, Jog, Sprint};
+	const float StanceGaits[] = {Walk, Jog};
 	const float CrouchGaits[] = {Crouch};
 	// The rate the feet need, unclamped, then split between rate and the length of the steps.
 	const float NaturalRate = bIsCrouching
 		? ComputeLocomotion(GroundSpeed, CrouchGaits, CrouchStride, 0.01f, 100.f, LocomotionAxis)
+		: bStanceLegs
+		? ComputeLocomotion(GroundSpeed, StanceGaits, StanceStride, 0.01f, 100.f, LocomotionAxis)
 		: ComputeLocomotion(GroundSpeed, StandingGaits, GroundStride, 0.01f, 100.f, LocomotionAxis);
 	float WantedStride = 1.f;
 	SplitStride(NaturalRate, Tuning->StrideRateMin, Tuning->StrideRateMax, Tuning->StrideScaleMin, Tuning->StrideScaleMax, WantedStride);

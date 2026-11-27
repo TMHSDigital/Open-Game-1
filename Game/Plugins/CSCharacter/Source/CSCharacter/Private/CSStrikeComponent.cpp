@@ -217,7 +217,12 @@ void UCSStrikeComponent::PlayClip(float Rate)
 		Clip = nullptr;
 		return;
 	}
-	ClipMontage = Anim->PlaySlotAnimationAsDynamicMontage(Clip, ClipSlot, ClipBlendInSeconds, ClipBlendOutSeconds, Rate);
+	// A punch thrown walking: the upper body punches while the legs walk. Not a kick (the leg is the
+	// strike) and not a step in (the clip's hips carry the punch the last of the way).
+	const ACSCharacter* Character = GetCharacter();
+	const bool bMoving = !MoveRow.bLeg && StepWindupSeconds <= 0.f && Character && Character->GetVelocity().Size2D() > MovingStrikeSpeed;
+	const FName Slot = bMoving && !MovingClipSlot.IsNone() ? MovingClipSlot : ClipSlot;
+	ClipMontage = Anim->PlaySlotAnimationAsDynamicMontage(Clip, Slot, ClipBlendInSeconds, ClipBlendOutSeconds, Rate);
 	if (!ClipMontage.IsValid())
 	{
 		Clip = nullptr;

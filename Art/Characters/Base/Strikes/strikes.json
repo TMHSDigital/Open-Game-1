@@ -4,6 +4,23 @@
     "seconds": 1.3333,
     "active": null,
     "loop": true,
+    "stride_cm_s": 0.0,
+    "checks": {}
+  },
+  "A_Stance_Shuffle": {
+    "frames": 13,
+    "seconds": 0.4,
+    "active": null,
+    "loop": true,
+    "stride_cm_s": 75.0,
+    "checks": {}
+  },
+  "A_Block_High": {
+    "frames": 41,
+    "seconds": 1.3333,
+    "active": null,
+    "loop": true,
+    "stride_cm_s": 0.0,
     "checks": {}
   },
   "A_Strike_Jab": {
@@ -14,6 +31,7 @@
       "end": 0.2
     },
     "loop": false,
+    "stride_cm_s": 0.0,
     "checks": {
       "fist_l": [
         -1.1,
@@ -40,6 +58,7 @@
       "end": 0.2333
     },
     "loop": false,
+    "stride_cm_s": 0.0,
     "checks": {
       "fist_l": [
         0.6,
@@ -66,6 +85,7 @@
       "end": 0.2667
     },
     "loop": false,
+    "stride_cm_s": 0.0,
     "checks": {
       "fist_l": [
         -11.5,
@@ -92,6 +112,7 @@
       "end": 0.2667
     },
     "loop": false,
+    "stride_cm_s": 0.0,
     "checks": {
       "fist_l": [
         2.4,
@@ -118,6 +139,7 @@
       "end": 0.4333
     },
     "loop": false,
+    "stride_cm_s": 0.0,
     "checks": {
       "fist_l": [
         6.1,

@@ -77,6 +77,9 @@ BASE_IK_RIG = BASE + "/IK_BaseCharacter"
 TUNING = BASE + "/DA_MovementTuning"
 BS_GROUND = "BS_BaseCharacter_Ground"
 BS_CROUCH = "BS_BaseCharacter_Crouch"
+BS_STANCE = "BS_BaseCharacter_Stance"
+# The stance legs (decision 0025), from import_strikes.py, with the shuffle's stride from strikes.json.
+STRIKES = "/Game/Characters/Base/Strikes"
 ABP = "ABP_BaseCharacter"
 
 IMPORT_PREFIX = "UAL1_Standard"  # Interchange names clips <file name><clip name>
@@ -94,6 +97,7 @@ POSES = [
     ("Jump_Start", False, 0.1),  # JumpStart: plays once
     ("Jump_Loop", True, 0.25),  # Fall
     ("Jump_Land", False, 0.1),  # Land: plays once (UCSAnimInstance cuts it short)
+    (BS_STANCE, True, 0.2),     # Stance: stance idle, shuffle, jog by speed (the combat stance)
 ]
 
 # project_dir() is <repo>/Game/ (trailing slash); abspath drops the slash.
@@ -369,10 +373,10 @@ def make_anim_blueprint(skeleton, assets):
     return abp
 
 
-def set_stride_tables(abp, ground, crouch):
+def set_stride_tables(abp, ground, crouch, stance):
     """Writes (stride speed cm/s, clip seconds) per blend sample to the Blueprint's class defaults."""
     defaults = unreal.get_default_object(abp.generated_class())
-    for prop, rows in (("ground_stride", ground), ("crouch_stride", crouch)):
+    for prop, rows in (("ground_stride", ground), ("crouch_stride", crouch), ("stance_stride", stance)):
         defaults.set_editor_property(prop, [unreal.CSStrideSample(stride_speed=speed, seconds=seconds) for speed, seconds in rows])
         log("%s: %s" % (prop, ", ".join("%.0f cm/s over %.2f s" % row for row in rows)))
     abp.modify()
@@ -432,10 +436,22 @@ def main():
     crouch_bs = make_blend_space(BS_CROUCH, skeleton, float(len(crouch_clips) - 1),
                                  [(clips[c], float(i), 1.0) for i, (c, _) in enumerate(crouch_clips)])
 
-    assets = {BS_GROUND: ground, BS_CROUCH: crouch_bs}
+    stance_idle = unreal.load_asset(STRIKES + "/A_Stance_Idle")
+    shuffle = unreal.load_asset(STRIKES + "/A_Stance_Shuffle")
+    if stance_idle is None or shuffle is None:
+        fail("missing the stance clips in %s; run import_strikes.py first" % STRIKES)
+    meta = json.load(open(os.path.join(REPO, "Art", "Characters", "Base", "Strikes", "strikes.json"), encoding="utf-8"))
+    shuffle_stride = float(meta["A_Stance_Shuffle"]["stride_cm_s"])
+    log("  A_Stance_Shuffle: stride %.0f cm/s over %.2f s, plays x%.2f at %.0f cm/s"
+        % (shuffle_stride, shuffle.get_play_length(), walk / shuffle_stride, walk))
+    stance_bs = make_blend_space(BS_STANCE, skeleton, 2.0,
+                                 [(stance_idle, 0.0, 1.0), (shuffle, 1.0, 1.0), (clips["Jog_Fwd_Loop"], 2.0, 1.0)])
+    stance_rows = [(0.0, stance_idle.get_play_length()), (shuffle_stride, shuffle.get_play_length()), stride("Jog_Fwd_Loop", jog)]
+
+    assets = {BS_GROUND: ground, BS_CROUCH: crouch_bs, BS_STANCE: stance_bs}
     assets.update(clips)
     abp = make_anim_blueprint(skeleton, assets)
-    set_stride_tables(abp, [stride(c, s) for c, s in ground_clips], [stride(c, s) for c, s in crouch_clips])
+    set_stride_tables(abp, [stride(c, s) for c, s in ground_clips], [stride(c, s) for c, s in crouch_clips], stance_rows)
 
     for folder in (PACK, BASE):
         if not unreal.EditorAssetLibrary.save_directory(folder, only_if_is_dirty=True, recursive=True):
@@ -450,7 +466,7 @@ def graph_only():
         fail("no " + BASE_MESH)
     assets = {}
     for name, _, _ in POSES:
-        path = BASE + "/" + name if name in (BS_GROUND, BS_CROUCH) else RETARGETED + "/A_" + name
+        path = BASE + "/" + name if name in (BS_GROUND, BS_CROUCH, BS_STANCE) else RETARGETED + "/A_" + name
         asset = unreal.load_asset(path)
         if asset is None:
             fail("no " + path + "; run the script without CS_ANIM_GRAPH_ONLY first")

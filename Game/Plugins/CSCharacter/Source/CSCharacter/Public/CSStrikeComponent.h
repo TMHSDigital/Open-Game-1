@@ -272,6 +272,17 @@ public:
 	UPROPERTY(EditAnywhere, Category = "CS|Strike")
 	FName ClipSlot = TEXT("DefaultSlot");
 
+	/**
+	 * The slot a punch plays in when thrown walking: the upper body only, so the legs go on walking
+	 * under it instead of sliding in the punch's planted stance. Kicks and step-ins stay full-body.
+	 */
+	UPROPERTY(EditAnywhere, Category = "CS|Strike")
+	FName MovingClipSlot = TEXT("UpperBody");
+
+	/** Moving faster than this (cm/s) when a strike starts throws it on the move. */
+	UPROPERTY(EditAnywhere, Category = "CS|Strike", meta = (ClampMin = "0", Units = "cm/s"))
+	float MovingStrikeSpeed = 60.f;
+
 	/** Seconds a strike clip blends in from the stance, and out back to it. */
 	UPROPERTY(EditAnywhere, Category = "CS|Strike", meta = (ClampMin = "0", Units = "s"))
 	float ClipBlendInSeconds = 0.06f;

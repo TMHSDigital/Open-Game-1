@@ -107,6 +107,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "CS|Guard")
 	FName HeadBone = TEXT("head");
 
+	/**
+	 * While the high guard clip shows (UCSAnimInstance::IsBlockShown), the upper body shows it by
+	 * this much over the simulation (decision 0025), and the fists are not steered. 0: steered.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "CS|Guard", meta = (ClampMin = "0", ClampMax = "1"))
+	float BlockClipWeight = 0.8f;
+
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
 private:
@@ -115,6 +122,8 @@ private:
 	/** Standing on its own feet: physics body Normal or Hit, not ragdolled. */
 	bool IsStanding() const;
 	void DriveFists(float DeltaTime);
+	/** The block clip's weight is applied (so it is taken off once when the block ends). */
+	bool bShowingClip = false;
 	/** Walkable floor a stride ahead along the dodge. */
 	bool HasFloorAhead(const UCharacterMovementComponent& Move) const;
 
