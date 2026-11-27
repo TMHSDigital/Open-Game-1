@@ -17,6 +17,7 @@ from og.repo import repo_root as _repo_root
 _LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)|<img[^>]+src=\"([^\"]+)\"")
 _EXTERNAL = re.compile(r"(?:[a-z][a-z0-9+.-]*:|#|/)", re.I)
 _BUILD_ROW = re.compile(r"^\|\s*(\d+\.\d+\.\d+)\s*\|")
+DEV_PHRASE = "is live on the private development branch"
 _DEVLOG = re.compile(r"docs/devlog/(\d{4}-\d{2}-\d{2}-\d{2})-[^/]+\.md$")
 DOCS = ("README.md", "docs/WORKFLOWS.md", "docs/TOOLS.md", "docs/systems/README.md")
 
@@ -45,8 +46,11 @@ def readme_status(repo: Path) -> list[str]:
     if decision and decision not in text:
         problems.append(f"README.md does not link the newest decision ({decision}).")
     build = newest_build(repo)
-    if build and f"Build {build} " not in text:
-        problems.append(f"README.md does not name the newest Steam build ({build}).")
+    # The exact sentence release.ps1 (Update-ReadmeBuild) rewrites on every development upload: a
+    # README worded any other way would keep naming the old build after the next upload.
+    if build and f"Build {build} {DEV_PHRASE}" not in text:
+        problems.append(f"README.md does not name the newest Steam build ({build}) as "
+                        f"'Build {build} {DEV_PHRASE}' (release.ps1 rewrites that sentence on upload).")
     return problems
 
 

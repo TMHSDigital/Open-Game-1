@@ -12,7 +12,7 @@ def make_repo(tmp_path: Path) -> Path:
     (r / "docs" / "devlog" / "2026-11-20-01-a.md").write_text("x\n", "utf-8")
     (r / "docs" / "steam" / "BUILDS.md").write_text("| version | id |\n|---|---|\n| 0.1.1 | 1 |\n| 0.1.2 | 2 |\n", "utf-8")
     (r / "README.md").write_text(
-        "[d](docs/decisions/0001-first.md) Build 0.1.2 is live.\n[log](docs/devlog/2026-11-20-01-a.md)\n", "utf-8")
+        "[d](docs/decisions/0001-first.md) Build 0.1.2 is live on the private development branch.\n[log](docs/devlog/2026-11-20-01-a.md)\n", "utf-8")
     return r
 
 
@@ -55,3 +55,12 @@ def test_no_readme_nothing_to_check(tmp_path):
     r = make_repo(tmp_path)
     (r / "README.md").unlink()
     assert docs.check(r) == []
+
+
+def test_a_readme_worded_so_the_release_cannot_update_it_fails(tmp_path):
+    r = make_repo(tmp_path)
+    (r / "README.md").write_text(
+        "[d](docs/decisions/0001-first.md) Build 0.1.1 is live on default; build 0.1.2 is on the private "
+        "development branch.\n[log](docs/devlog/2026-11-20-01-a.md)\n", "utf-8")
+    problems = docs.check(r)
+    assert any("Build 0.1.2 is live on the private development branch" in p for p in problems)

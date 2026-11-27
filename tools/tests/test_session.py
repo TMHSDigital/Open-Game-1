@@ -536,7 +536,7 @@ def _docs_repo(repo: Path) -> None:
     (repo / "docs/steam/BUILDS.md").write_text(
         "| version | build_id |\n|---|---|\n| 0.1.1 | 1 |\n| 0.1.2 | 2 |\n", "utf-8")
     (repo / "README.md").write_text(
-        "| **Latest block** | [0001](docs/decisions/0001-first.md) |\n| **Steam** | Build 0.1.2 is live |\n", "utf-8")
+        "| **Latest block** | [0001](docs/decisions/0001-first.md) |\n| **Steam** | Build 0.1.2 is live on the private development branch |\n", "utf-8")
     git(repo, "add", "-A")
     git(repo, "commit", "-q", "-m", "docs: readme")
 
