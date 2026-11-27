@@ -183,7 +183,8 @@ bool UCSStrikeComponent::StartMove(ECSStrikeMove Move)
 	if (Clip && Target.IsValid() && GetTuning().PunchLungeSpeed > 0.f)
 	{
 		const float Gap = float(FVector::Dist2D(LungeGoal, GetChestLocation())) - MoveReach();
-		StepWindupSeconds = FMath::Clamp(Gap / GetTuning().PunchLungeSpeed, 0.f, MaxStepWindupSeconds);
+		// A quarter more than the gap needs at the lunge speed: the step takes a moment to get going.
+		StepWindupSeconds = FMath::Clamp(1.25f * Gap / GetTuning().PunchLungeSpeed, 0.f, MaxStepWindupSeconds);
 	}
 	bHasLastHand = false;
 	if (Clip)

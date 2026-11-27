@@ -371,7 +371,7 @@ private:
 public:
 	/** The most a clip strike's wind-up is drawn out to step in to a target out of reach, seconds. */
 	UPROPERTY(EditAnywhere, Category = "CS|Strike", meta = (ClampMin = "0", Units = "s"))
-	float MaxStepWindupSeconds = 0.35f;
+	float MaxStepWindupSeconds = 0.45f;
 
 private:
 	/** Plays Clip in ClipSlot at Rate. */
