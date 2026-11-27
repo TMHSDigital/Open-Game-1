@@ -7,6 +7,7 @@
 #include "../Opponent/CSOpponentController.h"
 #include "../Run/CSRunDirector.h"
 #include "../Run/CSRunSetup.h"
+#include "../Run/CSRunStore.h"
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
 #include "CSCameraRig.h"
@@ -134,6 +135,11 @@ void FCSPlaytestContext::Note(const FString& Key, const FString& Value) const
 void FCSPlaytestContext::Note(const FString& Key, float Value) const
 {
 	Note(Key, FString::Printf(TEXT("%.1f"), Value));
+}
+
+void FCSPlaytestContext::Check(const FString& Name, bool bOk) const
+{
+	Note(TEXT("check: ") + Name, bOk ? TEXT("ok") : TEXT("FAILED"));
 }
 
 // ---------------------------------------------------------------- scenarios
@@ -502,8 +508,11 @@ namespace CSPlaytestScenarios
 	struct FFightCounts
 	{
 		int32 Theirs = 0, TheirsLanded = 0, TheirsBlocked = 0, Mine = 0, MineLanded = 0, Dodges = 0;
+		/** The player's lowest stamina share during the step: a guard that ran dry lets punches through. */
+		float LowestStamina = 1.f;
 		void Take(const FCSRunStats& S)
 		{
+			LowestStamina = 1.f;
 			Theirs = S.OpponentPunches;
 			TheirsLanded = S.OpponentPunchesLanded;
 			TheirsBlocked = S.OpponentPunchesBlocked;
@@ -552,9 +561,13 @@ namespace CSPlaytestScenarios
 				Before->Take(Director->GetStats());
 			}
 		};
-		Step.OnTick = [Defend](const FCtx& C, float Time, float DeltaTime)
+		Step.OnTick = [Defend, Before](const FCtx& C, float Time, float DeltaTime)
 		{
 			ACSCharacter* Self = C.Player();
+			if (Self && Self->GetStamina())
+			{
+				Before->LowestStamina = FMath::Min(Before->LowestStamina, Self->GetStamina()->GetShare());
+			}
 			UCSGuardComponent* Guard = Self ? Self->GetGuard() : nullptr;
 			const ACSTargetDummy* Target = C.Dummy();
 			if (!Self || !Guard || !Target)
@@ -593,8 +606,9 @@ namespace CSPlaytestScenarios
 				break;
 			}
 		};
-		Step.OnEnd = [Before](const FCtx& C)
+		Step.OnEnd = [Before, Defend](const FCtx& C)
 		{
+			const bool bHasStamina = Before->LowestStamina > 0.05f;
 			if (ACSCharacter* Self = C.Player(); Self && Self->GetGuard())
 			{
 				Self->GetGuard()->SetBlockHeld(false);
@@ -612,6 +626,11 @@ namespace CSPlaytestScenarios
 				FMath::Max(0, Thrown - Landed - Blocked)));
 			C.Note(TEXT("dodges"), float(S.Dodges - Before->Dodges));
 			C.Note(TEXT("punches"), FString::Printf(TEXT("%d of %d landed"), S.PunchesLanded - Before->MineLanded, S.PunchesThrown - Before->Mine));
+			C.Check(TEXT("the opponent attacked"), Thrown > 0);
+			if ((Defend == EDefend::Block || Defend == EDefend::Dodge) && bHasStamina)
+			{
+				C.Check(TEXT("none of their punches landed"), Landed == 0);
+			}
 		};
 		return Step;
 	}
@@ -755,6 +774,7 @@ namespace CSPlaytestScenarios
 			{
 				C.Note(TEXT("straights"), float(Track->Speeds.Num()));
 				C.Note(TEXT("thrown tired"), float(Track->Tired));
+				C.Check(TEXT("stamina ran out and strikes were thrown tired"), Track->Tired > 0);
 				C.Note(TEXT("lowest stamina share"), Track->Lowest);
 				if (Track->Speeds.Num() >= 4)
 				{
@@ -784,6 +804,7 @@ namespace CSPlaytestScenarios
 				if (ACSCharacter* Self = C.Player(); Self && Self->GetGuard() && Self->GetStamina())
 				{
 					C.Note(TEXT("guard up"), Self->GetGuard()->IsGuardUp() ? TEXT("yes") : TEXT("no"));
+					C.Check(TEXT("the guard stays down with no stamina"), !Self->GetGuard()->IsGuardUp());
 					Self->GetGuard()->SetBlockHeld(false);
 					Self->GetStamina()->SetRegenScale(1.f);
 				}
@@ -809,6 +830,7 @@ namespace CSPlaytestScenarios
 				if (const ACSCharacter* Self = C.Player(); Self && Self->GetStamina())
 				{
 					C.Note(TEXT("stamina share after"), Self->GetStamina()->GetShare());
+					C.Check(TEXT("stamina came back"), Self->GetStamina()->GetShare() > *Before + 0.5f);
 				}
 			};
 			Steps.Add(Step);
@@ -903,6 +925,7 @@ namespace CSPlaytestScenarios
 					: Director ? Director->GetStats().OpponentPunchesLanded - Before->TheirsLanded : 0;
 				C.Note(TEXT("their punches landed while down"), float(Landed));
 				C.Note(TEXT("back up"), *LandedWhileDown >= 0 ? TEXT("yes") : TEXT("no"));
+				C.Check(TEXT("it waited while the player was down"), *bWaited && Landed == 0);
 			};
 			Steps.Add(Step);
 		}
@@ -922,6 +945,7 @@ namespace CSPlaytestScenarios
 			{
 				const ACSOpponentController* Brain = Opponent(C);
 				C.Note(TEXT("it stopped"), !Brain || Brain->GetOpponentState() == ECSOpponentState::Idle ? TEXT("yes") : TEXT("no"));
+				C.Check(TEXT("it stopped when the run ended"), !Brain || Brain->GetOpponentState() == ECSOpponentState::Idle);
 				if (ACSPlayerController* PC = Cast<ACSPlayerController>(C.Controller))
 				{
 					PC->SetPauseScreenOpen(false);
@@ -933,6 +957,12 @@ namespace CSPlaytestScenarios
 	}
 
 	/** Watches a character's body through a step: whether it went down and when it was back up. */
+	void CheckDownAndUp(const FCtx& C, const TPair<float, float>& DownUp)
+	{
+		C.Check(TEXT("went down"), DownUp.Key >= 0.f);
+		C.Check(TEXT("got back up"), DownUp.Value >= 0.f);
+	}
+
 	void WatchBody(const FCtx& C, const ACSCharacter* Who, float Time, TSharedRef<TPair<float, float>> DownUp)
 	{
 		const UCSPhysicsBodyComponent* Physics = Who ? Who->GetPhysicsBody() : nullptr;
@@ -982,6 +1012,7 @@ namespace CSPlaytestScenarios
 				}
 				WatchBody(C, Target, Time, DownUp);
 			};
+			Step.OnEnd = [DownUp](const FCtx& C) { CheckDownAndUp(C, *DownUp); };
 			Steps.Add(Step);
 		}
 		auto KnockPlayer = [](const TCHAR* Label, ECSReviewCamera Camera)
@@ -1008,6 +1039,7 @@ namespace CSPlaytestScenarios
 				}
 				WatchBody(C, Self, Time, DownUp);
 			};
+			Step.OnEnd = [DownUp](const FCtx& C) { CheckDownAndUp(C, *DownUp); };
 			return Step;
 		};
 		Steps.Add(KnockPlayer(TEXT("the player is knocked down and gets up"), ECSReviewCamera::Side));
@@ -1042,7 +1074,16 @@ namespace CSPlaytestScenarios
 	 * and moves forward at Gait for Seconds (jumping every JumpEvery s when on the ground, 0 for none).
 	 * Notes the highest the feet got, where the player ended, the fastest fall and whether it went down.
 	 */
-	FCSPlaytestStep GymLane(const TCHAR* Label, float Y, float Seconds, ECSGait Gait, float JumpEvery = 0.f, ECSReviewCamera Camera = ECSReviewCamera::Side)
+	/** What a gym lane must show: the feet at least MinTop and at most MaxTop cm up (negative: no
+	 * bound), and the character going down (1), staying up (0) or either (-1). */
+	struct FGymExpect
+	{
+		float MinTop = -1.f;
+		float MaxTop = -1.f;
+		int32 Down = 0;
+	};
+
+	FCSPlaytestStep GymLane(const TCHAR* Label, float Y, float Seconds, ECSGait Gait, FGymExpect Expect, float JumpEvery = 0.f, ECSReviewCamera Camera = ECSReviewCamera::Side)
 	{
 		FCSPlaytestStep Step;
 		Step.Label = Label;
@@ -1097,11 +1138,32 @@ namespace CSPlaytestScenarios
 			C.Note(TEXT("ended at height cm"), FeetZ(*Self));
 			WatchBody(C, Self, Time, DownUp);
 		};
-		Step.OnEnd = [](const FCtx& C)
+		Step.OnEnd = [Track, DownUp, Expect](const FCtx& C)
 		{
 			if (ACSCharacter* Self = C.Player())
 			{
 				Self->StopJumping();
+			}
+			C.Check(TEXT("on the gym map"), Track->bOk);
+			if (!Track->bOk)
+			{
+				return;
+			}
+			if (Expect.MinTop >= 0.f)
+			{
+				C.Check(FString::Printf(TEXT("the feet got at least %.0f cm up"), Expect.MinTop), Track->Top >= Expect.MinTop);
+			}
+			if (Expect.MaxTop >= 0.f)
+			{
+				C.Check(FString::Printf(TEXT("the feet stayed below %.0f cm"), Expect.MaxTop), Track->Top <= Expect.MaxTop);
+			}
+			if (Expect.Down == 1)
+			{
+				CheckDownAndUp(C, *DownUp);
+			}
+			else if (Expect.Down == 0)
+			{
+				C.Check(TEXT("stayed on its feet"), DownUp->Key < 0.f);
 			}
 		};
 		return Step;
@@ -1111,16 +1173,16 @@ namespace CSPlaytestScenarios
 	{
 		TArray<FCSPlaytestStep> Steps;
 		// Lanes and heights from Game/Content/Python/create_movement_maps.py.
-		Steps.Add(GymLane(TEXT("gym: ramp 15 degrees"), 700.f, 3.5f, ECSGait::Jog));
-		Steps.Add(GymLane(TEXT("gym: ramp 30 degrees"), 1200.f, 3.5f, ECSGait::Jog));
-		Steps.Add(GymLane(TEXT("gym: ramp 44 degrees, the steepest walkable"), 1700.f, 3.5f, ECSGait::Jog));
-		Steps.Add(GymLane(TEXT("gym: ramp 50 degrees, too steep"), 2200.f, 3.5f, ECSGait::Jog));
-		Steps.Add(GymLane(TEXT("gym: stairs, 15 cm steps"), 2900.f, 3.f, ECSGait::Jog));
-		Steps.Add(GymLane(TEXT("gym: stairs, 25 cm steps"), 3400.f, 3.f, ECSGait::Jog));
-		Steps.Add(GymLane(TEXT("gym: stairs, 40 cm steps"), 3900.f, 3.f, ECSGait::Jog));
-		Steps.Add(GymLane(TEXT("gym: gaps, sprinting and jumping"), 4600.f, 6.f, ECSGait::Sprint, 0.75f));
+		Steps.Add(GymLane(TEXT("gym: ramp 15 degrees"), 700.f, 3.5f, ECSGait::Jog, {190.f}));
+		Steps.Add(GymLane(TEXT("gym: ramp 30 degrees"), 1200.f, 3.5f, ECSGait::Jog, {190.f}));
+		Steps.Add(GymLane(TEXT("gym: ramp 44 degrees, the steepest walkable"), 1700.f, 3.5f, ECSGait::Jog, {190.f}));
+		Steps.Add(GymLane(TEXT("gym: ramp 50 degrees, too steep"), 2200.f, 3.5f, ECSGait::Jog, {-1.f, 50.f}));
+		Steps.Add(GymLane(TEXT("gym: stairs, 15 cm steps"), 2900.f, 3.f, ECSGait::Jog, {110.f}));
+		Steps.Add(GymLane(TEXT("gym: stairs, 25 cm steps"), 3400.f, 3.f, ECSGait::Jog, {110.f}));
+		Steps.Add(GymLane(TEXT("gym: stairs, 40 cm steps"), 3900.f, 3.f, ECSGait::Jog, {110.f}));
+		Steps.Add(GymLane(TEXT("gym: gaps, sprinting and jumping"), 4600.f, 6.f, ECSGait::Sprint, {90.f, -1.f, -1}, 0.75f));
 		{
-			FCSPlaytestStep Step = GymLane(TEXT("gym: physics boxes, jogging through"), -625.f, 4.f, ECSGait::Jog);
+			FCSPlaytestStep Step = GymLane(TEXT("gym: physics boxes, jogging through"), -625.f, 4.f, ECSGait::Jog, {});
 			TSharedRef<TMap<TWeakObjectPtr<AActor>, FVector>> Starts = MakeShared<TMap<TWeakObjectPtr<AActor>, FVector>>();
 			const auto Lane = Step.OnStart;
 			Step.OnStart = [Lane, Starts](const FCtx& C)
@@ -1153,11 +1215,84 @@ namespace CSPlaytestScenarios
 				}
 				C.Note(TEXT("boxes moved"), FString::Printf(TEXT("%d of %d"), Moved, Starts->Num()));
 				C.Note(TEXT("furthest box moved cm"), Most);
+				// Noted every tick: the value at the end of the step is the one kept.
+				C.Check(TEXT("running into the boxes moved one"), Moved > 0);
 			};
 			Steps.Add(Step);
 		}
-		Steps.Add(GymLane(TEXT("gym: off a 2 m ledge"), 6000.f, 6.f, ECSGait::Jog));
-		Steps.Add(GymLane(TEXT("gym: off a 6 m ledge (knocks down)"), 7800.f, 10.f, ECSGait::Jog));
+		Steps.Add(GymLane(TEXT("gym: off a 2 m ledge"), 6000.f, 6.f, ECSGait::Jog, {190.f}));
+		Steps.Add(GymLane(TEXT("gym: off a 6 m ledge (knocks down)"), 7800.f, 10.f, ECSGait::Jog, {590.f, -1.f, 1}));
+		return Steps;
+	}
+
+	// ------------------------------------------------------------ screens (any map)
+
+	/** The pause screen open on Tab for Seconds (the runner ticks while the game is paused). */
+	FCSPlaytestStep PauseTab(const TCHAR* Label, ECSPauseTab Tab, float Seconds)
+	{
+		FCSPlaytestStep Step;
+		Step.Label = Label;
+		Step.Seconds = Seconds;
+		Step.Camera = ECSReviewCamera::Player;
+		Step.OnStart = [Tab](const FCtx& C)
+		{
+			if (ACSPlayerController* PC = Cast<ACSPlayerController>(C.Controller))
+			{
+				PC->OpenPauseScreenOnTab(Tab);
+			}
+		};
+		Step.OnEnd = [](const FCtx& C)
+		{
+			const ACSPlayerController* PC = Cast<ACSPlayerController>(C.Controller);
+			C.Check(TEXT("the pause screen is open"), PC && PC->IsPauseScreenOpen());
+			C.Check(TEXT("the game is paused"), C.World && C.World->IsPaused());
+		};
+		return Step;
+	}
+
+	TArray<FCSPlaytestStep> BuildScreens()
+	{
+		TArray<FCSPlaytestStep> Steps;
+		// A short run that ends, so the Run tab has results and a run in its history. Waits out the
+		// results delay: the results open the pause screen by themselves, and would open it again
+		// after the scenario closed it.
+		Steps.Add(SetUpRun(1, 250.f));
+		{
+			FCSPlaytestStep Step;
+			Step.Seconds = 3.5f;
+			Step.OnStart = [](const FCtx& C)
+			{
+				if (UCSRunDirector* Director = C.Mode ? C.Mode->GetRunDirector() : nullptr)
+				{
+					Director->EndRun(ECSRunEnd::Manual);
+				}
+			};
+			Steps.Add(Step);
+		}
+		Steps.Add(PauseTab(TEXT("pause screen: Run tab (results and run history)"), ECSPauseTab::Run, 3.5f));
+		Steps.Add(PauseTab(TEXT("pause screen: Settings tab"), ECSPauseTab::Settings, 2.5f));
+		Steps.Add(PauseTab(TEXT("pause screen: Tuning tab"), ECSPauseTab::Tuning, 2.5f));
+		Steps.Add(PauseTab(TEXT("pause screen: Keys tab"), ECSPauseTab::Keys, 2.5f));
+		{
+			FCSPlaytestStep Step;
+			Step.Label = TEXT("pause screen closed: the game runs again");
+			Step.Seconds = 2.f;
+			Step.Camera = ECSReviewCamera::Player;
+			Step.OnStart = [](const FCtx& C)
+			{
+				if (ACSPlayerController* PC = Cast<ACSPlayerController>(C.Controller))
+				{
+					PC->SetPauseScreenOpen(false);
+				}
+			};
+			Step.OnEnd = [](const FCtx& C)
+			{
+				const ACSPlayerController* PC = Cast<ACSPlayerController>(C.Controller);
+				C.Check(TEXT("the pause screen is closed"), PC && !PC->IsPauseScreenOpen());
+				C.Check(TEXT("the game runs"), C.World && !C.World->IsPaused());
+			};
+			Steps.Add(Step);
+		}
 		return Steps;
 	}
 
@@ -1278,7 +1413,7 @@ UCSPlaytestRunner::UCSPlaytestRunner()
 
 TArray<FString> UCSPlaytestRunner::ScenarioNames()
 {
-	return {TEXT("locomotion"), TEXT("stance"), TEXT("punch"), TEXT("knockdown"), TEXT("fight"), TEXT("moves"), TEXT("stamina"), TEXT("body")};
+	return {TEXT("locomotion"), TEXT("stance"), TEXT("punch"), TEXT("knockdown"), TEXT("fight"), TEXT("moves"), TEXT("stamina"), TEXT("body"), TEXT("screens")};
 }
 
 TArray<FCSPlaytestStep> UCSPlaytestRunner::BuildScenario(const FString& Name)
@@ -1292,6 +1427,7 @@ TArray<FCSPlaytestStep> UCSPlaytestRunner::BuildScenario(const FString& Name)
 	if (Name == TEXT("moves")) { return BuildMoves(); }
 	if (Name == TEXT("stamina")) { return BuildStamina(); }
 	if (Name == TEXT("body")) { return BuildBody(); }
+	if (Name == TEXT("screens")) { return BuildScreens(); }
 	if (Name == TEXT("gym")) { return BuildGym(); }
 	return {};
 }
@@ -1391,6 +1527,9 @@ void UCSPlaytestRunner::BeginPlay()
 	{
 		UE_LOG(LogCombatSimulator, Warning, TEXT("UCSPlaytestRunner: no scenario %s (there are: %s)"), *Name, *FString::Join(ScenarioNames(), TEXT(", ")));
 	}
+	// A play-test's runs are not the player's: nothing it plays is written to the run setup or the
+	// run history on this machine (a packaged play-test shares its saved files with the Steam copy).
+	UCSRunStore::bUseFile = false;
 	FString Path;
 	if (!FParse::Value(FCommandLine::Get(), TEXT("CSPlaytestLog="), Path, false))
 	{

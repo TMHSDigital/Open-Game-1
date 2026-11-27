@@ -52,6 +52,11 @@ struct COMBATSIMULATOR_API FCSPlaytestContext
 	/** Adds a fact to the step's result line (the log and the review summary). */
 	void Note(const FString& Key, const FString& Value) const;
 	void Note(const FString& Key, float Value) const;
+	/**
+	 * An expectation of the step: noted as "check: <Name>" = "ok" or "FAILED". playtest.ps1 lists
+	 * every failed check in the summary and exits 2, so a run that played but went wrong is not a pass.
+	 */
+	void Check(const FString& Name, bool bOk) const;
 };
 
 /** One step of a scenario: a labelled segment of the review, or a silent setup step. */

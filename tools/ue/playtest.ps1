@@ -25,7 +25,8 @@
 #   overview.png       24 frames of the whole run
 #   summary.md         segments, times, the game's numbers, clip and sheet names
 #
-# Exit code: 0 when the game played to the end; 1 otherwise (the summary says how far it got).
+# Exit code: 0 when the game played to the end and every check passed; 1 when it did not play to
+# the end (the summary says how far it got); 2 when it did but a check failed (listed in the summary).
 
 param(
     [string[]]$Scenario = @('all'),
@@ -47,7 +48,7 @@ $ErrorActionPreference = 'Stop'
 
 # -Scenario punch,stance arrives as a list; the game takes one comma-separated value.
 $Scenario = ($Scenario | ForEach-Object { $_ -split ',' } | Where-Object { $_ }) -join ','
-$Scenarios = @('locomotion', 'stance', 'punch', 'knockdown', 'fight', 'moves', 'stamina', 'body')
+$Scenarios = @('locomotion', 'stance', 'punch', 'knockdown', 'fight', 'moves', 'stamina', 'body', 'screens')
 # Scenarios on their own map, left out of 'all': gym plays on the movement gym.
 $MapScenarios = @{ gym = '/Game/Maps/L_MovementGym' }
 if (-not $PSBoundParameters.ContainsKey('Map') -and $MapScenarios.ContainsKey([string]$Scenario)) { $Map = $MapScenarios[[string]$Scenario] }
@@ -252,9 +253,25 @@ if ($missed) {
     $lines.Add('Punches that missed:')
     foreach ($s in $missed) { $lines.Add("- $($s.Label): $($s.Notes['punches'])") }
 }
+# The game's own expectations (C.Check in UCSPlaytestRunner): notes named "check: ..." = ok or FAILED.
+$checks = @($segments | ForEach-Object {
+    $seg = $_
+    $seg.Notes.GetEnumerator() | Where-Object { $_.Key -like 'check: *' } |
+        ForEach-Object { [pscustomobject]@{ Segment = $seg.Label; Check = $_.Key.Substring(7); Ok = $_.Value -eq 'ok' } }
+})
+$failed = @($checks | Where-Object { -not $_.Ok })
+$lines.Add('')
+$lines.Add("Checks: $($checks.Count - $failed.Count) of $($checks.Count) passed.")
+if ($failed) {
+    $lines.Add('')
+    $lines.Add('Checks that FAILED:')
+    foreach ($c in $failed) { $lines.Add("- $($c.Segment): $($c.Check)") }
+}
 $summary = Join-Path $OutDir 'summary.md'
 Set-Content -LiteralPath $summary -Value $lines -Encoding utf8
 
-Write-Host "$($segments.Count) segment(s); summary: $summary"
+Write-Host "$($segments.Count) segment(s); checks $($checks.Count - $failed.Count) of $($checks.Count) passed; summary: $summary"
+foreach ($c in $failed) { Write-Host "CHECK FAILED: $($c.Segment): $($c.Check)" }
 if (-not $ended) { exit 1 }
+if ($failed) { exit 2 }
 exit 0
