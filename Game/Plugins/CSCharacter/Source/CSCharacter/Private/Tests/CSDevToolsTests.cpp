@@ -18,6 +18,7 @@
 #include "EnhancedInputComponent.h"
 #include "InputAction.h"
 #include "UObject/StrongObjectPtr.h"
+#include "UObject/UnrealType.h"
 
 namespace CSDevToolsTests
 {
@@ -33,32 +34,20 @@ namespace CSDevToolsTests
 		TMap<FName, TStrongObjectPtr<UInputAction>> Actions;
 		TStrongObjectPtr<UEnhancedInputComponent> Input;
 
-		UInputAction* Make(FName Name, EInputActionValueType Type, TSoftObjectPtr<UInputAction>& Slot)
-		{
-			UInputAction* Action = NewObject<UInputAction>(GetTransientPackage(), MakeUniqueObjectName(GetTransientPackage(), UInputAction::StaticClass(), Name));
-			Action->ValueType = Type;
-			Slot = Action;
-			Actions.Add(Name, TStrongObjectPtr<UInputAction>(Action));
-			return Action;
-		}
-
 		void Bind(ACSCharacter& Character)
 		{
-			Make(TEXT("Move"), EInputActionValueType::Axis2D, Character.MoveAction);
-			Make(TEXT("Look"), EInputActionValueType::Axis2D, Character.LookAction);
-			Make(TEXT("LookStick"), EInputActionValueType::Axis2D, Character.LookStickAction);
-			Make(TEXT("Jump"), EInputActionValueType::Boolean, Character.JumpAction);
-			Make(TEXT("Sprint"), EInputActionValueType::Boolean, Character.SprintAction);
-			Make(TEXT("Crouch"), EInputActionValueType::Boolean, Character.CrouchAction);
-			Make(TEXT("Walk"), EInputActionValueType::Boolean, Character.WalkAction);
-			Make(TEXT("ToggleCamera"), EInputActionValueType::Boolean, Character.ToggleCameraAction);
-			Make(TEXT("DebugOverlay"), EInputActionValueType::Boolean, Character.DebugOverlayAction);
-			Make(TEXT("DebugRagdoll"), EInputActionValueType::Boolean, Character.DebugRagdollAction);
-			Make(TEXT("DebugPush"), EInputActionValueType::Boolean, Character.DebugPushAction);
-			Make(TEXT("DebugReload"), EInputActionValueType::Boolean, Character.DebugReloadAction);
-			Make(TEXT("DebugMapSwitch"), EInputActionValueType::Boolean, Character.DebugMapSwitchAction);
-			Make(TEXT("DebugThrow"), EInputActionValueType::Boolean, Character.DebugThrowAction);
-			Make(TEXT("DebugReset"), EInputActionValueType::Boolean, Character.DebugResetAction);
+			// Every input action slot of the character, named without "Action" ("Move", "DebugReset"),
+			// so a new action is picked up without a change here.
+			for (FSoftObjectProperty* Slot : ACSCharacter::InputActionProperties())
+			{
+				FString Name = Slot->GetName();
+				Name.RemoveFromEnd(TEXT("Action"));
+				const bool bAxis = Name == TEXT("Move") || Name == TEXT("Look") || Name == TEXT("LookStick");
+				UInputAction* Action = NewObject<UInputAction>(GetTransientPackage(), MakeUniqueObjectName(GetTransientPackage(), UInputAction::StaticClass(), FName(*Name)));
+				Action->ValueType = bAxis ? EInputActionValueType::Axis2D : EInputActionValueType::Boolean;
+				Slot->SetObjectPropertyValue_InContainer(&Character, Action);
+				Actions.Add(FName(*Name), TStrongObjectPtr<UInputAction>(Action));
+			}
 			Input.Reset(NewObject<UEnhancedInputComponent>(&Character));
 			Character.SetupPlayerInputComponent(Input.Get());
 		}
@@ -343,6 +332,35 @@ bool FCSDevToolsOffDisablesKeysTest::RunTest(const FString& Parameters)
 			TestEqual(TEXT("F1 is still bound"), Rig.Press(TEXT("DebugOverlay")), 1);
 			TestFalse(TEXT("F1 toggles the overlay off"), DevTools->IsOverlayVisible());
 		}
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSDevToolsEveryInputActionIsBoundTest, "CombatSimulator.CS.DevTools.EveryInputActionIsBound", CSDevToolsTests::TestFlags)
+bool FCSDevToolsEveryInputActionIsBoundTest::RunTest(const FString& Parameters)
+{
+	// Issue #32: a new input action property without a row in SetupPlayerInputComponent's table
+	// would do nothing at run time; this catches it. The rig fills every slot by reflection.
+	FMoveSim Sim;
+	if (!Sim.Init(*this, 1.f / 60.f, NewTuning()))
+	{
+		return false;
+	}
+	FInputRig Rig;
+	Rig.Bind(*Sim.Character);
+
+	const TArray<FSoftObjectProperty*> Slots = ACSCharacter::InputActionProperties();
+	TestTrue(TEXT("The character has input action slots"), Slots.Num() > 0);
+	TestEqual(TEXT("The rig made one action per slot"), Rig.Actions.Num(), Slots.Num());
+	for (const FSoftObjectProperty* Slot : Slots)
+	{
+		const UObject* Action = Slot->GetObjectPropertyValue_InContainer(Sim.Character);
+		int32 Bindings = 0;
+		for (const TUniquePtr<FEnhancedInputActionEventBinding>& Binding : Rig.Input->GetActionEventBindings())
+		{
+			Bindings += (Action && Binding->GetAction() == Action) ? 1 : 0;
+		}
+		TestTrue(FString::Printf(TEXT("%s is bound in SetupPlayerInputComponent"), *Slot->GetName()), Bindings > 0);
 	}
 	return true;
 }

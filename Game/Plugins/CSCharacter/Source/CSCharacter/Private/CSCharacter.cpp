@@ -26,6 +26,7 @@
 #include "InputActionValue.h"
 #include "InputMappingContext.h"
 #include "PhysicsEngine/PhysicalAnimationComponent.h"
+#include "UObject/UnrealType.h"
 
 namespace
 {
@@ -347,98 +348,86 @@ void ACSCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 		UE_LOG(LogCSCharacter, Error, TEXT("%s: the input component is not a UEnhancedInputComponent (set DefaultInputComponentClass); keys will do nothing."), *GetName());
 		return;
 	}
-	auto Load = [this](TSoftObjectPtr<UInputAction>& Slot, const TCHAR* Name) -> UInputAction*
-	{
-		UInputAction* Action = Slot.LoadSynchronous();
-		if (!Action)
-		{
-			UE_LOG(LogCSCharacter, Warning, TEXT("%s: %s is not set; that key does nothing."), *GetName(), Name);
-		}
-		return Action;
-	};
-
-	if (UInputAction* A = Load(MoveAction, TEXT("MoveAction")))
-	{
-		Input->BindAction(A, ETriggerEvent::Triggered, this, &ACSCharacter::OnMove);
-	}
-	if (UInputAction* A = Load(LookAction, TEXT("LookAction")))
-	{
-		Input->BindAction(A, ETriggerEvent::Triggered, this, &ACSCharacter::OnLook);
-	}
-	if (UInputAction* A = Load(LookStickAction, TEXT("LookStickAction")))
-	{
-		Input->BindAction(A, ETriggerEvent::Triggered, this, &ACSCharacter::OnLookStick);
-	}
-	if (UInputAction* A = Load(JumpAction, TEXT("JumpAction")))
-	{
-		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnJumpStarted);
-		Input->BindAction(A, ETriggerEvent::Completed, this, &ACSCharacter::OnJumpCompleted);
-	}
-	if (UInputAction* A = Load(SprintAction, TEXT("SprintAction")))
-	{
-		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnSprintStarted);
-		Input->BindAction(A, ETriggerEvent::Completed, this, &ACSCharacter::OnSprintCompleted);
-	}
-	if (UInputAction* A = Load(WalkAction, TEXT("WalkAction")))
-	{
-		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnWalkStarted);
-		Input->BindAction(A, ETriggerEvent::Completed, this, &ACSCharacter::OnWalkCompleted);
-	}
-	if (UInputAction* A = Load(CrouchAction, TEXT("CrouchAction")))
-	{
-		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnCrouchStarted);
-	}
-	if (UInputAction* A = Load(ToggleCameraAction, TEXT("ToggleCameraAction")))
-	{
-		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnToggleCameraStarted);
-	}
-	if (UInputAction* A = Load(AttackAction, TEXT("AttackAction")))
-	{
-		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnAttackStarted);
-	}
-	if (UInputAction* A = Load(KickAction, TEXT("KickAction")))
-	{
-		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnKickStarted);
-	}
-	if (UInputAction* A = Load(BlockAction, TEXT("BlockAction")))
-	{
-		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnBlockStarted);
-		Input->BindAction(A, ETriggerEvent::Completed, this, &ACSCharacter::OnBlockCompleted);
-	}
-	if (UInputAction* A = Load(DodgeAction, TEXT("DodgeAction")))
-	{
-		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnDodgeStarted);
-	}
+	// One row per action and trigger event: the slot, when it fires, and its handler (a press handler,
+	// or a value handler for the axes). A new action is a property, a handler and a row here; the
+	// test rigs find the properties by reflection (InputActionProperties), and
+	// CombatSimulator.CS.DevTools.EveryInputActionIsBound fails when a property has no row.
 	// Dev keys are always bound; UCSDevTools decides at press time whether they do anything, so a
 	// reload can turn bDevTools on or off (the reload key itself reads the source tuning).
-	if (UInputAction* A = Load(DebugOverlayAction, TEXT("DebugOverlayAction")))
+	struct FBinding
 	{
-		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnDebugOverlayStarted);
-	}
-	if (UInputAction* A = Load(DebugRagdollAction, TEXT("DebugRagdollAction")))
+		TSoftObjectPtr<UInputAction> ACSCharacter::* Slot;
+		const TCHAR* Name;
+		ETriggerEvent Event;
+		void (ACSCharacter::*Press)();
+		void (ACSCharacter::*Value)(const FInputActionValue&);
+	};
+#define CS_VALUE(Slot, Handler) {&ACSCharacter::Slot, TEXT(#Slot), ETriggerEvent::Triggered, nullptr, &ACSCharacter::Handler}
+#define CS_PRESS(Slot, Event, Handler) {&ACSCharacter::Slot, TEXT(#Slot), ETriggerEvent::Event, &ACSCharacter::Handler, nullptr}
+	static const FBinding Bindings[] = {
+		CS_VALUE(MoveAction, OnMove),
+		CS_VALUE(LookAction, OnLook),
+		CS_VALUE(LookStickAction, OnLookStick),
+		CS_PRESS(JumpAction, Started, OnJumpStarted),
+		CS_PRESS(JumpAction, Completed, OnJumpCompleted),
+		CS_PRESS(SprintAction, Started, OnSprintStarted),
+		CS_PRESS(SprintAction, Completed, OnSprintCompleted),
+		CS_PRESS(WalkAction, Started, OnWalkStarted),
+		CS_PRESS(WalkAction, Completed, OnWalkCompleted),
+		CS_PRESS(CrouchAction, Started, OnCrouchStarted),
+		CS_PRESS(ToggleCameraAction, Started, OnToggleCameraStarted),
+		CS_PRESS(AttackAction, Started, OnAttackStarted),
+		CS_PRESS(KickAction, Started, OnKickStarted),
+		CS_PRESS(BlockAction, Started, OnBlockStarted),
+		CS_PRESS(BlockAction, Completed, OnBlockCompleted),
+		CS_PRESS(DodgeAction, Started, OnDodgeStarted),
+		CS_PRESS(DebugOverlayAction, Started, OnDebugOverlayStarted),
+		CS_PRESS(DebugRagdollAction, Started, OnDebugRagdollStarted),
+		CS_PRESS(DebugPushAction, Started, OnDebugPushStarted),
+		CS_PRESS(DebugReloadAction, Started, OnDebugReloadStarted),
+		CS_PRESS(DebugMapSwitchAction, Started, OnDebugMapSwitchStarted),
+		CS_PRESS(DebugThrowAction, Started, OnDebugThrowStarted),
+		CS_PRESS(DebugResetAction, Started, OnDebugResetStarted),
+	};
+#undef CS_VALUE
+#undef CS_PRESS
+
+	TSoftObjectPtr<UInputAction> ACSCharacter::* Warned = nullptr;
+	for (const FBinding& Row : Bindings)
 	{
-		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnDebugRagdollStarted);
+		UInputAction* Action = (this->*Row.Slot).LoadSynchronous();
+		if (!Action)
+		{
+			// Once per action, not per trigger event (an action's rows are next to each other).
+			if (Row.Slot != Warned)
+			{
+				Warned = Row.Slot;
+				UE_LOG(LogCSCharacter, Warning, TEXT("%s: %s is not set; that key does nothing."), *GetName(), Row.Name);
+			}
+			continue;
+		}
+		if (Row.Value)
+		{
+			Input->BindAction(Action, Row.Event, this, Row.Value);
+		}
+		else
+		{
+			Input->BindAction(Action, Row.Event, this, Row.Press);
+		}
 	}
-	if (UInputAction* A = Load(DebugPushAction, TEXT("DebugPushAction")))
+}
+
+TArray<FSoftObjectProperty*> ACSCharacter::InputActionProperties()
+{
+	TArray<FSoftObjectProperty*> Slots;
+	for (TFieldIterator<FSoftObjectProperty> It(StaticClass()); It; ++It)
 	{
-		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnDebugPushStarted);
+		if (It->PropertyClass && It->PropertyClass->IsChildOf(UInputAction::StaticClass()))
+		{
+			Slots.Add(*It);
+		}
 	}
-	if (UInputAction* A = Load(DebugReloadAction, TEXT("DebugReloadAction")))
-	{
-		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnDebugReloadStarted);
-	}
-	if (UInputAction* A = Load(DebugMapSwitchAction, TEXT("DebugMapSwitchAction")))
-	{
-		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnDebugMapSwitchStarted);
-	}
-	if (UInputAction* A = Load(DebugThrowAction, TEXT("DebugThrowAction")))
-	{
-		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnDebugThrowStarted);
-	}
-	if (UInputAction* A = Load(DebugResetAction, TEXT("DebugResetAction")))
-	{
-		Input->BindAction(A, ETriggerEvent::Started, this, &ACSCharacter::OnDebugResetStarted);
-	}
+	return Slots;
 }
 
 void ACSCharacter::OnMove(const FInputActionValue& Value)

@@ -23,6 +23,14 @@ The playable character for Combat Simulator, as a self-contained Unreal Engine 5
 - Input actions and a mapping context (see `Game/Content/Python/create_input_assets.py` in this repository for the set the game uses).
 - The `Ragdoll` collision profile named in `UCSPhysicsBodyComponent::RagdollCollisionProfile`.
 
+## Adding an input action
+
+1. A `TSoftObjectPtr<UInputAction>` config property on `ACSCharacter`, a handler, and a row in the binding table in `SetupPlayerInputComponent` (one row per trigger event).
+2. The action and its keys in `Game/Content/Python/create_input_assets.py` (run it again), and the property in `Game/Config/DefaultGame.ini`.
+3. The action in the expected list of `Game/Source/CombatSimulator/Tests/CSInputAssetTests.cpp`.
+
+The test rigs find the actions by reflection (`ACSCharacter::InputActionProperties`), so they need no change. `CombatSimulator.CS.DevTools.EveryInputActionIsBound` fails when a property has no table row, and `InputContextHasAllActions` fails when it is missing from the expected list.
+
 ## Spawning
 
 Spawn `ACSCharacter` like any actor, at any point in a frame. When it is spawned inside a world tick (from a timer, an AI spawner or a respawn), its physics body starts on the next frame: for that one frame the character is plain animation and ignores hits. This is deliberate. Starting the simulated body in the spawn frame crashes in the engine's physics blend, because the new mesh has not been through a full frame yet.

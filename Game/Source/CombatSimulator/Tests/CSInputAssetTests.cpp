@@ -12,6 +12,7 @@
 #include "InputCoreTypes.h"
 #include "InputMappingContext.h"
 #include "InputModifiers.h"
+#include "UObject/UnrealType.h"
 
 namespace CSInputAssetTests
 {
@@ -103,6 +104,18 @@ bool FCSDevToolsInputContextHasAllActionsTest::RunTest(const FString& Parameters
 		{
 			TestTrue(FString::Printf(TEXT("%s is on %s"), Expected.Name, *Expected.Gamepad.ToString()), Keys.Contains(Expected.Gamepad));
 		}
+	}
+
+	// Every input action slot of the character is in the list above, so a new action cannot skip the
+	// asset, the key layout or the config (issue #32).
+	for (const FSoftObjectProperty* Slot : ACSCharacter::InputActionProperties())
+	{
+		const void* SlotValue = Slot->ContainerPtrToValuePtr<void>(Defaults);
+		const bool bListed = ExpectedActions().ContainsByPredicate([Defaults, SlotValue](const FExpectedAction& Expected)
+		{
+			return static_cast<const void*>(&(Defaults->*Expected.Slot)) == SlotValue;
+		});
+		TestTrue(FString::Printf(TEXT("%s has an asset and keys in this test's list"), *Slot->GetName()), bListed);
 	}
 
 	// Modifiers that make the values mean what ACSCharacter expects.

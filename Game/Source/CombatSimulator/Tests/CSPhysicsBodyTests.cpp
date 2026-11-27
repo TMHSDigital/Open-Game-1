@@ -36,6 +36,7 @@
 #include "PhysicalMaterials/PhysicalMaterial.h"
 #include "Tests/AutomationCommon.h"
 #include "UObject/StrongObjectPtr.h"
+#include "UObject/UnrealType.h"
 
 namespace CSPhysicsBodyTests
 {
@@ -264,27 +265,20 @@ namespace CSPhysicsBodyTests
 		TMap<FName, TStrongObjectPtr<UInputAction>> Actions;
 		TStrongObjectPtr<UEnhancedInputComponent> Input;
 
-		void Make(FName Name, EInputActionValueType Type, TSoftObjectPtr<UInputAction>& Slot)
-		{
-			UInputAction* Action = NewObject<UInputAction>(GetTransientPackage(), MakeUniqueObjectName(GetTransientPackage(), UInputAction::StaticClass(), Name));
-			Action->ValueType = Type;
-			Slot = Action;
-			Actions.Add(Name, TStrongObjectPtr<UInputAction>(Action));
-		}
-
 		void Bind(ACSCharacter& Character)
 		{
-			Make(TEXT("Move"), EInputActionValueType::Axis2D, Character.MoveAction);
-			Make(TEXT("Look"), EInputActionValueType::Axis2D, Character.LookAction);
-			Make(TEXT("Jump"), EInputActionValueType::Boolean, Character.JumpAction);
-			Make(TEXT("Sprint"), EInputActionValueType::Boolean, Character.SprintAction);
-			Make(TEXT("Crouch"), EInputActionValueType::Boolean, Character.CrouchAction);
-			Make(TEXT("Walk"), EInputActionValueType::Boolean, Character.WalkAction);
-			Make(TEXT("ToggleCamera"), EInputActionValueType::Boolean, Character.ToggleCameraAction);
-			Make(TEXT("DebugOverlay"), EInputActionValueType::Boolean, Character.DebugOverlayAction);
-			Make(TEXT("DebugRagdoll"), EInputActionValueType::Boolean, Character.DebugRagdollAction);
-			Make(TEXT("DebugPush"), EInputActionValueType::Boolean, Character.DebugPushAction);
-			Make(TEXT("DebugReload"), EInputActionValueType::Boolean, Character.DebugReloadAction);
+			// Every input action slot of the character, named without "Action" ("Move", "DebugReset"),
+			// so a new action is picked up without a change here.
+			for (FSoftObjectProperty* Slot : ACSCharacter::InputActionProperties())
+			{
+				FString Name = Slot->GetName();
+				Name.RemoveFromEnd(TEXT("Action"));
+				const bool bAxis = Name == TEXT("Move") || Name == TEXT("Look") || Name == TEXT("LookStick");
+				UInputAction* Action = NewObject<UInputAction>(GetTransientPackage(), MakeUniqueObjectName(GetTransientPackage(), UInputAction::StaticClass(), FName(*Name)));
+				Action->ValueType = bAxis ? EInputActionValueType::Axis2D : EInputActionValueType::Boolean;
+				Slot->SetObjectPropertyValue_InContainer(&Character, Action);
+				Actions.Add(FName(*Name), TStrongObjectPtr<UInputAction>(Action));
+			}
 			Input.Reset(NewObject<UEnhancedInputComponent>(&Character));
 			Character.SetupPlayerInputComponent(Input.Get());
 		}

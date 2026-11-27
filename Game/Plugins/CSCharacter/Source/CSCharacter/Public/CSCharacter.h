@@ -22,6 +22,7 @@ class UPoseableMeshComponent;
 class UAnimInstance;
 class USkeletalMesh;
 struct FInputActionValue;
+class FSoftObjectProperty;
 
 DECLARE_MULTICAST_DELEGATE(FCSToggleCameraRequested);
 DECLARE_MULTICAST_DELEGATE(FCSTuningApplied);
@@ -226,6 +227,13 @@ public:
 	TSoftClassPtr<UAnimInstance> CharacterAnimClass;
 
 	// ----- Input (Enhanced Input; set in config or on a subclass) -----
+
+	/**
+	 * Every input action slot of the class (its TSoftObjectPtr<UInputAction> properties), in
+	 * declaration order. SetupPlayerInputComponent binds each from one table; tests use this list so
+	 * a new action needs no test rig change.
+	 */
+	static TArray<FSoftObjectProperty*> InputActionProperties();
 
 	/** Added to the local player's Enhanced Input subsystem when a player controller possesses the character. */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "CS|Input")
