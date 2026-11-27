@@ -5,6 +5,8 @@ Date: 2026-11-24
 Issue: [#62](https://github.com/TMHSDigital/Open-Game-1/issues/62)
 Supersedes: none
 
+Note: the physics-steered punch this decision introduced is superseded by decision 0025 (strikes are authored motion); the run skeleton still holds.
+
 ## Context
 
 Decision 0015 ended with build 0.1.5: a target dummy, a thrown ball, a launcher and hits that come from contact. The character can be hit and can hit a dummy with a ball, but nothing says what a session of play is. The maps start as they were placed, a key puts them back, and nothing is counted.
