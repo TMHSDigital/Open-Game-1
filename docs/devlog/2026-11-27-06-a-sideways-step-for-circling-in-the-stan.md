@@ -13,7 +13,7 @@ clip: null
 
 ## Narrative
 
-<!-- narrative -->
+Fighters now circle with a side step: an authored side shuffle (the right foot steps out, the left follows, the feet never cross) that the legs take when moving sideways in the stance, played backward for the left. Reviewing it showed the outer arm flung out while circling: the simulated arms trailed the guard. In the stance the upper body now shows its animation over the simulation, and a hit shows on the bodies it struck by their hit weight, so a head shot snaps the head while the arms keep the guard (a first try, handing the whole upper body back on a hit, dropped the arms on every jab). Movement close to another fighter is footwork, at most 200 cm/s, except a strike's step in. The gym's box lane now goes through a box instead of passing it, because only a swinging arm had ever moved one. The development upload then failed its test gate on the punch from 150 cm, which missed about one run in five: the wind-up stretched to step in was being treated as an opponent's tell and stood still. Fixed after this entry was written (d5f4d07), 8 of 8, and build 0.1.18 is on the development branch with it. The gym box check still fails now and then (Issue #78). Next: motion capture boxing in place of the keyframed clips, and gloves.
 
 ## Changes
 
