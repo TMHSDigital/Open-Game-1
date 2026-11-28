@@ -650,7 +650,9 @@ void UCSStrikeComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 		// A wind-up drawn out longer than the punch's own (an opponent's tell) stands still and only
 		// steps in for the last PunchWindupSeconds of it: a step held through the whole tell would
 		// carry the body into the target and around its side.
-		const bool bLateEnough = Phase == ECSStrikePhase::Strike || GetWindupSeconds() - PhaseSeconds <= T.PunchWindupSeconds * MoveRow.WindupScale;
+		// The draw back stretched to step in (StepWindupSeconds) is stepping time, not a tell.
+		const bool bLateEnough = Phase == ECSStrikePhase::Strike
+			|| GetWindupSeconds() - PhaseSeconds <= T.PunchWindupSeconds * MoveRow.WindupScale + StepWindupSeconds;
 		if (bSteppingIn && bLateEnough)
 		{
 			// Every frame until in reach: ground friction would stop a single push within the punch.
