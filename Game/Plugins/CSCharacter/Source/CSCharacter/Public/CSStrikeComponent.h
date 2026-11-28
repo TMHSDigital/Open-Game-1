@@ -279,6 +279,10 @@ public:
 	UPROPERTY(EditAnywhere, Category = "CS|Strike")
 	FName MovingClipSlot = TEXT("UpperBody");
 
+	/** The step in stops when the two capsules are this close (cm) or closer: the bodies have met. */
+	UPROPERTY(EditAnywhere, Category = "CS|Strike", meta = (ClampMin = "0", Units = "cm"))
+	float StepInContactMargin = 6.f;
+
 	/** Moving faster than this (cm/s) when a strike starts throws it on the move. */
 	UPROPERTY(EditAnywhere, Category = "CS|Strike", meta = (ClampMin = "0", Units = "cm/s"))
 	float MovingStrikeSpeed = 60.f;
@@ -294,7 +298,19 @@ public:
 	 * the strike's speed on top of the hit, so a clean shot is seen (decision 0025). 0: none.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "CS|Strike", meta = (ClampMin = "0"))
-	float HeadSnapScale = 0.45f;
+	float HeadSnapScale = 0.8f;
+
+	/**
+	 * A punch that lands also rocks the struck body's whole upper body back by this share of the
+	 * punch's speed (times the square root of its mass scale, so a hook rocks more than a jab): the
+	 * hit chain alone (the head) springs straight back on the neck, which reads as no reaction. 0: none.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "CS|Strike", meta = (ClampMin = "0"))
+	float BodyRockShare = 0.1f;
+
+	/** The bone the rock is given at: the middle of the chest, so the whole upper body takes it. */
+	UPROPERTY(EditAnywhere, Category = "CS|Strike")
+	FName BodyRockBone = TEXT("spine_03");
 
 	/** The bones a head snap goes to. */
 	UPROPERTY(EditAnywhere, Category = "CS|Strike")

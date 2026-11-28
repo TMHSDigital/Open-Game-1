@@ -23,6 +23,8 @@ enum class ECSReviewCamera : uint8
 	Front,
 	/** From the side of the dummy, following it (a knockdown can throw it far from the player). */
 	SideOfDummy,
+	/** Close, from in front and to the player's lead (left) side: the strike and the face it lands on. */
+	Quarter,
 };
 
 class UCSPlaytestRunner;
@@ -66,6 +68,8 @@ struct COMBATSIMULATOR_API FCSPlaytestStep
 	FString Label;
 	float Seconds = 1.f;
 	ECSReviewCamera Camera = ECSReviewCamera::Side;
+	/** The world's time dilation during the step (below 1: slow motion, so a recording catches every pose). Seconds are game time. */
+	float TimeDilation = 1.f;
 	TFunction<void(const FCSPlaytestContext&)> OnStart;
 	TFunction<void(const FCSPlaytestContext&, float /* Seconds in */, float /* DeltaTime */)> OnTick;
 	TFunction<void(const FCSPlaytestContext&)> OnEnd;

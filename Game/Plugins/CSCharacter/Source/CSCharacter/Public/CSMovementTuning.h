@@ -283,10 +283,11 @@ public:
 
 	/**
 	 * Arms and head follow the pose at this share of NormalProfile, so they sway with starts,
-	 * stops and turns (default 0.35). Within [0, 1].
+	 * stops and turns, and hold the fighting guard (default 0.6; it was 0.22 while punches were steered
+	 * through the physics body, decision 0025). Within [0, 1].
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Body", meta = (UIMin = "0", UIMax = "1"))
-	float NormalLimbStrengthScale = 0.22f;
+	float NormalLimbStrengthScale = 0.6f;
 
 	/**
 	 * Hit: the strengths a hit limb chain drops to (an arm, the head, or the whole upper body for a

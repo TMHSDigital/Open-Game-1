@@ -76,7 +76,7 @@ def stance(**over):
         "head_pitch": 8.0,              # chin down
         "clav_l": 0.0, "clav_r": 0.0,   # degrees the shoulder rises (protects the chin on a punch)
         "wrist_l": V(13.0, -30.0, 143.0),
-        "wrist_r": V(-13.0, -12.0, 146.0),
+        "wrist_r": V(-17.0, -11.0, 143.0),
         "elbow_l": V(30.0, 0.0, 95.0),  # pole points: which way the elbow goes
         "elbow_r": V(-30.0, 10.0, 95.0),
         "palm_l": V(-1.0, -0.2, 0.0),   # which way the palm faces (wrist kept straight)
@@ -163,7 +163,7 @@ def stance_loop():
         c = math.sin(a + 1.2)
         keys.append((f, stance(
             pelvis=V(0.0, 1.5, -5.5 + 1.3 * b), spine_yaw=-8.0 + 2.0 * c,
-            wrist_l=V(13.0, -30.0 + 1.0 * c, 143.0 + 1.2 * b), wrist_r=V(-13.0, -12.0, 146.0 + 1.0 * c)), "linear"))
+            wrist_l=V(13.0, -30.0 + 1.0 * c, 143.0 + 1.2 * b), wrist_r=V(-17.0, -11.0, 143.0 + 1.0 * c)), "linear"))
     return keys, None
 
 

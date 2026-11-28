@@ -29,6 +29,7 @@
 #include "EngineUtils.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/HUD.h"
+#include "GameFramework/WorldSettings.h"
 #include "HAL/FileManager.h"
 #include "HAL/IConsoleManager.h"
 #include "Kismet/KismetSystemLibrary.h"
@@ -1449,6 +1450,35 @@ namespace CSPlaytestScenarios
 		return Step;
 	}
 
+	/** One strike at the dummy in slow motion, for looking at the animation frame by frame. */
+	FCSPlaytestStep SlowStrike(ECSStrikeMove Strike, float Distance, ECSReviewCamera Camera)
+	{
+		FCSPlaytestStep Step = Move(Strike, Distance);
+		Step.Label = FString::Printf(TEXT("%s, slow, %s"), *FCSStrikeMoveData::Describe(Strike), Camera == ECSReviewCamera::Side ? TEXT("side") : TEXT("quarter"));
+		Step.Camera = Camera;
+		Step.TimeDilation = 0.3f;
+		Step.Seconds = 1.8f;
+		return Step;
+	}
+
+	TArray<FCSPlaytestStep> BuildStrikes()
+	{
+		// The strikes as animation (decision 0025): each one in slow motion from the side and from in
+		// front, at the range it is thrown from, and the guard and the block held.
+		TArray<FCSPlaytestStep> Steps;
+		Steps.Add(SetUpRun(1, 250.f));
+		const TPair<ECSStrikeMove, float> Moves[] = {
+			{ECSStrikeMove::Jab, 80.f}, {ECSStrikeMove::Straight, 80.f}, {ECSStrikeMove::HookLeft, 70.f},
+			{ECSStrikeMove::HookRight, 70.f}, {ECSStrikeMove::Kick, 100.f}};
+		for (const TPair<ECSStrikeMove, float>& M : Moves)
+		{
+			Steps.Add(SlowStrike(M.Key, M.Value, ECSReviewCamera::Side));
+			Steps.Add(SlowStrike(M.Key, M.Value, ECSReviewCamera::Quarter));
+		}
+		Steps.Add(GuardHeld(TEXT("guard, quarter"), 2.f, ECSReviewCamera::Quarter));
+		return Steps;
+	}
+
 	TArray<FCSPlaytestStep> BuildBody()
 	{
 		TArray<FCSPlaytestStep> Steps;
@@ -1493,7 +1523,7 @@ UCSPlaytestRunner::UCSPlaytestRunner()
 
 TArray<FString> UCSPlaytestRunner::ScenarioNames()
 {
-	return {TEXT("locomotion"), TEXT("stance"), TEXT("punch"), TEXT("knockdown"), TEXT("fight"), TEXT("moves"), TEXT("stamina"), TEXT("body"), TEXT("screens"), TEXT("motion")};
+	return {TEXT("locomotion"), TEXT("stance"), TEXT("punch"), TEXT("knockdown"), TEXT("fight"), TEXT("moves"), TEXT("stamina"), TEXT("body"), TEXT("screens"), TEXT("motion"), TEXT("strikes")};
 }
 
 TArray<FCSPlaytestStep> UCSPlaytestRunner::BuildScenario(const FString& Name)
@@ -1509,6 +1539,7 @@ TArray<FCSPlaytestStep> UCSPlaytestRunner::BuildScenario(const FString& Name)
 	if (Name == TEXT("body")) { return BuildBody(); }
 	if (Name == TEXT("screens")) { return BuildScreens(); }
 	if (Name == TEXT("motion")) { return BuildMotion(); }
+	if (Name == TEXT("strikes")) { return BuildStrikes(); }
 	if (Name == TEXT("gym")) { return BuildGym(); }
 	return {};
 }
@@ -1727,9 +1758,14 @@ void UCSPlaytestRunner::StartStep(int32 Index)
 		++SegmentIndex;
 		CurrentLabel = Step.Label;
 		const TCHAR* Camera = Step.Camera == ECSReviewCamera::Side ? TEXT("side") : Step.Camera == ECSReviewCamera::Front ? TEXT("front")
-			: Step.Camera == ECSReviewCamera::SideOfDummy ? TEXT("side of the dummy") : TEXT("player");
+			: Step.Camera == ECSReviewCamera::SideOfDummy ? TEXT("side of the dummy")
+			: Step.Camera == ECSReviewCamera::Quarter ? TEXT("quarter") : TEXT("player");
 		Log(TEXT("segment"), Step.Label, {{TEXT("camera"), Camera}});
 		UE_LOG(LogCombatSimulator, Log, TEXT("UCSPlaytestRunner: %d %s"), SegmentIndex, *Step.Label);
+	}
+	if (!FMath::IsNearlyEqual(Step.TimeDilation, 1.f) && Context.World && Context.World->GetWorldSettings())
+	{
+		Context.World->GetWorldSettings()->SetTimeDilation(Step.TimeDilation);
 	}
 	if (Step.OnStart)
 	{
@@ -1743,6 +1779,14 @@ void UCSPlaytestRunner::EndStep()
 	if (Step.OnEnd)
 	{
 		Step.OnEnd(MakeContext());
+	}
+	if (!FMath::IsNearlyEqual(Step.TimeDilation, 1.f))
+	{
+		const FCSPlaytestContext Context = MakeContext();
+		if (Context.World && Context.World->GetWorldSettings())
+		{
+			Context.World->GetWorldSettings()->SetTimeDilation(1.f);
+		}
 	}
 	if (!Step.Label.IsEmpty())
 	{
@@ -1861,6 +1905,13 @@ void UCSPlaytestRunner::UpdateCamera(float DeltaTime)
 	{
 		const FVector Forward = FRotationMatrix(FRotator(0.f, PC->GetControlRotation().Yaw, 0.f)).GetUnitAxis(EAxis::X);
 		Wanted = Focus + Forward * Distance + FVector(0.f, 0.f, 35.f);
+	}
+	else if (CameraMode == ECSReviewCamera::Quarter)
+	{
+		// Closer, at chest height, ahead and to the left: the lead side, where the jab and the hooks show.
+		const FVector Forward = FRotationMatrix(FRotator(0.f, PC->GetControlRotation().Yaw, 0.f)).GetUnitAxis(EAxis::X);
+		Focus.Z += 35.f;
+		Wanted = Focus + (Forward * 0.4f - CameraSide * 0.92f).GetSafeNormal() * Distance * 0.65f + FVector(0.f, 0.f, 10.f);
 	}
 	else
 	{

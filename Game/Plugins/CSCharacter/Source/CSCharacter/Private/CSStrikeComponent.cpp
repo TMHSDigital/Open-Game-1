@@ -449,6 +449,21 @@ void UCSStrikeComponent::StepIn()
 		bSteppingIn = false;
 		return;
 	}
+	// The bodies have met: a short strike (a hook) can reach less far than two bodies stand apart,
+	// and stepping on would slide this one around the other and carry it past. Stop, and drop the
+	// speed toward it, so the strike is thrown from here.
+	const float Apart = float(FVector::Dist2D(Character->GetActorLocation(), Victim->GetActorLocation()));
+	if (Apart <= Character->GetSimpleCollisionRadius() + Victim->GetSimpleCollisionRadius() + StepInContactMargin)
+	{
+		const FVector Toward = (Victim->GetActorLocation() - Character->GetActorLocation()).GetSafeNormal2D();
+		const float Closing = float(FVector::DotProduct(Move->Velocity, Toward));
+		if (Closing > 0.f)
+		{
+			Move->Velocity -= Toward * Closing;
+		}
+		bSteppingIn = false;
+		return;
+	}
 	const FVector Along = To.GetSafeNormal();
 	// No walkable floor a step ahead: stop rather than run off it.
 	FHitResult Floor;
@@ -807,6 +822,12 @@ void UCSStrikeComponent::Sweep()
 						Head->AddImpulse(Velocity * HeadSnapScale * FMath::Sqrt(MoveRow.MassScale), true);
 					}
 				}
+			}
+			if (Result == ECSContactResult::Stagger && !MoveRow.bLeg && BodyRockShare > 0.f && Physics)
+			{
+				// The upper body rocks back with the punch (no new hit: the impulse goes straight to the body).
+				const float Rock = Velocity.Size() * BodyRockShare * FMath::Sqrt(FMath::Max(MoveRow.MassScale, 0.f));
+				Physics->ApplyImpulseAtBone(BodyRockBone, StrikeAim.GetSafeNormal2D() * Rock * Physics->GetBodyMass());
 			}
 			if (Result == ECSContactResult::Stagger || Result == ECSContactResult::Ragdoll)
 			{
