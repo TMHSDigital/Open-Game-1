@@ -224,6 +224,19 @@ public:
 	void SetAnimationOverride(float Weight);
 	float GetAnimationOverride() const { return AnimationOverride; }
 
+	/**
+	 * A floor under the animation override while nothing has hit the body: the fighting stance
+	 * shows its guard by this much over the simulation, so the arms do not trail behind fast
+	 * footwork (decision 0025). In the Hit state the bodies the hit struck show the simulation by
+	 * their hit weight, so a head shot snaps the head while the arms keep the guard. Set every
+	 * frame by the character.
+	 */
+	void SetBaseAnimationOverride(float Weight) { BaseOverrideTarget = FMath::Clamp(Weight, 0.f, 1.f); }
+
+	/** How fast the base override follows its target, per second (an exponential ease). */
+	UPROPERTY(EditAnywhere, Category = "CS|Body", meta = (ClampMin = "0"))
+	float BaseOverrideEaseSpeed = 8.f;
+
 	/** Mass of all bodies, kg (0 without a physics body). */
 	UFUNCTION(BlueprintPure, Category = "CS|Body")
 	float GetBodyMass() const;
@@ -292,6 +305,13 @@ private:
 	TArray<FName> ExtraSimulatedRoots;
 	/** SetAnimationOverride's weight. */
 	float AnimationOverride = 0.f;
+	/** The base override asked for, and the eased value in use. */
+	float BaseOverrideTarget = 0.f;
+	float BaseOverride = 0.f;
+	/** The blend weight last written to the upper body (-1: none yet). */
+	float AppliedOverride = -1.f;
+	/** Writes max(AnimationOverride, BaseOverride) to the upper body's blend weight when it changed. */
+	void ApplyOverride();
 
 	ACSCharacter* GetCharacter() const;
 	const UCSMovementTuning& GetTuning() const;

@@ -34,6 +34,8 @@ enum class ECSLocomotionPose : uint8
 	Land,
 	/** The legs in the fighting stance (decision 0025): stance idle, the shuffle step, then the jog. */
 	Stance,
+	/** Stepping sideways in the stance (circling): stance idle, then the side shuffle. */
+	StanceSide,
 };
 
 /** How far a locomotion clip travels: what turns a ground speed into a play rate. */
@@ -119,6 +121,26 @@ public:
 	 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "CS|Animation")
 	TArray<FCSStrideSample> StanceStride;
+
+	/** Stride of each sample of the StanceSide blend space: stance idle, the side shuffle. Empty: no side step. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "CS|Animation")
+	TArray<FCSStrideSample> StanceSideStride;
+
+	/**
+	 * In the stance, moving at least this far from straight ahead or back (degrees) steps sideways;
+	 * it keeps stepping sideways down to SideStepAngle minus SideStepHysteresis, so a move near the
+	 * edge does not flicker between the two.
+	 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "CS|Animation", meta = (ClampMin = "0", ClampMax = "90", Units = "deg"))
+	float SideStepAngle = 55.f;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "CS|Animation", meta = (ClampMin = "0", ClampMax = "45", Units = "deg"))
+	float SideStepHysteresis = 10.f;
+
+	/**
+	 * Whether a move at MoveAngle (degrees from the facing, positive right) steps sideways, given
+	 * whether the last one did (the hysteresis).
+	 */
+	static bool IsSideStep(float MoveAngle, float Angle, float Hysteresis, bool bWasSide);
 
 	/**
 	 * The fighting guard (decision 0025): looped on the upper body (GuardSlot) while the character
@@ -227,6 +249,8 @@ protected:
 	TWeakObjectPtr<UAnimMontage> GuardMontage;
 	/** The legs take the Stance pose instead of Ground (the combat stance, standing). */
 	bool bStanceLegs = false;
+	/** In the stance, stepping sideways (the StanceSide pose). */
+	bool bSideStep = false;
 
 	/** The clip playing in GuardMontage is BlockClip. */
 	bool bGuardIsBlock = false;

@@ -70,6 +70,21 @@ namespace CSOverhaulTests
 	}
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSOverhaulSideStepTest, "CombatSimulator.CS.Overhaul.SideStepInTheStance", CSOverhaulTests::TestFlags)
+bool FCSOverhaulSideStepTest::RunTest(const FString& Parameters)
+{
+	// Decision 0025: in the stance a sideways move steps sideways, ahead and back shuffle, with a margin.
+	TestTrue(TEXT("Straight right steps sideways"), UCSAnimInstance::IsSideStep(90.f, 55.f, 10.f, false));
+	TestTrue(TEXT("Straight left steps sideways"), UCSAnimInstance::IsSideStep(-90.f, 55.f, 10.f, false));
+	TestFalse(TEXT("Ahead does not"), UCSAnimInstance::IsSideStep(0.f, 55.f, 10.f, false));
+	TestFalse(TEXT("Back does not"), UCSAnimInstance::IsSideStep(180.f, 55.f, 10.f, true));
+	TestFalse(TEXT("A diagonal ahead does not start one"), UCSAnimInstance::IsSideStep(50.f, 55.f, 10.f, false));
+	TestTrue(TEXT("But keeps one going"), UCSAnimInstance::IsSideStep(50.f, 55.f, 10.f, true));
+	TestTrue(TEXT("Back and to the left at 120 degrees is sideways"), UCSAnimInstance::IsSideStep(-120.f, 55.f, 10.f, false));
+	TestFalse(TEXT("Back at 150 degrees is not"), UCSAnimInstance::IsSideStep(150.f, 55.f, 10.f, false));
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCSOverhaulLegYawTest, "CombatSimulator.CS.Overhaul.LegYawAndBackward", CSOverhaulTests::TestFlags)
 bool FCSOverhaulLegYawTest::RunTest(const FString& Parameters)
 {

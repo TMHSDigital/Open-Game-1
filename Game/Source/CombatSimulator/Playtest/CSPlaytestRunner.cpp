@@ -1185,7 +1185,9 @@ namespace CSPlaytestScenarios
 		Steps.Add(GymLane(TEXT("gym: stairs, 40 cm steps"), 3900.f, 3.f, ECSGait::Jog, {110.f}));
 		Steps.Add(GymLane(TEXT("gym: gaps, sprinting and jumping"), 4600.f, 6.f, ECSGait::Sprint, {90.f, -1.f, -1}, 0.75f));
 		{
-			FCSPlaytestStep Step = GymLane(TEXT("gym: physics boxes, jogging through"), -625.f, 4.f, ECSGait::Jog, {});
+			// On the line of the 100 cm box (y -600 to -500): the body runs into it, rather than past it
+			// with only a swinging arm to brush it (the guard is held near the gym's dummy at y -450).
+			FCSPlaytestStep Step = GymLane(TEXT("gym: physics boxes, jogging through"), -575.f, 4.f, ECSGait::Jog, {});
 			TSharedRef<TMap<TWeakObjectPtr<AActor>, FVector>> Starts = MakeShared<TMap<TWeakObjectPtr<AActor>, FVector>>();
 			const auto Lane = Step.OnStart;
 			Step.OnStart = [Lane, Starts](const FCtx& C)

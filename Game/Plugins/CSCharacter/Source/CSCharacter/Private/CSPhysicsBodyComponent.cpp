@@ -221,6 +221,8 @@ void UCSPhysicsBodyComponent::SetState(ECSBodyState NewState)
 	if (NewState != ECSBodyState::Normal && NewState != ECSBodyState::Hit)
 	{
 		AnimationOverride = 0.f; // the ragdoll and the get-up set their own blend weights
+		BaseOverride = 0.f;
+		AppliedOverride = -1.f;
 	}
 	OnStateChanged.Broadcast(Old, NewState);
 }
@@ -309,6 +311,8 @@ void UCSPhysicsBodyComponent::EnterNormal()
 	// Pelvis and legs animated (kinematic); the upper body simulated and driven to the pose.
 	ExtraSimulatedRoots.Reset();
 	AnimationOverride = 0.f;
+	BaseOverride = 0.f;
+	AppliedOverride = 0.f;
 	Body->SetAllBodiesSimulatePhysics(false);
 	Body->SetEnableGravity(true);
 	Body->SetAllBodiesBelowSimulatePhysics(SimulatedRootBone, true, true);
@@ -330,12 +334,38 @@ void UCSPhysicsBodyComponent::SetAnimationOverride(float Weight)
 		AnimationOverride = 0.f;
 		return;
 	}
-	if (FMath::IsNearlyEqual(Weight, AnimationOverride, 0.001f))
+	AnimationOverride = Weight;
+	ApplyOverride();
+}
+
+void UCSPhysicsBodyComponent::ApplyOverride()
+{
+	if (!HasPhysicsBody() || (State != ECSBodyState::Normal && State != ECSBodyState::Hit))
+	{
+		AppliedOverride = -1.f;
+		return;
+	}
+	const float Weight = FMath::Max(AnimationOverride, BaseOverride);
+	if (State != ECSBodyState::Hit && AppliedOverride >= 0.f && FMath::IsNearlyEqual(Weight, AppliedOverride, 0.002f))
 	{
 		return;
 	}
-	AnimationOverride = Weight;
+	AppliedOverride = Weight;
 	Body->SetAllBodiesBelowPhysicsBlendWeight(SimulatedRootBone, 1.f - Weight, false, true);
+	if (State == ECSBodyState::Hit && Weight > 0.f)
+	{
+		// The parts the hit struck show the simulation, by how hard they are still reeling, so a
+		// head shot snaps the head while the arms keep the guard; the rest stays on the pose.
+		const UCSMovementTuning& T = GetTuning();
+		for (FBodyInstance* B : Body->Bodies)
+		{
+			const float* Age = B ? HitAges.Find(BodyName(B)) : nullptr;
+			if (Age)
+			{
+				B->PhysicsBlendWeight = FMath::Max(1.f - Weight, HitWeight(*Age, T));
+			}
+		}
+	}
 }
 
 void UCSPhysicsBodyComponent::SetLimbSimulated(FName Root, bool bSimulate)
@@ -617,6 +647,16 @@ void UCSPhysicsBodyComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	}
 	TrackNearbyBodies();
 	StateSeconds += DeltaTime;
+	if (State == ECSBodyState::Normal || State == ECSBodyState::Hit)
+	{
+		// A hit shows on the parts it struck (ApplyOverride); the rest keeps the stance's pose.
+		BaseOverride = FMath::FInterpTo(BaseOverride, BaseOverrideTarget, DeltaTime, BaseOverrideEaseSpeed);
+		ApplyOverride();
+	}
+	else
+	{
+		BaseOverride = 0.f;
+	}
 	switch (State)
 	{
 	case ECSBodyState::Normal:

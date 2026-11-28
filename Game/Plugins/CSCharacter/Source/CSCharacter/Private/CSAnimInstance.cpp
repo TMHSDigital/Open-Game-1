@@ -103,7 +103,15 @@ void UCSAnimInstance::SetState(ECSLocomotionState NewState)
 		StateTime = 0.f;
 	}
 	const ECSLocomotionPose Pose = PoseForState(State);
-	PoseIndex = int32(bStanceLegs && Pose == ECSLocomotionPose::Ground ? ECSLocomotionPose::Stance : Pose);
+	PoseIndex = int32(bStanceLegs && Pose == ECSLocomotionPose::Ground
+		? (bSideStep ? ECSLocomotionPose::StanceSide : ECSLocomotionPose::Stance) : Pose);
+}
+
+bool UCSAnimInstance::IsSideStep(float MoveAngle, float Angle, float Hysteresis, bool bWasSide)
+{
+	// Measured from the nearer of ahead and behind: 90 is straight sideways.
+	const float FromAxis = 90.f - FMath::Abs(90.f - FMath::Abs(FRotator::NormalizeAxis(MoveAngle)));
+	return FromAxis >= (bWasSide ? Angle - Hysteresis : Angle);
 }
 
 float UCSAnimInstance::ComputeLegYaw(float MoveAngle, float MaxYaw, bool bWasBackward, bool& bOutBackward)
@@ -217,14 +225,27 @@ void UCSAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	// when the Blueprint has the Stance pose.
 	const ACSCharacter* Stancer = Cast<ACSCharacter>(Character);
 	bStanceLegs = StanceStride.Num() >= 2 && Stancer && Stancer->IsInCombatStance() && !bIsCrouching;
+	// Sideways in the stance: the side shuffle, its steps played backward for a step to the left.
+	float SideMoveAngle = 0.f;
+	if (GroundSpeed > 30.f)
+	{
+		const FVector Facing = Character->GetActorForwardVector().GetSafeNormal2D();
+		const FVector Moving = Velocity.GetSafeNormal2D();
+		SideMoveAngle = FMath::RadiansToDegrees(FMath::Atan2(float(FVector::CrossProduct(Facing, Moving).Z), float(FVector::DotProduct(Facing, Moving))));
+	}
+	bSideStep = bStanceLegs && StanceSideStride.Num() >= 2 && GroundSpeed > 30.f && !Move->IsFalling()
+		&& IsSideStep(SideMoveAngle, SideStepAngle, SideStepHysteresis, bSideStep);
 
 	// Blend position and play rate from the speed actually moved, so the feet match the ground.
 	const float StandingGaits[] = {Walk, Jog, Sprint};
 	const float StanceGaits[] = {Walk, Jog};
 	const float CrouchGaits[] = {Crouch};
 	// The rate the feet need, unclamped, then split between rate and the length of the steps.
+	const float SideGaits[] = {Walk};
 	const float NaturalRate = bIsCrouching
 		? ComputeLocomotion(GroundSpeed, CrouchGaits, CrouchStride, 0.01f, 100.f, LocomotionAxis)
+		: bSideStep
+		? ComputeLocomotion(GroundSpeed, SideGaits, StanceSideStride, 0.01f, 100.f, LocomotionAxis)
 		: bStanceLegs
 		? ComputeLocomotion(GroundSpeed, StanceGaits, StanceStride, 0.01f, 100.f, LocomotionAxis)
 		: ComputeLocomotion(GroundSpeed, StandingGaits, GroundStride, 0.01f, 100.f, LocomotionAxis);
@@ -249,7 +270,13 @@ void UCSAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	// the movement and the steps play backward when backing off. Facing the way it moves this is
 	// nothing: the angle is 0.
 	float WantedLegYaw = 0.f;
-	if (!bIsInAir && !bLanding && GroundSpeed > 30.f)
+	if (bSideStep)
+	{
+		// The side shuffle steps sideways itself: the legs stay with the facing, and the steps play
+		// backward for a step to the left (the clip steps right).
+		bStepsBackward = SideMoveAngle < 0.f;
+	}
+	else if (!bIsInAir && !bLanding && GroundSpeed > 30.f)
 	{
 		const FVector Facing = Character->GetActorForwardVector().GetSafeNormal2D();
 		const FVector Moving = Velocity.GetSafeNormal2D();

@@ -533,17 +533,22 @@ void ACSCharacter::UpdateCombatStance()
 	if (World && GetController() && !bRagdolled)
 	{
 		const double Now = World->GetTimeSeconds();
+		NearestOtherDistance = TNumericLimits<float>::Max();
 		if (T.CombatFacingRange > 0.f)
 		{
 			const float RangeSquared = T.CombatFacingRange * T.CombatFacingRange;
 			for (TActorIterator<ACSCharacter> It(World); It; ++It)
 			{
 				const ACSCharacter* Other = *It;
-				if (Other != this && !Other->IsActorBeingDestroyed() && !Other->IsRagdolled()
-					&& FVector::DistSquared2D(Other->GetActorLocation(), GetActorLocation()) <= RangeSquared)
+				if (Other == this || Other->IsActorBeingDestroyed() || Other->IsRagdolled())
+				{
+					continue;
+				}
+				const float DistSquared = float(FVector::DistSquared2D(Other->GetActorLocation(), GetActorLocation()));
+				NearestOtherDistance = FMath::Min(NearestOtherDistance, FMath::Sqrt(DistSquared));
+				if (DistSquared <= RangeSquared)
 				{
 					LastNearTime = Now;
-					break;
 				}
 			}
 		}
@@ -552,6 +557,10 @@ void ACSCharacter::UpdateCombatStance()
 		bStance = Now - FMath::Max(LastAttackTime, LastNearTime) < T.CombatFacingSeconds;
 	}
 	bCombatStance = bStance;
+	if (PhysicsBody)
+	{
+		PhysicsBody->SetBaseAnimationOverride(bCombatStance ? T.CombatStanceAnimationShare : 0.f);
+	}
 	if (CameraRig)
 	{
 		CameraRig->SetFaceAimRequested(bCombatStance);
@@ -793,6 +802,12 @@ void ACSCharacter::Tick(float DeltaSeconds)
 			Cap = FMath::Min(Cap, T.JogSpeed);
 		}
 		Cap *= FMath::Lerp(1.f, T.CombatBackSpeedScale, Back);
+		// Not during a strike: its step in (PunchLungeSpeed) carries the body into reach.
+		if (T.CombatStanceMaxSpeed > 0.f && NearestOtherDistance <= T.CombatStanceSpeedRange
+			&& !(Strike && Strike->GetPhase() != ECSStrikePhase::None))
+		{
+			Cap = FMath::Min(Cap, T.CombatStanceMaxSpeed);
+		}
 	}
 	if (Guard)
 	{

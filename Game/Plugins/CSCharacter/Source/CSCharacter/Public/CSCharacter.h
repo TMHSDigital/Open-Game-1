@@ -401,6 +401,8 @@ private:
 	TObjectPtr<UCSStaminaComponent> Stamina;
 
 	bool bCombatStance = false;
+	/** Distance to the nearest other standing character, cm, from the last UpdateCombatStance (huge: none). */
+	float NearestOtherDistance = TNumericLimits<float>::Max();
 	/** World time of the last attack started; very negative before any. */
 	double LastAttackTime = -1.0e9;
 	/** World time another standing character was last within CombatFacingRange. */

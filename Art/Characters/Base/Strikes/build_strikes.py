@@ -211,8 +211,32 @@ def shuffle_loop():
     return keys, None
 
 
+def side_shuffle_loop():
+    # Sideways in the stance, to the right: the right foot steps out, the left follows, the stance
+    # kept (no crossing the feet). Played backward for a step to the left.
+    def foot(phase, start, swing):
+        local = (phase - start) % 1.0
+        if local < swing:
+            t = local / swing
+            return SHUFFLE_STRIDE * (0.5 - (t * t * (3.0 - 2.0 * t))), 5.0 * math.sin(math.pi * t)
+        t = (local - swing) / (1.0 - swing)
+        return SHUFFLE_STRIDE * (-0.5 + t), 0.0
+    keys = []
+    for f in range(SHUFFLE_FRAMES + 1):
+        phase = f / SHUFFLE_FRAMES
+        right, right_up = foot(phase, 0.0, 0.36)
+        left, left_up = foot(phase, 0.4, 0.36)
+        # Moving right is -X: a planted foot slides toward +X (behind the motion).
+        keys.append((f, stance(
+            pelvis=V(0.0, 1.5, -5.5 - 0.8 * abs(math.sin(2.0 * math.pi * phase))),
+            ankle_l=V(15.0 + left, -18.0, 7.5 + left_up), ankle_r=V(-15.0 + right, 20.0, 7.5 + right_up),
+            heel_r=12.0 if right_up < 0.5 else 0.0), "linear"))
+    return keys, None
+
+
 CLIPS = {
     "A_Stance_Idle": stance_loop,
+    "A_Stance_ShuffleSide": side_shuffle_loop,
     "A_Stance_Shuffle": shuffle_loop,
     "A_Block_High": block_loop,
     "A_Strike_Jab": jab,
@@ -507,7 +531,7 @@ def build(arm, only):
             "frames": last + 1, "seconds": round(last / FPS, 4),
             "active": None if active is None else {"start": round(active[0] / FPS, 4), "end": round(active[1] / FPS, 4)},
             "loop": active is None,
-            "stride_cm_s": round(SHUFFLE_STRIDE * FPS / SHUFFLE_FRAMES, 2) if name == "A_Stance_Shuffle" else 0.0,
+            "stride_cm_s": round(SHUFFLE_STRIDE * FPS / SHUFFLE_FRAMES, 2) if name in ("A_Stance_Shuffle", "A_Stance_ShuffleSide") else 0.0,
             "checks": checks(rig, name, keys, active),
         }
         print(f"STRIKES {name}: {last + 1} frames, {meta[name]}")

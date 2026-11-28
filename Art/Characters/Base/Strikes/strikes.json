@@ -7,6 +7,14 @@
     "stride_cm_s": 0.0,
     "checks": {}
   },
+  "A_Stance_ShuffleSide": {
+    "frames": 13,
+    "seconds": 0.4,
+    "active": null,
+    "loop": true,
+    "stride_cm_s": 75.0,
+    "checks": {}
+  },
   "A_Stance_Shuffle": {
     "frames": 13,
     "seconds": 0.4,

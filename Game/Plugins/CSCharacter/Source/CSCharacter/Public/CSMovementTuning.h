@@ -466,6 +466,26 @@ public:
 	float CombatBackSpeedScale = 0.7f;
 
 	/**
+	 * The fastest a character moves in its combat stance within CombatStanceSpeedRange of another
+	 * character, cm/s, any direction: footwork, not a jog (decision 0025). Circling an opponent close
+	 * in at jog speed turns the body faster than the guard can follow. 0: no cap.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat", meta = (UIMin = "0", UIMax = "700", Units = "cm/s"))
+	float CombatStanceMaxSpeed = 200.f;
+
+	/**
+	 * In the combat stance the upper body shows its animation (the guard) by this much over the
+	 * simulation, so the arms hold the guard through fast footwork; the parts a hit strikes show the
+	 * simulation until they recover (UCSPhysicsBodyComponent::SetBaseAnimationOverride). 0: all simulation.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat", meta = (UIMin = "0", UIMax = "1"))
+	float CombatStanceAnimationShare = 1.f;
+
+	/** CombatStanceMaxSpeed holds within this distance of the nearest other character, cm (farther, the stance moves at the gait's speed). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Combat", meta = (UIMin = "0", UIMax = "2000", Units = "cm"))
+	float CombatStanceSpeedRange = 300.f;
+
+	/**
 	 * Facing the aim while moving another way, the legs turn toward the way they move by up to
 	 * this, degrees, and the upper body keeps facing the aim. Moving backward, the steps play in
 	 * reverse.
