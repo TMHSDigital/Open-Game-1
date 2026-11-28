@@ -45,7 +45,7 @@ It is an early prototype, made by one developer, and every design decision, work
 | **Engine** | Unreal Engine 5.8, C++ project in [`Game/`](Game/): a start plane, a movement gym and a capture stage |
 | **Latest block** | [Decision 0025](docs/decisions/0025-strikes-are-authored-motion-physics-only-for-the-hit-reactio.md): strikes are authored motion, physics only for the hit reaction |
 | **Steam** | Build 0.1.16 is live on the private development branch; build 0.1.13 is live on the default branch (promoted 2026-11-27); the game is not publicly available yet ([setup checklist](docs/steam/SETUP-CHECKLIST.md), [build history](https://tmhsdigital.github.io/Open-Game-1/builds.html)) |
-| **Latest devlog** | [Combat that feels like a striking game](docs/devlog/2026-11-27-03-combat-that-feels-like-a-ufc-striking-ga.md) |
+| **Latest devlog** | [Footwork, a high guard, and punches on the move](docs/devlog/2026-11-27-04-combat-polish-no-foot-sliding-on-moving.md) |
 
 ## In the build
 
